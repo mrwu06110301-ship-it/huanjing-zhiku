@@ -1,0 +1,91 @@
+/** 路由配置 */
+
+import { createRouter, createWebHistory } from "vue-router";
+import { useAuthStore } from "@/stores/auth";
+import { ElMessage } from "element-plus";
+
+const router = createRouter({
+  history: createWebHistory(),
+  routes: [
+    {
+      path: "/",
+      name: "Home",
+      component: () => import("@/views/Home.vue"),
+    },
+    {
+      path: "/forum",
+      name: "Forum",
+      component: () => import("@/views/Forum.vue"),
+    },
+    {
+      path: "/article/:id",
+      name: "ArticleDetail",
+      component: () => import("@/views/ArticleDetail.vue"),
+    },
+    {
+      path: "/article/edit/:id?",
+      name: "ArticleEdit",
+      component: () => import("@/views/ArticleEdit.vue"),
+    },
+    {
+      path: "/videos",
+      name: "Videos",
+      component: () => import("@/views/Videos.vue"),
+    },
+    {
+      path: "/standards",
+      name: "Standards",
+      component: () => import("@/views/Standards.vue"),
+    },
+    {
+      path: "/faq",
+      name: "FAQ",
+      component: () => import("@/views/FAQ.vue"),
+    },
+    {
+      path: "/tools",
+      name: "Tools",
+      component: () => import("@/views/Tools.vue"),
+    },
+    {
+      path: "/tools/:slug",
+      name: "ToolDetail",
+      component: () => import("@/views/ToolDetail.vue"),
+    },
+    {
+      path: "/login",
+      name: "Login",
+      component: () => import("@/views/Login.vue"),
+    },
+    {
+      path: "/register",
+      name: "Register",
+      component: () => import("@/views/Register.vue"),
+    },
+    {
+      path: "/admin/categories",
+      name: "CategoryManage",
+      component: () => import("@/views/CategoryManage.vue"),
+      meta: { requiresAuth: true, requiresAdmin: true },
+    },
+  ],
+  scrollBehavior() {
+    return { top: 0 };
+  },
+});
+
+// 导航守卫
+router.beforeEach((to, _from, next) => {
+  const auth = useAuthStore();
+  if (to.meta.requiresAuth && !auth.isLoggedIn()) {
+    ElMessage.warning("请先登录");
+    next("/login");
+  } else if (to.meta.requiresAdmin && !auth.isAdmin()) {
+    ElMessage.warning("需要管理员权限");
+    next("/");
+  } else {
+    next();
+  }
+});
+
+export default router;
