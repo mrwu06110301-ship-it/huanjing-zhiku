@@ -2,7 +2,7 @@
 import { ref, computed, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
-import { getArticles, deleteArticle } from "@/api/article";
+import { getArticles, deleteArticle, approveArticle, rejectArticle } from "@/api/article";
 import { getCategories } from "@/api/category";
 import type { ArticleListOut, CategoryOut } from "@/types";
 import { ElMessage, ElMessageBox } from "element-plus";
@@ -89,6 +89,24 @@ async function handleDelete(id: number) {
     loadArticles();
     loadPendingArticles();
   } catch { /* 取消或失败 */ }
+}
+
+async function handleApprove(id: number) {
+  try {
+    await approveArticle(id);
+    ElMessage.success("审核通过");
+    loadArticles();
+    loadPendingArticles();
+  } catch { /* 失败 */ }
+}
+
+async function handleReject(id: number) {
+  try {
+    await rejectArticle(id);
+    ElMessage.success("已拒绝");
+    loadArticles();
+    loadPendingArticles();
+  } catch { /* 失败 */ }
 }
 
 function formatDate(dateStr: string) {
@@ -201,8 +219,14 @@ onMounted(async () => {
 
           <!-- 管理员操作按钮 -->
           <div v-if="is_admin" class="article-actions" @click.stop>
-            <el-button size="small" text type="primary" @click="handleEdit(article.id)">编辑</el-button>
-            <el-button size="small" text type="danger" @click="handleDelete(article.id)">删除</el-button>
+            <template v-if="showPending">
+              <el-button size="small" text type="success" @click="handleApprove(article.id)">✓ 通过</el-button>
+              <el-button size="small" text type="warning" @click="handleReject(article.id)">✕ 拒绝</el-button>
+            </template>
+            <template v-else>
+              <el-button size="small" text type="primary" @click="handleEdit(article.id)">编辑</el-button>
+              <el-button size="small" text type="danger" @click="handleDelete(article.id)">删除</el-button>
+            </template>
           </div>
         </div>
 

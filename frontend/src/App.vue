@@ -10,7 +10,7 @@ import Navbar from "@/components/Navbar.vue";
     </main>
     <footer class="site-footer">
       <div class="footer-inner">
-        <p>环监智库 &copy; 2026 — 让现场监测，触手可感</p>
+        <p>产品小吴知识库 &copy; 2026 — 让现场监测，触手可感</p>
       </div>
     </footer>
   </div>

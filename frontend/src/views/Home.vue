@@ -1,26 +1,82 @@
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
+import { ref, onMounted, computed } from "vue";
 import { useRouter } from "vue-router";
 import { getArticles } from "@/api/article";
+import { getVideos } from "@/api/video";
+import { getStandards } from "@/api/standard";
 import { getTools } from "@/api/tool";
-import type { ArticleListOut, ToolOut } from "@/types";
+import type { ArticleListOut, VideoOut, StandardOut, ToolOut } from "@/types";
 
 const router = useRouter();
 const latestArticles = ref<ArticleListOut[]>([]);
+const videos = ref<VideoOut[]>([]);
+const standards = ref<StandardOut[]>([]);
 const tools = ref<ToolOut[]>([]);
+const loading = ref(true);
+
+// 动画统计数值
+const animatedStats = ref([0, 0, 0, 0]);
+const targetStats = ref([0, 0, 0, 0]);
 
 onMounted(async () => {
   try {
-    const [artRes, toolRes] = await Promise.all([
+    const [artRes, vidRes, stdRes, toolRes] = await Promise.all([
       getArticles({ page: 1, page_size: 6 }),
+      getVideos({ page: 1, page_size: 1 }),
+      getStandards({ page: 1, page_size: 1 }),
       getTools(),
     ]);
     latestArticles.value = artRes.data.items || [];
+    videos.value = vidRes.data?.items || [];
+    standards.value = stdRes.data?.items || [];
     tools.value = toolRes.data || [];
+
+    // 设置目标数值（使用分页总数）
+    targetStats.value = [
+      artRes.data.total || 0,
+      vidRes.data?.total || 0,
+      stdRes.data?.total || 0,
+      tools.value.length,
+    ];
+
+    // 触发数字动画
+    animateNumbers();
   } catch {
     // 静默处理
+  } finally {
+    loading.value = false;
   }
 });
+
+// 数字滚动动画
+function animateNumbers() {
+  const duration = 1500;
+  const steps = 60;
+  const stepTime = duration / steps;
+  let current = 0;
+
+  const timer = setInterval(() => {
+    current++;
+    const progress = current / steps;
+    const easeOut = 1 - Math.pow(1 - progress, 3);
+    
+    for (let i = 0; i < 4; i++) {
+      animatedStats.value[i] = Math.floor(targetStats.value[i] * easeOut);
+    }
+
+    if (current >= steps) {
+      clearInterval(timer);
+      animatedStats.value = [...targetStats.value];
+    }
+  }, stepTime);
+}
+
+const stats = computed(() => [
+  { label: "技术文章", value: animatedStats.value[0], icon: "📄", suffix: "篇" },
+  { label: "学习视频", value: animatedStats.value[1], icon: "🎥", suffix: "个" },
+  { label: "方法标准", value: animatedStats.value[2], icon: "📊", suffix: "项" },
+  { label: "在线工具", value: animatedStats.value[3], icon: "🧮", suffix: "个" },
+]);
 
 const modules = [
   {
@@ -64,13 +120,6 @@ const modules = [
     gradient: "linear-gradient(135deg, #9b59b6, #bb7dd4)",
   },
 ];
-
-const stats = [
-  { label: "技术文章", value: "128+", icon: "📄" },
-  { label: "学习视频", value: "56+", icon: "🎥" },
-  { label: "方法标准", value: "89+", icon: "📊" },
-  { label: "在线工具", value: "6", icon: "🧮" },
-];
 </script>
 
 <template>
@@ -78,11 +127,12 @@ const stats = [
     <!-- Hero 区域 -->
     <section class="hero">
       <div class="hero-bg"></div>
+      <div class="hero-particles">
+        <div class="particle" v-for="i in 20" :key="i" :style="{ '--delay': i * 0.5 + 's', '--x': (i * 7) % 100 + '%' }"></div>
+      </div>
       <div class="hero-content">
         <div class="hero-badge">🔬 环境监测技术平台</div>
-        <h1 class="hero-title">
-          环监智库
-        </h1>
+        <h1 class="hero-title">产品小吴知识库</h1>
         <p class="hero-slogan">让现场监测，触手可感</p>
         <p class="hero-desc">
           聚焦环境监测领域，提供技术交流、学习视频、方法标准、现场问题解决方案与专业计算工具
@@ -104,7 +154,7 @@ const stats = [
     <section class="stats-bar">
       <div class="stat-item" v-for="s in stats" :key="s.label">
         <span class="stat-icon">{{ s.icon }}</span>
-        <span class="stat-value">{{ s.value }}</span>
+        <span class="stat-value">{{ s.value }}<small>{{ s.suffix }}</small></span>
         <span class="stat-label">{{ s.label }}</span>
       </div>
     </section>
@@ -170,6 +220,11 @@ const stats = [
         </div>
       </div>
     </section>
+
+    <!-- 加载状态 -->
+    <div v-if="loading" class="loading-overlay">
+      <div class="loading-spinner"></div>
+    </div>
   </div>
 </template>
 
@@ -177,6 +232,26 @@ const stats = [
 /* Hero */
 .home {
   margin: -24px -20px 0;
+  position: relative;
+}
+
+.loading-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid #f3f3f3;
+  border-top: 3px solid #0066cc;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
 }
 
 .hero {
@@ -198,10 +273,41 @@ const stats = [
     radial-gradient(circle at 80% 20%, rgba(0, 102, 204, 0.1) 0%, transparent 50%);
 }
 
+.hero-particles {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.particle {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  background: rgba(0, 204, 170, 0.4);
+  border-radius: 50%;
+  top: -10px;
+  left: var(--x);
+  animation: fall 8s linear infinite;
+  animation-delay: var(--delay);
+}
+
+@keyframes fall {
+  0% { transform: translateY(-10px); opacity: 0; }
+  10% { opacity: 1; }
+  90% { opacity: 1; }
+  100% { transform: translateY(100vh); opacity: 0; }
+}
+
 .hero-content {
   position: relative;
   z-index: 2;
   max-width: 600px;
+  animation: fadeInUp 0.8s ease-out;
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(30px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .hero-badge {
@@ -213,6 +319,7 @@ const stats = [
   font-size: 13px;
   color: #00ccaa;
   margin-bottom: 20px;
+  animation: fadeIn 0.6s ease-out 0.2s both;
 }
 
 .hero-title {
@@ -223,6 +330,7 @@ const stats = [
   background: linear-gradient(90deg, #00ccaa, #3399ff);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
+  animation: fadeIn 0.6s ease-out 0.4s both;
 }
 
 .hero-slogan {
@@ -231,6 +339,7 @@ const stats = [
   margin-bottom: 16px;
   font-weight: 300;
   letter-spacing: 4px;
+  animation: fadeIn 0.6s ease-out 0.6s both;
 }
 
 .hero-desc {
@@ -238,11 +347,13 @@ const stats = [
   color: rgba(255, 255, 255, 0.55);
   line-height: 1.7;
   margin-bottom: 32px;
+  animation: fadeIn 0.6s ease-out 0.8s both;
 }
 
 .hero-actions {
   display: flex;
   gap: 16px;
+  animation: fadeIn 0.6s ease-out 1s both;
 }
 
 .hero-btn {
@@ -251,7 +362,7 @@ const stats = [
   font-size: 15px;
   font-weight: 600;
   text-decoration: none;
-  transition: all 0.2s;
+  transition: all 0.3s;
 }
 
 .hero-btn.primary {
@@ -261,7 +372,7 @@ const stats = [
 
 .hero-btn.primary:hover {
   box-shadow: 0 4px 20px rgba(0, 204, 170, 0.4);
-  transform: translateY(-1px);
+  transform: translateY(-2px);
 }
 
 .hero-btn.outline {
@@ -271,6 +382,7 @@ const stats = [
 
 .hero-btn.outline:hover {
   border-color: #fff;
+  background: rgba(255, 255, 255, 0.1);
 }
 
 /* 动态轨道 */
@@ -336,31 +448,51 @@ const stats = [
   50% { opacity: 1; transform: scale(1.2); }
 }
 
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
 /* 统计条 */
 .stats-bar {
   display: flex;
   justify-content: center;
   gap: 48px;
-  padding: 32px 20px;
+  padding: 40px 20px;
   background: #fff;
   border-bottom: 1px solid var(--border);
+  position: relative;
+  z-index: 10;
 }
 
 .stat-item {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: 8px;
+  transition: transform 0.3s;
+}
+
+.stat-item:hover {
+  transform: translateY(-4px);
 }
 
 .stat-icon {
-  font-size: 24px;
+  font-size: 28px;
 }
 
 .stat-value {
-  font-size: 28px;
+  font-size: 32px;
   font-weight: 700;
   color: var(--primary);
+  font-family: monospace;
+}
+
+.stat-value small {
+  font-size: 14px;
+  font-weight: 400;
+  margin-left: 2px;
+  color: var(--text-light);
 }
 
 .stat-label {
@@ -396,26 +528,31 @@ const stats = [
   border-radius: var(--radius);
   padding: 24px;
   cursor: pointer;
-  transition: all 0.25s;
+  transition: all 0.3s;
   box-shadow: var(--shadow);
   position: relative;
   overflow: hidden;
 }
 
 .module-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+  transform: translateY(-6px);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12);
 }
 
 .module-icon {
-  width: 48px;
-  height: 48px;
-  border-radius: 12px;
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 24px;
-  margin-bottom: 12px;
+  font-size: 28px;
+  margin-bottom: 16px;
+  transition: transform 0.3s;
+}
+
+.module-card:hover .module-icon {
+  transform: scale(1.1);
 }
 
 .module-card h3 {
@@ -435,11 +572,11 @@ const stats = [
   bottom: 16px;
   color: var(--text-light);
   font-size: 18px;
-  transition: transform 0.2s;
+  transition: all 0.3s;
 }
 
 .module-card:hover .module-arrow {
-  transform: translateX(4px);
+  transform: translateX(6px);
   color: var(--primary);
 }
 
@@ -455,12 +592,13 @@ const stats = [
   border-radius: var(--radius);
   padding: 20px;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.3s;
   box-shadow: var(--shadow);
 }
 
 .article-card:hover {
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.1);
+  transform: translateY(-4px);
 }
 
 .article-meta {
@@ -513,19 +651,24 @@ const stats = [
   padding: 20px;
   text-align: center;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.3s;
   box-shadow: var(--shadow);
 }
 
 .tool-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.1);
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
 }
 
 .tool-icon {
-  font-size: 32px;
+  font-size: 36px;
   display: block;
-  margin-bottom: 8px;
+  margin-bottom: 12px;
+  transition: transform 0.3s;
+}
+
+.tool-card:hover .tool-icon {
+  transform: scale(1.2);
 }
 
 .tool-card h4 {
@@ -565,6 +708,9 @@ const stats = [
   }
   .hero-slogan {
     font-size: 18px;
+  }
+  .stat-value {
+    font-size: 24px;
   }
 }
 </style>

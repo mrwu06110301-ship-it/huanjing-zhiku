@@ -2,9 +2,8 @@
 import { ref } from "vue";
 import { useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
-import { login as loginApi } from "@/api/user";
+import { login as loginApi, getMe } from "@/api/user";
 import { ElMessage } from "element-plus";
-import type { UserOut } from "@/types";
 
 const router = useRouter();
 const auth = useAuthStore();
@@ -27,12 +26,10 @@ async function handleLogin() {
       password: form.value.password,
     });
     const token = res.data.access_token;
-    // 获取用户信息
-    const meRes = await fetch(`/api/users/me`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    const user = (await meRes.json()) as UserOut;
-    auth.setLogin(token, user);
+    auth.token = token;
+    localStorage.setItem("hjzk_token", token);
+    const meRes = await getMe();
+    auth.setLogin(token, meRes.data);
     ElMessage.success("登录成功");
     router.push("/");
   } catch (err: unknown) {
@@ -49,7 +46,7 @@ async function handleLogin() {
     <div class="auth-card">
       <div class="auth-header">
         <span class="auth-logo">🔬</span>
-        <h2>环监智库</h2>
+        <h2>产品小吴知识库</h2>
         <p>让现场监测，触手可感</p>
       </div>
       <el-form :model="form" @keyup.enter="handleLogin">

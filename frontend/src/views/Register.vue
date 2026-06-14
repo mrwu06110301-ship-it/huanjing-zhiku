@@ -2,7 +2,7 @@
 import { ref } from "vue";
 import { useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
-import { register } from "@/api/user";
+import { register, getMe } from "@/api/user";
 import { ElMessage } from "element-plus";
 
 const router = useRouter();
@@ -29,12 +29,19 @@ function handleRegister() {
   loading.value = true;
   register({
     username: form.value.username,
-    email: form.value.email,
+    email: form.value.email || undefined,
     password: form.value.password,
     nickname: form.value.nickname,
   })
-    .then((res) => {
-      auth.setLogin(res.data.access_token, res.data);
+    .then(async (res) => {
+      auth.token = res.data.access_token;
+      localStorage.setItem("hjzk_token", res.data.access_token);
+      try {
+        const meRes = await getMe();
+        auth.setLogin(res.data.access_token, meRes.data);
+      } catch {
+        auth.setLogin(res.data.access_token, {} as any);
+      }
       ElMessage.success("注册成功");
       router.push("/");
     })
@@ -53,7 +60,7 @@ function handleRegister() {
       <div class="auth-header">
         <span class="auth-logo">🔬</span>
         <h2>注册账号</h2>
-        <p>加入环监智库技术社区</p>
+        <p>加入产品小吴知识库</p>
       </div>
       <el-form :model="form" @keyup.enter="handleRegister">
         <el-form-item>

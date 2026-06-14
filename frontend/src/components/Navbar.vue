@@ -7,14 +7,20 @@ import { getMe } from "@/api/user";
 const router = useRouter();
 const auth = useAuthStore();
 const mobileMenuOpen = ref(false);
+const searchQuery = ref("");
+const searchExpanded = ref(false);
+const searchInputRef = ref<HTMLInputElement>();
 
+// 导航项（全部展开显示）
 const navItems = [
-  { path: "/", label: "首页", icon: "🏠" },
-  { path: "/forum", label: "技术论坛", icon: "💬" },
-  { path: "/videos", label: "学习视频", icon: "🎬" },
-  { path: "/standards", label: "方法标准", icon: "📋" },
-  { path: "/faq", label: "常见问题", icon: "❓" },
-  { path: "/tools", label: "常用工具", icon: "🧮" },
+  { path: "/", label: "首页" },
+  { path: "/forum", label: "论坛" },
+  { path: "/videos", label: "视频" },
+  { path: "/standards", label: "法规" },
+  { path: "/faq", label: "维保" },
+  { path: "/messages", label: "留言" },
+  { path: "/tools", label: "工具" },
+  { path: "/about", label: "关于" },
 ];
 
 onMounted(async () => {
@@ -32,18 +38,35 @@ function handleLogout() {
   auth.logout();
   router.push("/");
 }
+
+function doSearch() {
+  if (searchQuery.value.trim()) {
+    router.push({ path: "/search", query: { q: searchQuery.value.trim() } });
+    searchQuery.value = "";
+    searchExpanded.value = false;
+  }
+}
+
+function expandSearch() {
+  searchExpanded.value = true;
+  setTimeout(() => searchInputRef.value?.focus(), 100);
+}
+
+function handleBlur() {
+  if (!searchQuery.value) searchExpanded.value = false;
+}
 </script>
 
 <template>
   <header class="navbar">
     <div class="navbar-inner">
+      <!-- 品牌 -->
       <router-link to="/" class="navbar-brand">
         <span class="brand-icon">🔬</span>
-        <span class="brand-text">环监智库</span>
-        <span class="brand-slogan">让现场监测，触手可感</span>
+        <span class="brand-text">产品小吴知识库</span>
       </router-link>
 
-      <!-- 桌面导航 -->
+      <!-- 导航 -->
       <nav class="navbar-nav">
         <router-link
           v-for="item in navItems"
@@ -56,6 +79,23 @@ function handleLogout() {
         </router-link>
       </nav>
 
+      <!-- 搜索 -->
+      <div class="navbar-search" :class="{ expanded: searchExpanded }">
+        <template v-if="searchExpanded">
+          <input
+            v-model="searchQuery"
+            placeholder="搜文章、工具..."
+            class="search-input"
+            ref="searchInputRef"
+            @keyup.enter="doSearch"
+            @blur="handleBlur"
+          />
+          <button class="search-btn" @click="doSearch">🔍</button>
+        </template>
+        <button v-else class="search-icon-btn" @click="expandSearch">🔍</button>
+      </div>
+
+      <!-- 用户操作 -->
       <div class="navbar-actions">
         <template v-if="auth.isLoggedIn()">
           <el-dropdown>
@@ -65,10 +105,10 @@ function handleLogout() {
             </span>
             <template #dropdown>
               <el-dropdown-menu>
-                <el-dropdown-item v-if="auth.isAdmin()" @click="router.push('/admin/categories')">
-                  📂 分类管理
-                </el-dropdown-item>
-                <el-dropdown-item @click="handleLogout">退出登录</el-dropdown-item>
+                <el-dropdown-item @click="router.push('/profile')">👤 个人中心</el-dropdown-item>
+                <el-dropdown-item v-if="auth.isAdmin()" @click="router.push('/admin/categories')">📂 分类管理</el-dropdown-item>
+                <el-dropdown-item v-if="auth.isAdmin()" @click="router.push('/admin/users')">👥 用户管理</el-dropdown-item>
+                <el-dropdown-item divided @click="handleLogout">退出登录</el-dropdown-item>
               </el-dropdown-menu>
             </template>
           </el-dropdown>
@@ -79,14 +119,18 @@ function handleLogout() {
         </template>
       </div>
 
-      <!-- 移动端菜单按钮 -->
+      <!-- 移动端菜单 -->
       <button class="mobile-menu-btn" @click="mobileMenuOpen = !mobileMenuOpen">
         {{ mobileMenuOpen ? "✕" : "☰" }}
       </button>
     </div>
 
-    <!-- 移动端菜单 -->
+    <!-- 移动端导航 -->
     <nav v-if="mobileMenuOpen" class="mobile-nav">
+      <div class="mobile-search">
+        <input v-model="searchQuery" placeholder="搜索..." class="mobile-search-input" @keyup.enter="doSearch" />
+        <button class="mobile-search-btn" @click="doSearch">🔍</button>
+      </div>
       <router-link
         v-for="item in navItems"
         :key="item.path"
@@ -94,16 +138,11 @@ function handleLogout() {
         class="mobile-nav-link"
         @click="mobileMenuOpen = false"
       >
-        {{ item.icon }} {{ item.label }}
+        {{ item.label }}
       </router-link>
     </nav>
   </header>
 </template>
-
-<script lang="ts">
-import { ArrowDown } from "@element-plus/icons-vue";
-export default { components: { ArrowDown } };
-</script>
 
 <style scoped>
 .navbar {
@@ -121,8 +160,8 @@ export default { components: { ArrowDown } };
   padding: 0 20px;
   display: flex;
   align-items: center;
-  height: 64px;
-  gap: 32px;
+  height: 60px;
+  gap: 24px;
 }
 
 .navbar-brand {
@@ -132,43 +171,39 @@ export default { components: { ArrowDown } };
   text-decoration: none;
   color: #fff;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .brand-icon {
-  font-size: 28px;
+  font-size: 24px;
 }
 
 .brand-text {
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 700;
-  letter-spacing: 2px;
+  letter-spacing: 1px;
   background: linear-gradient(90deg, #00ccaa, #3399ff);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
-.brand-slogan {
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.5);
-  margin-left: 8px;
-  border-left: 1px solid rgba(255, 255, 255, 0.2);
-  padding-left: 8px;
-}
-
+/* 导航 */
 .navbar-nav {
   display: flex;
-  gap: 4px;
+  gap: 2px;
   flex: 1;
+  min-width: 0;
 }
 
 .nav-link {
-  color: rgba(255, 255, 255, 0.75);
+  color: rgba(255, 255, 255, 0.7);
   text-decoration: none;
-  padding: 8px 16px;
+  padding: 6px 14px;
   border-radius: 6px;
   font-size: 14px;
   font-weight: 500;
   transition: all 0.2s;
+  cursor: pointer;
 }
 
 .nav-link:hover,
@@ -181,10 +216,69 @@ export default { components: { ArrowDown } };
   background: rgba(0, 204, 170, 0.2);
 }
 
+/* 搜索 */
+.navbar-search {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.navbar-search.expanded {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 20px;
+  padding: 0 4px 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  transition: all 0.2s;
+}
+
+.navbar-search.expanded:focus-within {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(0, 204, 170, 0.5);
+}
+
+.search-icon-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 18px;
+  padding: 4px 6px;
+  border-radius: 50%;
+  transition: all 0.2s;
+}
+
+.search-icon-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.search-input {
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #fff;
+  font-size: 13px;
+  padding: 6px 4px;
+  width: 130px;
+}
+
+.search-input::placeholder {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.search-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 4px 8px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+/* 用户 */
 .navbar-actions {
   display: flex;
-  gap: 12px;
+  gap: 10px;
   align-items: center;
+  flex-shrink: 0;
 }
 
 .user-info {
@@ -194,12 +288,19 @@ export default { components: { ArrowDown } };
   align-items: center;
   gap: 4px;
   font-size: 14px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  transition: background 0.2s;
+}
+
+.user-info:hover {
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .btn {
-  padding: 6px 16px;
+  padding: 5px 14px;
   border-radius: 6px;
-  font-size: 14px;
+  font-size: 13px;
   text-decoration: none;
   font-weight: 500;
   transition: all 0.2s;
@@ -216,14 +317,15 @@ export default { components: { ArrowDown } };
 }
 
 .btn-primary {
-  background: var(--accent);
+  background: linear-gradient(135deg, #00ccaa, #00b894);
   color: #fff;
 }
 
 .btn-primary:hover {
-  background: #00b894;
+  background: linear-gradient(135deg, #00ddbb, #00ccaa);
 }
 
+/* 移动端 */
 .mobile-menu-btn {
   display: none;
   background: none;
@@ -231,11 +333,43 @@ export default { components: { ArrowDown } };
   color: #fff;
   font-size: 24px;
   cursor: pointer;
+  margin-left: auto;
 }
 
 .mobile-nav {
-  padding: 12px 20px;
+  padding: 8px 20px 16px;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.mobile-search {
+  display: flex;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  margin-bottom: 8px;
+  overflow: hidden;
+}
+
+.mobile-search-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #fff;
+  padding: 10px 12px;
+  font-size: 14px;
+}
+
+.mobile-search-input::placeholder {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.mobile-search-btn {
+  background: none;
+  border: none;
+  color: #fff;
+  padding: 0 12px;
+  cursor: pointer;
+  font-size: 16px;
 }
 
 .mobile-nav-link {
@@ -249,15 +383,12 @@ export default { components: { ArrowDown } };
 
 @media (max-width: 900px) {
   .navbar-nav,
-  .navbar-actions {
+  .navbar-actions,
+  .navbar-search {
     display: none;
   }
   .mobile-menu-btn {
     display: block;
-    margin-left: auto;
-  }
-  .brand-slogan {
-    display: none;
   }
 }
 </style>

@@ -8,5 +8,7 @@ from app.models.video import Video
 from app.models.standard import Standard
 from app.models.faq import FAQ
 from app.models.tool import Tool
+from app.models.about import AboutContent
+from app.models.message import Message
 
-__all__ = ["User", "Category", "Article", "Comment", "Video", "Standard", "FAQ", "Tool"]
+__all__ = ["User", "Category", "Article", "Comment", "Video", "Standard", "FAQ", "Tool", "AboutContent", "Message"]

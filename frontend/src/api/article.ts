@@ -28,3 +28,11 @@ export function updateArticle(id: number, data: Partial<ArticleOut>) {
 export function deleteArticle(id: number) {
   return request.delete(`/articles/${id}`);
 }
+
+export function approveArticle(id: number) {
+  return request.put(`/articles/${id}/approve`);
+}
+
+export function rejectArticle(id: number) {
+  return request.put(`/articles/${id}/reject`);
+}

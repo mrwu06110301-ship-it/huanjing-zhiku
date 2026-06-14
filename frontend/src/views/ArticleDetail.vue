@@ -6,12 +6,10 @@ import { getArticle, deleteArticle } from "@/api/article";
 import { getComments, addComment, deleteComment } from "@/api/comment";
 import type { ArticleOut, CommentOut } from "@/types";
 import { ElMessage, ElMessageBox } from "element-plus";
-import MarkdownIt from "markdown-it";
 
 const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
-const md = new MarkdownIt({ html: false, breaks: true, linkify: true });
 
 const article = ref<ArticleOut | null>(null);
 const comments = ref<CommentOut[]>([]);
@@ -23,14 +21,15 @@ const is_admin = computed(() => auth.isAdmin());
 const is_author = computed(() => auth.user?.id === article.value?.author_id);
 const can_edit = computed(() => is_admin.value || is_author.value);
 
+// 渲染内容：WangEditor 输出的是 HTML，直接使用
 const rendered_content = computed(() => {
   if (!article.value?.content) return "";
-  // 如果内容包含 markdown 标记（#、**、- 等），用 markdown 渲染
   const content = article.value.content;
-  if (/^#|\*\*|^\-|^\>|^\`\`\`/m.test(content)) {
-    return md.render(content);
+  // 如果已经是 HTML（包含标签），直接返回
+  if (/<[a-z][\s\S]*>/i.test(content)) {
+    return content;
   }
-  // 否则保留换行
+  // 纯文本则保留换行
   return content.split("\n").map((line: string) => `<p>${line || "<br>"}</p>`).join("");
 });
 
@@ -142,19 +141,15 @@ function formatTime(dateStr: string) {
             <span>♡ {{ article.like_count }}</span>
           </div>
         </div>
-        <!-- 标签 -->
-        <div class="detail-tags" v-if="article.tags?.length">
-          <span class="tag" v-for="t in article.tags" :key="t"># {{ t }}</span>
-        </div>
       </div>
 
-      <!-- 文章正文 — 公众号阅读风格 -->
+      <!-- 文章正文 -->
       <div class="detail-content rich-text" v-html="rendered_content"></div>
 
       <!-- 管理员/作者操作栏 -->
       <div v-if="can_edit" class="detail-actions">
-        <el-button type="primary" plain @click="handleEdit">✏️ 编辑</el-button>
-        <el-button type="danger" plain @click="handleDelete">🗑️ 删除</el-button>
+        <el-button type="primary" plain size="small" @click="handleEdit">✏️ 编辑</el-button>
+        <el-button type="danger" plain size="small" @click="handleDelete">🗑️ 删除</el-button>
       </div>
 
       <!-- 评论区 -->
@@ -167,9 +162,8 @@ function formatTime(dateStr: string) {
             type="textarea"
             :rows="3"
             placeholder="写下你的留言..."
-            :loading="commentLoading"
           />
-          <el-button type="primary" size="small" @click="handleAddComment" style="margin-top: 8px;">
+          <el-button type="primary" size="small" @click="handleAddComment" :loading="commentLoading" style="margin-top: 8px;">
             发表留言
           </el-button>
         </div>
@@ -209,7 +203,7 @@ function formatTime(dateStr: string) {
 
 /* ===== 顶部信息 ===== */
 .detail-header {
-  margin-bottom: 32px;
+  margin-bottom: 24px;
 }
 
 .detail-meta-top {
@@ -250,7 +244,6 @@ function formatTime(dateStr: string) {
   line-height: 1.5;
   margin-bottom: 16px;
   color: var(--text);
-  letter-spacing: 0.5px;
 }
 
 .detail-author {
@@ -305,35 +298,20 @@ function formatTime(dateStr: string) {
   color: #999;
 }
 
-.detail-tags {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-  margin-top: 12px;
-}
-
-.tag {
-  padding: 2px 10px;
-  background: #f0f4f8;
-  color: #666;
-  border-radius: 4px;
-  font-size: 12px;
-}
-
-/* ===== 正文 — 公众号阅读风格 ===== */
+/* ===== 正文 ===== */
 .detail-content {
   background: var(--white);
   border-radius: var(--radius);
   padding: 32px 28px;
   box-shadow: var(--shadow);
-  margin-bottom: 24px;
+  margin-bottom: 16px;
   font-size: 16px;
   line-height: 2;
   color: #333;
   word-wrap: break-word;
+  overflow-wrap: break-word;
 }
 
-/* rich-text markdown 渲染样式 */
 .detail-content :deep(h1) {
   font-size: 22px;
   font-weight: 700;
@@ -356,7 +334,6 @@ function formatTime(dateStr: string) {
 
 .detail-content :deep(p) {
   margin: 0 0 16px;
-  text-indent: 0;
 }
 
 .detail-content :deep(blockquote) {
@@ -412,10 +389,6 @@ function formatTime(dateStr: string) {
   text-decoration: none;
 }
 
-.detail-content :deep(a:hover) {
-  text-decoration: underline;
-}
-
 .detail-content :deep(table) {
   width: 100%;
   border-collapse: collapse;
@@ -438,9 +411,12 @@ function formatTime(dateStr: string) {
 /* ===== 操作栏 ===== */
 .detail-actions {
   display: flex;
-  gap: 12px;
+  gap: 8px;
   justify-content: flex-end;
   margin-bottom: 24px;
+  padding: 12px 16px;
+  background: #fafafa;
+  border-radius: 8px;
 }
 
 /* ===== 评论区 ===== */

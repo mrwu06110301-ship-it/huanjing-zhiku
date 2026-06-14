@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.database import init_db
-from app.routers import users, articles, comments, categories, videos, standards, faqs, tools
+from app.routers import users, articles, comments, categories, videos, standards, faqs, tools, about, messages, search, upload
 
 # 必须导入所有模型，否则 Base.metadata 为空，create_all 不创建任何表
 import app.models  # noqa: F401
@@ -45,6 +45,10 @@ app.include_router(videos.router)
 app.include_router(standards.router)
 app.include_router(faqs.router)
 app.include_router(tools.router)
+app.include_router(about.router)
+app.include_router(messages.router)
+app.include_router(search.router)
+app.include_router(upload.router)
 
 
 @app.get("/api/health")

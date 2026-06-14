@@ -19,3 +19,9 @@ dist/
 # OS
 .DS_Store
 Thumbs.db
+
+# Project specific
+backend/uploads/
+*.tar.gz
+*.html
+.env

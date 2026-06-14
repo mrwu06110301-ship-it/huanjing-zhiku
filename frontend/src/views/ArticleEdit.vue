@@ -4,8 +4,10 @@ import { useRoute, useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
 import { getArticle, createArticle, updateArticle } from "@/api/article";
 import { getCategories } from "@/api/category";
+import { uploadImage } from "@/api/upload";
 import type { CategoryOut } from "@/types";
 import { ElMessage } from "element-plus";
+import RichEditor from "@/components/RichEditor.vue";
 
 const route = useRoute();
 const router = useRouter();
@@ -21,8 +23,8 @@ const content = ref("");
 const summary = ref("");
 const cover_image = ref("");
 const category_id = ref<number | null>(null);
-const tags_str = ref(""); // 逗号分隔的标签字符串
 const is_pinned = ref(false);
+const contentKey = ref(0); // 强制RichEditor重挂载
 
 onMounted(async () => {
   if (!auth.token) {
@@ -41,11 +43,11 @@ onMounted(async () => {
     try {
       const res = await getArticle(Number(id));
       title.value = res.data.title;
-      content.value = res.data.content;
+      content.value = res.data.content || "";
+      contentKey.value++;
       summary.value = res.data.summary || "";
       cover_image.value = res.data.cover_image || "";
       category_id.value = res.data.category_id;
-      tags_str.value = (res.data.tags || []).join("，");
       is_pinned.value = res.data.is_pinned;
     } finally {
       loading.value = false;
@@ -53,17 +55,78 @@ onMounted(async () => {
   }
 });
 
+// 自动摘要回调
+function handleAutoSummary(text: string) {
+  if (!summary.value || summary.value.length < 10) {
+    summary.value = text;
+  }
+}
+
+// 封面图上传
+async function handleCoverUpload(e: Event) {
+  const input = e.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (!file) return;
+  loading.value = true;
+  try {
+    const res = await uploadImage(file);
+    cover_image.value = res.data.url;
+    ElMessage.success("封面图上传成功");
+  } catch {
+    ElMessage.error("上传失败");
+  } finally {
+    loading.value = false;
+    input.value = "";
+  }
+}
+
+// 拖拽上传
+function handleDrop(e: DragEvent) {
+  e.preventDefault();
+  const file = e.dataTransfer?.files?.[0];
+  if (file && file.type.startsWith("image/")) {
+    uploadImageFile(file);
+  }
+}
+
+function handleDragOver(e: DragEvent) {
+  e.preventDefault();
+}
+
+async function uploadImageFile(file: File) {
+  loading.value = true;
+  try {
+    const res = await uploadImage(file);
+    cover_image.value = res.data.url;
+    ElMessage.success("封面图上传成功");
+  } catch {
+    ElMessage.error("上传失败");
+  } finally {
+    loading.value = false;
+  }
+}
+
+// 粘贴图片
+function handleCoverPaste(e: ClipboardEvent) {
+  const items = e.clipboardData?.items;
+  if (!items) return;
+  for (const item of items) {
+    if (item.type.startsWith("image/")) {
+      const file = item.getAsFile();
+      if (file) {
+        e.preventDefault();
+        uploadImageFile(file);
+        return;
+      }
+    }
+  }
+}
+
 async function handleSave() {
   if (!title.value.trim()) {
     ElMessage.warning("请输入标题");
     return;
   }
-
-  // 解析标签
-  const tags = tags_str.value
-    .split(/[，,、\s]+/)
-    .map((t: string) => t.trim())
-    .filter((t: string) => t.length > 0);
 
   const data = {
     title: title.value.trim(),
@@ -72,7 +135,6 @@ async function handleSave() {
     cover_image: cover_image.value.trim(),
     module: "forum",
     category_id: category_id.value,
-    tags,
     is_pinned: is_pinned.value,
   };
 
@@ -83,7 +145,7 @@ async function handleSave() {
       : await createArticle(data);
 
     const articleId = isEdit.value ? Number(route.params.id) : res.data.id;
-    ElMessage.success(isEdit.value ? "更新成功" : auth.isAdmin() ? "发布成功" : "发布成功，等待审核");
+    ElMessage.success(isEdit.value ? "更新成功" : "已提交，等待管理员审核");
     window.open(`/article/${articleId}`, "_blank");
   } catch (e: any) {
     ElMessage.error(e?.response?.data?.detail || "操作失败");
@@ -107,66 +169,48 @@ async function handleSave() {
         <el-input v-model="title" placeholder="请输入文章标题" size="large" maxlength="200" show-word-limit />
       </div>
 
-      <!-- 分类 + 标签 行 -->
-      <div class="form-row">
-        <div class="form-group flex-1">
-          <label>分类</label>
-          <el-select v-model="category_id" placeholder="选择分类" clearable style="width: 100%">
-            <el-option
-              v-for="cat in categories"
-              :key="cat.id"
-              :label="cat.icon + ' ' + cat.name"
-              :value="cat.id"
-            />
-          </el-select>
-        </div>
-        <div class="form-group flex-1">
-          <label>标签</label>
-          <el-input v-model="tags_str" placeholder="用逗号分隔，如：Python，FastAPI" />
-        </div>
+      <!-- 分类 -->
+      <div class="form-group">
+        <label>分类</label>
+        <el-select v-model="category_id" placeholder="选择分类" clearable style="width: 100%">
+          <el-option v-for="cat in categories" :key="cat.id" :label="cat.name" :value="cat.id" />
+        </el-select>
       </div>
 
       <!-- 摘要 -->
       <div class="form-group">
-        <label>摘要</label>
-        <el-input
-          v-model="summary"
-          placeholder="简短描述，将显示在文章列表中（可选）"
-          maxlength="200"
-          show-word-limit
-          :rows="2"
-          type="textarea"
-        />
+        <label>摘要 <span class="hint">（编辑正文后自动提取，也可手动修改）</span></label>
+        <el-input v-model="summary" placeholder="简短描述，将显示在文章列表中" maxlength="200" show-word-limit :rows="2" type="textarea" />
       </div>
 
       <!-- 封面图 -->
       <div class="form-group">
-        <label>封面图 URL</label>
-        <el-input v-model="cover_image" placeholder="https://example.com/image.jpg（可选）" />
-      </div>
-
-      <!-- 内容 - 增强编辑器 -->
-      <div class="form-group">
-        <label>正文 <span class="required">*</span> <span class="hint">（支持 Markdown 语法）</span></label>
-        <div class="editor-wrapper">
-          <div class="editor-toolbar">
-            <span class="toolbar-item" @click="content += '**粗体文字**'">B</span>
-            <span class="toolbar-item" @click="content += '\n## 标题\n'">H1</span>
-            <span class="toolbar-item" @click="content += '\n- 列表项\n'">•</span>
-            <span class="toolbar-item" @click="content += '\n> 引用文字\n'">❝</span>
-            <span class="toolbar-item" @click="content += '\n---\n'">—</span>
+        <label>封面图</label>
+        <div
+          class="cover-area"
+          @drop="handleDrop"
+          @dragover="handleDragOver"
+          @paste="handleCoverPaste"
+        >
+          <div v-if="cover_image" class="cover-preview">
+            <img :src="cover_image" alt="封面" />
+            <button class="cover-remove" @click="cover_image = ''">✕</button>
           </div>
-          <el-input
-            v-model="content"
-            type="textarea"
-            :rows="20"
-            placeholder="在这里输入文章内容...&#10;&#10;支持 Markdown 语法：&#10;# 一级标题&#10;## 二级标题&#10;**粗体** *斜体*&#10;-> 引用&#10;- 无序列表&#10;1. 有序列表"
-            class="content-editor"
-          />
+          <label v-else class="cover-upload">
+            <input type="file" accept="image/*" @change="handleCoverUpload" hidden />
+            <span class="upload-icon">📷</span>
+            <span>点击上传 · 拖拽图片到此处 · Ctrl+V粘贴</span>
+          </label>
         </div>
       </div>
 
-      <!-- 置顶（仅管理员） -->
+      <!-- 富文本编辑器 -->
+      <div class="form-group">
+        <label>正文 <span class="required">*</span></label>
+        <RichEditor :key="contentKey" v-model="content" @auto-summary="handleAutoSummary" />
+      </div>
+
+      <!-- 置顶 -->
       <div class="form-group" v-if="auth.isAdmin()">
         <el-checkbox v-model="is_pinned">置顶此文章</el-checkbox>
       </div>
@@ -175,7 +219,7 @@ async function handleSave() {
       <div class="form-actions">
         <el-button @click="router.back()">取消</el-button>
         <el-button type="primary" @click="handleSave" :loading="loading">
-          {{ isEdit ? "保存修改" : "发布文章" }}
+          {{ isEdit ? "保存修改" : "提交审核" }}
         </el-button>
       </div>
     </div>
@@ -184,7 +228,7 @@ async function handleSave() {
 
 <style scoped>
 .edit-page {
-  max-width: 800px;
+  max-width: 900px;
   margin: 0 auto;
   padding: 24px 0;
 }
@@ -233,58 +277,70 @@ async function handleSave() {
   font-size: 12px;
 }
 
-.form-row {
-  display: flex;
-  gap: 16px;
-}
-
-.flex-1 {
-  flex: 1;
-}
-
-/* 简易编辑器工具栏 */
-.editor-wrapper {
-  border: 1px solid var(--border);
+.cover-area {
+  border: 2px dashed var(--border);
   border-radius: 8px;
+  overflow: hidden;
+  transition: border-color 0.2s;
+}
+
+.cover-area:hover {
+  border-color: var(--primary);
+}
+
+.cover-upload {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 40px;
+  cursor: pointer;
+  color: var(--text-light);
+  font-size: 14px;
+  transition: background 0.2s;
+}
+
+.cover-upload:hover {
+  background: #f8f9fa;
+}
+
+.upload-icon {
+  font-size: 36px;
+}
+
+.cover-preview {
+  position: relative;
+  max-height: 300px;
   overflow: hidden;
 }
 
-.editor-toolbar {
-  display: flex;
-  gap: 0;
-  padding: 6px 8px;
-  background: #f8f9fa;
-  border-bottom: 1px solid var(--border);
+.cover-preview img {
+  width: 100%;
+  max-height: 300px;
+  object-fit: cover;
+  display: block;
 }
 
-.toolbar-item {
-  display: inline-flex;
+.cover-remove {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 28px;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 600;
-  color: #555;
-  transition: all 0.15s;
-  user-select: none;
 }
 
-.toolbar-item:hover {
-  background: var(--primary-light);
-  color: var(--primary);
-}
-
-.content-editor :deep(.el-textarea__inner) {
-  border: none;
-  border-radius: 0;
-  font-family: "JetBrains Mono", "Fira Code", Consolas, monospace;
-  font-size: 14px;
-  line-height: 1.8;
-  padding: 16px;
-  min-height: 400px;
+.cover-remove:hover {
+  background: rgba(0, 0, 0, 0.8);
 }
 
 .form-actions {
@@ -297,11 +353,6 @@ async function handleSave() {
 }
 
 @media (max-width: 768px) {
-  .form-row {
-    flex-direction: column;
-    gap: 0;
-  }
-
   .edit-form {
     padding: 16px;
   }

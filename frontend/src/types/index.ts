@@ -1,11 +1,12 @@
-/** 环监智库 — 类型定义 */
+/** 产品小吴知识库 — 类型定义 */
 
 export interface UserOut {
   id: number;
   username: string;
-  email: string;
+  email: string | null;
   nickname: string;
   avatar: string;
+  phone: string | null;
   role: string;
   is_active: boolean;
   created_at: string;

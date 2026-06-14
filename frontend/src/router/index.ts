@@ -68,6 +68,33 @@ const router = createRouter({
       component: () => import("@/views/CategoryManage.vue"),
       meta: { requiresAuth: true, requiresAdmin: true },
     },
+    {
+      path: "/profile",
+      name: "Profile",
+      component: () => import("@/views/Profile.vue"),
+      meta: { requiresAuth: true },
+    },
+    {
+      path: "/admin/users",
+      name: "AdminUsers",
+      component: () => import("@/views/AdminUsers.vue"),
+      meta: { requiresAuth: true, requiresAdmin: true },
+    },
+    {
+      path: "/about",
+      name: "About",
+      component: () => import("@/views/About.vue"),
+    },
+    {
+      path: "/messages",
+      name: "Messages",
+      component: () => import("@/views/Messages.vue"),
+    },
+    {
+      path: "/search",
+      name: "Search",
+      component: () => import("@/views/Search.vue"),
+    },
   ],
   scrollBehavior() {
     return { top: 0 };
