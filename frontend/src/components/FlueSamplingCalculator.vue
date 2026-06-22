@@ -186,7 +186,7 @@ function drawCircular() {
   const ctx = canvas.getContext('2d')!;
   const W = canvas.width, H = canvas.height;
   const cx = W / 2, cy = H / 2;
-  const pad = 50;
+  const pad = 55;
   const R = Math.min(W, H) / 2 - pad;
   const D = result.value.D!;
 
@@ -195,33 +195,39 @@ function drawCircular() {
   bg.addColorStop(0, '#0f1a2e'); bg.addColorStop(1, '#070b12');
   ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
 
+  // 烟道截面
   const dg = ctx.createRadialGradient(cx, cy, 0, cx, cy, R);
   dg.addColorStop(0, '#1a2845'); dg.addColorStop(1, '#111b30');
   ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.fillStyle = dg; ctx.fill();
 
+  // 等面积分环虚线
   ctx.setLineDash([6, 4]); ctx.lineWidth = 1;
   for (const rb of (result.value.ringBounds || [])) {
     ctx.beginPath(); ctx.arc(cx, cy, R * rb, 0, Math.PI * 2);
-    ctx.strokeStyle = 'rgba(74,158,255,0.2)'; ctx.stroke();
+    ctx.strokeStyle = 'rgba(74,158,255,0.25)'; ctx.stroke();
   }
   ctx.setLineDash([]);
 
+  // 烟道外圈
   ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2);
   ctx.strokeStyle = '#3a5580'; ctx.lineWidth = 3; ctx.stroke();
 
+  // 直径线 + 孔号标签
   for (const angle of (result.value.holeAngles || [])) {
     ctx.beginPath();
     ctx.moveTo(cx + R * Math.cos(angle + Math.PI), cy + R * Math.sin(angle + Math.PI));
     ctx.lineTo(cx + R * Math.cos(angle), cy + R * Math.sin(angle));
-    ctx.strokeStyle = 'rgba(74,158,255,0.12)'; ctx.lineWidth = 1; ctx.stroke();
+    ctx.strokeStyle = 'rgba(74,158,255,0.2)'; ctx.lineWidth = 1; ctx.stroke();
 
-    const lx = cx + (R + 22) * Math.cos(angle);
-    const ly = cy + (R + 22) * Math.sin(angle);
-    ctx.fillStyle = 'rgba(74,158,255,0.5)';
-    ctx.font = '10px "JetBrains Mono"'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    // 孔号标签 — 更大更清晰
+    const lx = cx + (R + 26) * Math.cos(angle);
+    const ly = cy + (R + 26) * Math.sin(angle);
+    ctx.fillStyle = '#4a9eff';
+    ctx.font = 'bold 13px "JetBrains Mono"'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText('孔' + (result.value!.holeAngles!.indexOf(angle) + 1), lx, ly);
   }
 
+  // 测点
   let pid = 1;
   for (const angle of (result.value.holeAngles || [])) {
     const hIdx = result.value!.holeAngles!.indexOf(angle);
@@ -231,26 +237,34 @@ function drawCircular() {
       const px = cx + dist * Math.cos(angle);
       const py = cy + dist * Math.sin(angle);
 
-      const glow = ctx.createRadialGradient(px, py, 0, px, py, 14);
-      glow.addColorStop(0, color + '30'); glow.addColorStop(1, 'transparent');
-      ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(px, py, 14, 0, Math.PI * 2); ctx.fill();
+      // 发光光晕
+      const glow = ctx.createRadialGradient(px, py, 0, px, py, 18);
+      glow.addColorStop(0, color + '40'); glow.addColorStop(1, 'transparent');
+      ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(px, py, 18, 0, Math.PI * 2); ctx.fill();
 
-      ctx.beginPath(); ctx.arc(px, py, 7, 0, Math.PI * 2);
+      // 圆点主体 — 更大
+      ctx.beginPath(); ctx.arc(px, py, 10, 0, Math.PI * 2);
       ctx.fillStyle = color; ctx.fill();
-      ctx.strokeStyle = '#070b12'; ctx.lineWidth = 2; ctx.stroke();
+      ctx.strokeStyle = '#070b12'; ctx.lineWidth = 2.5; ctx.stroke();
 
-      ctx.fillStyle = '#070b12';
-      ctx.font = 'bold 9px "JetBrains Mono"'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText(String(pid), px, py); pid++;
+      // 编号 — 白色加粗，描边更清晰
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 11px "JetBrains Mono"'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.strokeStyle = 'rgba(0,0,0,0.7)'; ctx.lineWidth = 3;
+      ctx.strokeText(String(pid), px, py);
+      ctx.fillText(String(pid), px, py);
+      pid++;
     }
   }
 
+  // 中心十字
   ctx.strokeStyle = 'rgba(74,158,255,0.25)'; ctx.lineWidth = 1; ctx.beginPath();
   ctx.moveTo(cx - 8, cy); ctx.lineTo(cx + 8, cy);
   ctx.moveTo(cx, cy - 8); ctx.lineTo(cx, cy + 8); ctx.stroke();
 
-  ctx.fillStyle = 'rgba(136,150,173,0.6)';
-  ctx.font = '11px "Noto Sans SC"'; ctx.textAlign = 'left';
+  // 底部信息
+  ctx.fillStyle = 'rgba(136,150,173,0.7)';
+  ctx.font = '12px "Noto Sans SC"'; ctx.textAlign = 'left';
   ctx.fillText('D = ' + D.toFixed(3) + 'm', 12, H - 12);
   ctx.textAlign = 'right';
   ctx.fillText(result.value.rings + '环 / ' + result.value.holes + '孔 / ' + result.value.totalPts + '点', W - 12, H - 12);
@@ -274,7 +288,7 @@ function drawRectangular() {
   ctx.fillStyle = '#070b12'; ctx.fillRect(0, 0, W, H);
   ctx.fillStyle = '#111b30'; ctx.fillRect(ox, oy, rw, rh);
 
-  ctx.setLineDash([5, 4]); ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(74,158,255,0.15)';
+  ctx.setLineDash([5, 4]); ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(74,158,255,0.2)';
   for (let i = 1; i < result.value.nA!; i++) {
     const x = ox + i * A / result.value.nA! * s;
     ctx.beginPath(); ctx.moveTo(x, oy); ctx.lineTo(x, oy + rh); ctx.stroke();
@@ -291,24 +305,33 @@ function drawRectangular() {
     const y_hole = oy + (ja + 0.5) * (rh / result.value.nA!);
     ctx.fillStyle = HOLE_COLORS[ja % HOLE_COLORS.length] + '80';
     ctx.beginPath();
-    ctx.moveTo(ox - 18, y_hole); ctx.lineTo(ox - 6, y_hole - 5); ctx.lineTo(ox - 6, y_hole + 5);
+    ctx.moveTo(ox - 20, y_hole); ctx.lineTo(ox - 8, y_hole - 6); ctx.lineTo(ox - 8, y_hole + 6);
     ctx.closePath(); ctx.fill();
-    ctx.fillStyle = 'rgba(136,150,173,0.5)';
-    ctx.font = '10px "JetBrains Mono"'; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
-    ctx.fillText('孔' + (ja + 1), ox - 22, y_hole);
+    // 孔号 — 更大更清晰
+    ctx.fillStyle = '#4a9eff';
+    ctx.font = 'bold 13px "JetBrains Mono"'; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+    ctx.fillText('孔' + (ja + 1), ox - 24, y_hole);
   }
 
   for (const pt of (result.value.points || [])) {
     const px = ox + pt.x * s, py = oy + pt.y * s;
     const color = HOLE_COLORS[(pt.hole - 1) % HOLE_COLORS.length];
-    const glow = ctx.createRadialGradient(px, py, 0, px, py, 14);
-    glow.addColorStop(0, color + '25'); glow.addColorStop(1, 'transparent');
-    ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(px, py, 14, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.arc(px, py, 7, 0, Math.PI * 2);
+
+    // 发光光晕 — 更大
+    const glow = ctx.createRadialGradient(px, py, 0, px, py, 18);
+    glow.addColorStop(0, color + '40'); glow.addColorStop(1, 'transparent');
+    ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(px, py, 18, 0, Math.PI * 2); ctx.fill();
+
+    // 圆点主体 — 更大
+    ctx.beginPath(); ctx.arc(px, py, 10, 0, Math.PI * 2);
     ctx.fillStyle = color; ctx.fill();
-    ctx.strokeStyle = '#070b12'; ctx.lineWidth = 2; ctx.stroke();
-    ctx.fillStyle = '#070b12';
-    ctx.font = 'bold 9px "JetBrains Mono"'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.strokeStyle = '#070b12'; ctx.lineWidth = 2.5; ctx.stroke();
+
+    // 编号 — 白色加粗，描边更清晰
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 11px "JetBrains Mono"'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.strokeStyle = 'rgba(0,0,0,0.7)'; ctx.lineWidth = 3;
+    ctx.strokeText(String(pt.id), px, py);
     ctx.fillText(String(pt.id), px, py);
   }
 
@@ -337,9 +360,9 @@ function showTable() {
 
   let html = '<table><thead><tr>';
   if (result.value.type === 'c') {
-    html += '<th>测点编号</th><th>所属孔</th><th>环号</th><th>系数 (c)</th><th>距壁距离 (mm)</th><th>探杆插入深度 (mm)</th>';
+    html += '<th>测点编号</th><th>所属孔</th><th>环号</th><th>系数 (c)</th><th>距壁距离 (m)</th><th>探杆插入深度 (m)</th>';
   } else {
-    html += '<th>测点编号</th><th>所属孔</th><th>沿A位置 (mm)</th><th>沿B深度 (mm)</th><th>探杆插入深度 (mm)</th>';
+    html += '<th>测点编号</th><th>所属孔</th><th>沿A位置 (m)</th><th>沿B深度 (m)</th><th>探杆插入深度 (m)</th>';
   }
   html += '</tr></thead><tbody>';
 
@@ -352,14 +375,14 @@ function showTable() {
         const c = result.value!.coeffs![i];
         const ring = i < halfLen ? i + 1 : (result.value!.coeffs || []).length - i;
         const cls = 'flue-h' + ((hIdx % 4) + 1);
-        html += `<tr><td><span class="flue-pt-dot" style="background:${HOLE_COLORS[hIdx]}"></span>${pid}</td><td><span class="flue-hole-tag ${cls}">孔 ${hIdx + 1}</span></td><td>${ring}</td><td>${c.toFixed(3)}</td><td>${((c as number) * result.value!.D! * 1000).toFixed(1)}</td><td>${(((c as number) * result.value!.D! + result.value!.L!) * 1000).toFixed(1)}</td></tr>`;
+        html += `<tr><td><span class="flue-pt-dot" style="background:${HOLE_COLORS[hIdx]}"></span>${pid}</td><td><span class="flue-hole-tag ${cls}">孔 ${hIdx + 1}</span></td><td>${ring}</td><td>${c.toFixed(3)}</td><td>${((c as number) * result.value!.D!).toFixed(2)}</td><td>${((c as number) * result.value!.D! + result.value!.L!).toFixed(2)}</td></tr>`;
         pid++;
       }
     }
   } else {
     for (const pt of (result.value.points || [])) {
       const cls = 'flue-h' + (((pt.hole - 1) % 4) + 1);
-      html += `<tr><td><span class="flue-pt-dot" style="background:${HOLE_COLORS[(pt.hole - 1)]}"></span>${pt.id}</td><td><span class="flue-hole-tag ${cls}">孔 ${pt.hole}</span></td><td>${(pt.distA * 1000).toFixed(1)}</td><td>${(pt.distB * 1000).toFixed(1)}</td><td>${(pt.distHole * 1000).toFixed(1)}</td></tr>`;
+      html += `<tr><td><span class="flue-pt-dot" style="background:${HOLE_COLORS[(pt.hole - 1)]}"></span>${pt.id}</td><td><span class="flue-hole-tag ${cls}">孔 ${pt.hole}</span></td><td>${pt.distA.toFixed(2)}</td><td>${pt.distB.toFixed(2)}</td><td>${pt.distHole.toFixed(2)}</td></tr>`;
     }
   }
   html += '</tbody></table>';
@@ -419,7 +442,7 @@ onMounted(() => { loadFonts(); clearCanvas(); });
 
       <div class="flue-panel flue-viz-panel">
         <h3>截面布点示意图</h3>
-        <canvas id="flue-canvas" width="520" height="520"></canvas>
+        <canvas id="flue-canvas" width="600" height="600"></canvas>
         <div class="flue-viz-hint" id="flue-viz-hint">输入参数后点击"计算布点方案"</div>
       </div>
     </div>

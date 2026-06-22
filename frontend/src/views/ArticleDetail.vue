@@ -6,10 +6,12 @@ import { getArticle, deleteArticle } from "@/api/article";
 import { getComments, addComment, deleteComment } from "@/api/comment";
 import type { ArticleOut, CommentOut } from "@/types";
 import { ElMessage, ElMessageBox } from "element-plus";
+import { useShare } from "@/composables/useShare";
 
 const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
+const { share } = useShare();
 
 const article = ref<ArticleOut | null>(null);
 const comments = ref<CommentOut[]>([]);
@@ -146,10 +148,11 @@ function formatTime(dateStr: string) {
       <!-- 文章正文 -->
       <div class="detail-content rich-text" v-html="rendered_content"></div>
 
-      <!-- 管理员/作者操作栏 -->
-      <div v-if="can_edit" class="detail-actions">
-        <el-button type="primary" plain size="small" @click="handleEdit">✏️ 编辑</el-button>
-        <el-button type="danger" plain size="small" @click="handleDelete">🗑️ 删除</el-button>
+      <!-- 操作栏 -->
+      <div class="detail-actions">
+        <el-button plain size="small" @click="share(article.title, article.summary)">🔗 分享</el-button>
+        <el-button v-if="can_edit" type="primary" plain size="small" @click="handleEdit">✏️ 编辑</el-button>
+        <el-button v-if="can_edit" type="danger" plain size="small" @click="handleDelete">🗑️ 删除</el-button>
       </div>
 
       <!-- 评论区 -->

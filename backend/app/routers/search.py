@@ -10,6 +10,7 @@ from app.models.article import Article
 from app.models.tool import Tool
 from app.models.standard import Standard
 from app.models.faq import FAQ
+from app.models.video import Video
 
 router = APIRouter(prefix="/api/search", tags=["全局搜索"])
 
@@ -89,6 +90,20 @@ async def global_search(q: str, db: AsyncSession = Depends(get_db)):
             id=f.id, title=f.question, type="faq",
             summary=f.answer[:80] if f.answer else "",
             url="/faq",
+        ))
+
+    # 搜索视频
+    vr = await db.execute(
+        select(Video).where(
+            Video.is_public == True,
+            or_(Video.title.like(keyword), Video.description.like(keyword)),
+        ).limit(10)
+    )
+    for v in vr.scalars().all():
+        items.append(SearchResultItem(
+            id=v.id, title=v.title, type="video",
+            summary=v.description[:80] if v.description else "",
+            url=f"/videos/{v.id}",
         ))
 
     return SearchResult(query=q, total=len(items), items=items)

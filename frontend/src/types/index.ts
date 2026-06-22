@@ -18,7 +18,8 @@ export interface CategoryOut {
   name: string;
   slug: string;
   description: string;
-  icon: string;
+  color: string;
+  parent_id: number | null;
   sort_order: number;
   is_active: boolean;
 }
@@ -67,12 +68,14 @@ export interface VideoOut {
   description: string;
   cover_image: string;
   video_url: string;
+  embed_url: string;
   video_type: string;
   category_id: number | null;
   category_name: string | null;
   tags: string[];
   duration: string;
   is_public: boolean;
+  is_featured: boolean;
   view_count: number;
   author_name: string;
   created_at: string;

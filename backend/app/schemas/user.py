@@ -2,7 +2,6 @@
 
 from pydantic import BaseModel, Field
 from datetime import datetime
-from typing import Optional
 
 
 class UserRegister(BaseModel):
@@ -20,10 +19,11 @@ class UserLogin(BaseModel):
 class UserOut(BaseModel):
     id: int
     username: str
-    email: str
+    email: str | None = None
     nickname: str
     avatar: str = ""
     role: str = "user"
+    can_upload_video: bool = False
     is_active: bool = True
     created_at: datetime | None = None
 

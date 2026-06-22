@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.database import init_db
-from app.routers import users, articles, comments, categories, videos, standards, faqs, tools, about, messages, search, upload
+from app.routers import users, articles, comments, categories, videos, standards, faqs, tools, about, messages, search, upload, video_comments, carousel
 
 # 必须导入所有模型，否则 Base.metadata 为空，create_all 不创建任何表
 import app.models  # noqa: F401
@@ -49,6 +49,8 @@ app.include_router(about.router)
 app.include_router(messages.router)
 app.include_router(search.router)
 app.include_router(upload.router)
+app.include_router(video_comments.router)
+app.include_router(carousel.router)
 
 
 @app.get("/api/health")
@@ -95,10 +97,10 @@ async def _seed_data():
             ("faq", "设备问题", "equipment", "⚙️"),
             ("faq", "维修维护指南", "maintenance", "🛠️"),
         ]
-        for module, name, slug, icon in forum_cats:
+        for module, name, slug, _icon in forum_cats:
             result = await session.execute(select(Category).where(Category.slug == slug))
             if not result.scalars().first():
-                session.add(Category(module=module, name=name, slug=slug, icon=icon))
+                session.add(Category(module=module, name=name, slug=slug))
 
         # 3. 常用工具
         tools_data = [
@@ -106,7 +108,7 @@ async def _seed_data():
             ("单位换算", "unit-converter", "🔄", "converter", "通用工具"),
             ("大气采样模型", "air-sampling-model", "💨", "model", "大气监测"),
             ("污染源采样模型", "pollution-source-model", "🏭", "model", "污染源监测"),
-            ("烟道布点模型", "flue-layout-model", "📏", "model", "废气监测"),
+            ("烟道布点模型", "flue-sampling", "📏", "model", "废气监测"),
             ("紫外差分计算模型", "doas-model", "🔬", "model", "光学监测"),
         ]
         for name, slug, icon, tool_type, category in tools_data:

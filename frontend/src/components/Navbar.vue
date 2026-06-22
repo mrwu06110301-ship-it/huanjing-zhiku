@@ -107,6 +107,7 @@ function handleBlur() {
               <el-dropdown-menu>
                 <el-dropdown-item @click="router.push('/profile')">👤 个人中心</el-dropdown-item>
                 <el-dropdown-item v-if="auth.isAdmin()" @click="router.push('/admin/categories')">📂 分类管理</el-dropdown-item>
+                <el-dropdown-item v-if="auth.isAdmin()" @click="router.push('/admin/carousel')">🎠 轮播管理</el-dropdown-item>
                 <el-dropdown-item v-if="auth.isAdmin()" @click="router.push('/admin/users')">👥 用户管理</el-dropdown-item>
                 <el-dropdown-item divided @click="handleLogout">退出登录</el-dropdown-item>
               </el-dropdown-menu>
@@ -140,6 +141,18 @@ function handleBlur() {
       >
         {{ item.label }}
       </router-link>
+
+      <!-- 移动端登录/注册 -->
+      <div class="mobile-auth">
+        <template v-if="auth.isLoggedIn()">
+          <span class="mobile-user">👤 {{ auth.user?.nickname || auth.user?.username || "用户" }}</span>
+          <button class="mobile-auth-btn logout" @click="handleLogout">退出</button>
+        </template>
+        <template v-else>
+          <router-link to="/login" class="mobile-auth-btn" @click="mobileMenuOpen = false">登录</router-link>
+          <router-link to="/register" class="mobile-auth-btn register" @click="mobileMenuOpen = false">注册</router-link>
+        </template>
+      </div>
     </nav>
   </header>
 </template>
@@ -379,6 +392,46 @@ function handleBlur() {
   padding: 10px 0;
   font-size: 15px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* 移动端登录/注册 — 横排显示 */
+.mobile-auth {
+  display: flex;
+  gap: 8px;
+  padding: 12px 0;
+  align-items: center;
+}
+
+.mobile-user {
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 14px;
+  flex: 1;
+}
+
+.mobile-auth-btn {
+  display: inline-block;
+  padding: 6px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  text-decoration: none;
+  font-weight: 500;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.mobile-auth-btn.register {
+  background: linear-gradient(135deg, #00ccaa, #00b894);
+  border-color: transparent;
+  color: #fff;
+}
+
+.mobile-auth-btn.logout {
+  border-color: rgba(255, 71, 87, 0.5);
+  color: #ff6b81;
 }
 
 @media (max-width: 900px) {

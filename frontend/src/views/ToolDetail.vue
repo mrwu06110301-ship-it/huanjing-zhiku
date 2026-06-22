@@ -4,9 +4,11 @@ import { useRoute, useRouter } from "vue-router";
 import { getToolBySlug } from "@/api/tool";
 import type { ToolOut } from "@/types";
 import FlueSamplingCalculator from "@/components/FlueSamplingCalculator.vue";
+import { useShare } from "@/composables/useShare";
 
 const route = useRoute();
 const router = useRouter();
+const { share } = useShare();
 const tool = ref<ToolOut | null>(null);
 const inputValues = reactive<Record<string, number>>({});
 
@@ -35,8 +37,11 @@ function handleCalculate() {
     <!-- 其他工具：通用布局 -->
     <template v-else>
       <div class="page-header">
-        <h1>{{ tool.icon }} {{ tool.name }}</h1>
-        <p>{{ tool.description }}</p>
+        <div class="page-header-left">
+          <h1>{{ tool.icon }} {{ tool.name }}</h1>
+          <p>{{ tool.description }}</p>
+        </div>
+        <el-button plain size="small" @click="share(tool.name, tool.description)">🔗 分享</el-button>
       </div>
 
       <div class="tool-body">
@@ -89,9 +94,9 @@ function handleCalculate() {
 
 <style scoped>
 .tool-page { max-width: 1200px; margin: 0 auto; }
-.page-header { margin-bottom: 24px; }
-.page-header h1 { font-size: 24px; font-weight: 700; margin-bottom: 4px; }
-.page-header p { font-size: 14px; color: var(--text-light); }
+.page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; }
+.page-header-left h1 { font-size: 24px; font-weight: 700; margin-bottom: 4px; }
+.page-header-left p { font-size: 14px; color: var(--text-light); }
 
 .tool-body {
   display: grid;

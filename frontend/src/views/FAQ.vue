@@ -1,13 +1,24 @@
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
+import { ref, onMounted, computed } from "vue";
 import { getFAQs } from "@/api/faq";
 import { getCategories } from "@/api/category";
 import type { FAQOut, CategoryOut } from "@/types";
+import { useShare } from "@/composables/useShare";
 
 const faqs = ref<FAQOut[]>([]);
+const { share } = useShare();
 const categories = ref<CategoryOut[]>([]);
 const activeType = ref("");
+const searchQuery = ref("");
 const loading = ref(false);
+
+const filtered = computed(() => {
+  if (!searchQuery.value.trim()) return faqs.value;
+  const q = searchQuery.value.trim().toLowerCase();
+  return faqs.value.filter(f =>
+    f.question.toLowerCase().includes(q) || (f.answer || "").toLowerCase().includes(q)
+  );
+});
 
 const typeTabs = [
   { label: "全部", value: "" },
@@ -44,8 +55,11 @@ function switchType(type: string) {
 <template>
   <div class="page">
     <div class="page-header">
-      <h1>❓ 常见问题</h1>
-      <p>现场问题、设备维护、用户答疑</p>
+      <div class="page-header-left">
+        <h1>❓ 常见问题</h1>
+        <p>现场问题、设备维护、用户答疑</p>
+      </div>
+      <el-button plain size="small" @click="share('常见问题', '现场问题、设备维护、用户答疑')">🔗 分享</el-button>
     </div>
 
     <div class="category-tabs">
@@ -55,12 +69,13 @@ function switchType(type: string) {
         :class="['tab', { active: activeType === tab.value }]"
         @click="switchType(tab.value)"
       >{{ tab.label }}</span>
+      <input v-model="searchQuery" placeholder="搜索问题..." class="local-search" />
     </div>
 
     <div v-loading="loading" class="faq-list">
       <el-collapse>
         <el-collapse-item
-          v-for="f in faqs"
+          v-for="f in filtered"
           :key="f.id"
           :title="f.question"
         >
@@ -81,14 +96,20 @@ function switchType(type: string) {
 
 <style scoped>
 .page { max-width: 1200px; margin: 0 auto; }
-.page-header { text-align: center; padding: 40px 0 24px; }
-.page-header h1 { font-size: 28px; font-weight: 700; margin-bottom: 8px; }
-.page-header p { color: var(--text-light); font-size: 15px; }
+.page-header { display: flex; justify-content: space-between; align-items: center; padding: 40px 0 24px; }
+.page-header-left h1 { font-size: 28px; font-weight: 700; margin-bottom: 8px; }
+.page-header-left p { color: var(--text-light); font-size: 15px; }
 
-.category-tabs { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
+.category-tabs { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; align-items: center; }
 .tab { padding: 8px 20px; border-radius: 20px; cursor: pointer; font-size: 14px; background: var(--white); border: 1px solid var(--border); transition: all 0.2s; }
 .tab:hover { border-color: var(--primary); color: var(--primary); }
 .tab.active { background: var(--primary); color: #fff; border-color: var(--primary); }
 
 .faq-meta { display: flex; gap: 16px; margin-top: 12px; font-size: 12px; color: var(--text-light); }
+
+.local-search {
+  margin-left: auto; padding: 6px 14px; border: 1px solid #e0e0e0; border-radius: 16px;
+  font-size: 13px; outline: none; width: 150px; transition: all 0.2s;
+}
+.local-search:focus { border-color: #00ccaa; width: 190px; }
 </style>

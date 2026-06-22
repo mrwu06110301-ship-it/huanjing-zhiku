@@ -8,7 +8,7 @@ from app.database import get_db
 from app.models.user import User
 from app.schemas.user import UserRegister, UserLogin, UserOut, Token
 from app.services.auth import hash_password, verify_password, create_access_token
-from app.dependencies.auth import get_current_user
+from app.dependencies.auth import get_current_user, require_admin
 
 router = APIRouter(prefix="/api/users", tags=["用户"])
 
@@ -50,6 +50,30 @@ async def login(data: UserLogin, db: AsyncSession = Depends(get_db)):
 @router.get("/me", response_model=UserOut)
 async def get_me(current_user: User = Depends(get_current_user)):
     return current_user
+
+
+@router.get("/list", response_model=list[UserOut])
+async def list_users(
+    page: int = 1,
+    page_size: int = 100,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """管理员获取用户列表"""
+    result = await db.execute(
+        select(User).order_by(User.created_at.desc())
+        .offset((page - 1) * page_size).limit(page_size)
+    )
+    return result.scalars().all()
+
+
+@router.get("/count")
+async def count_users(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    total = await db.execute(select(User))
+    return {"total": len(total.scalars().all())}
 
 
 @router.get("/{user_id}", response_model=UserOut)

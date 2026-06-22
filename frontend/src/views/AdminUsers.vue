@@ -2,6 +2,7 @@
 import { ref, onMounted } from "vue";
 import { useAuthStore } from "@/stores/auth";
 import { getUserList } from "@/api/user";
+import { setUploadPermission } from "@/api/video";
 import type { UserOut } from "@/types";
 import { ElMessage } from "element-plus";
 
@@ -27,6 +28,16 @@ function formatDate(dateStr: string | null | undefined) {
 }
 
 onMounted(loadUsers);
+
+async function toggleUpload(userId: number, canUpload: boolean) {
+  try {
+    await setUploadPermission(userId, canUpload);
+    ElMessage.success(canUpload ? "已授权上传权限" : "已取消上传权限");
+    loadUsers();
+  } catch {
+    ElMessage.error("操作失败");
+  }
+}
 </script>
 
 <template>
@@ -44,8 +55,8 @@ onMounted(loadUsers);
             <th>用户名</th>
             <th>昵称</th>
             <th>邮箱</th>
-            <th>手机号</th>
             <th>角色</th>
+            <th>上传权限 <el-tooltip content="开启后用户可在视频页面上传视频" placement="top"><span style="cursor:help;color:#aaa;margin-left:2px">ⓘ</span></el-tooltip></th>
             <th>注册时间</th>
           </tr>
         </thead>
@@ -55,9 +66,17 @@ onMounted(loadUsers);
             <td>{{ user.username }}</td>
             <td>{{ user.nickname || "-" }}</td>
             <td>{{ user.email || "-" }}</td>
-            <td>{{ user.phone || "-" }}</td>
             <td>
               <span :class="['role-tag', user.role]">{{ user.role === 'admin' ? '管理员' : '用户' }}</span>
+            </td>
+            <td>
+              <el-switch
+                v-if="user.role !== 'admin'"
+                :model-value="!!(user as any).can_upload_video"
+                size="small"
+                @change="(val: boolean) => toggleUpload(user.id, val)"
+              />
+              <span v-else style="color:#999;font-size:12px">默认</span>
             </td>
             <td>{{ formatDate(user.created_at) }}</td>
           </tr>

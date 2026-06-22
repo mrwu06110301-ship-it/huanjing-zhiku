@@ -2,7 +2,6 @@
 
 from pydantic import BaseModel
 from datetime import datetime
-from typing import Optional
 
 
 class CategoryCreate(BaseModel):
@@ -10,7 +9,8 @@ class CategoryCreate(BaseModel):
     name: str
     slug: str
     description: str = ""
-    icon: str = ""
+    color: str = ""
+    parent_id: int | None = None
     sort_order: int = 0
 
 
@@ -19,7 +19,8 @@ class CategoryUpdate(BaseModel):
     name: str | None = None
     slug: str | None = None
     description: str | None = None
-    icon: str | None = None
+    color: str | None = None
+    parent_id: int | None = None
     sort_order: int | None = None
     is_active: bool | None = None
 
@@ -30,7 +31,8 @@ class CategoryOut(BaseModel):
     name: str
     slug: str
     description: str = ""
-    icon: str = ""
+    color: str = ""
+    parent_id: int | None = None
     sort_order: int = 0
     is_active: bool = True
     created_at: datetime | None = None

@@ -2,6 +2,7 @@
 
 import { createRouter, createWebHistory } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
+import { getMe } from "@/api/user";
 import { ElMessage } from "element-plus";
 
 const router = createRouter({
@@ -31,6 +32,17 @@ const router = createRouter({
       path: "/videos",
       name: "Videos",
       component: () => import("@/views/Videos.vue"),
+    },
+    {
+      path: "/videos/:id",
+      name: "VideoDetail",
+      component: () => import("@/views/VideoDetail.vue"),
+    },
+    {
+      path: "/video/upload",
+      name: "VideoUpload",
+      component: () => import("@/views/VideoUpload.vue"),
+      meta: { requiresAuth: true },
     },
     {
       path: "/standards",
@@ -81,6 +93,12 @@ const router = createRouter({
       meta: { requiresAuth: true, requiresAdmin: true },
     },
     {
+      path: "/admin/carousel",
+      name: "AdminCarousel",
+      component: () => import("@/views/AdminCarousel.vue"),
+      meta: { requiresAuth: true, requiresAdmin: true },
+    },
+    {
       path: "/about",
       name: "About",
       component: () => import("@/views/About.vue"),
@@ -102,8 +120,15 @@ const router = createRouter({
 });
 
 // 导航守卫
-router.beforeEach((to, _from, next) => {
+router.beforeEach(async (to, _from, next) => {
   const auth = useAuthStore();
+  // 有 token 但未加载用户信息时，自动拉取
+  if (auth.token && !auth.user) {
+    try {
+      const res = await getMe();
+      auth.setLogin(auth.token, res.data);
+    } catch { /* token 无效 */ }
+  }
   if (to.meta.requiresAuth && !auth.isLoggedIn()) {
     ElMessage.warning("请先登录");
     next("/login");

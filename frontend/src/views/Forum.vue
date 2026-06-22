@@ -13,6 +13,8 @@ const auth = useAuthStore();
 const articles = ref<ArticleListOut[]>([]);
 const categories = ref<CategoryOut[]>([]);
 const activeCategory = ref<number | null>(null);
+const searchQuery = ref("");
+const localFiltered = ref<ArticleListOut[] | null>(null);
 const loading = ref(false);
 const total = ref(0);
 const page = ref(1);
@@ -109,6 +111,14 @@ async function handleReject(id: number) {
   } catch { /* 失败 */ }
 }
 
+function filterLocal() {
+  if (!searchQuery.value.trim()) { localFiltered.value = null; return; }
+  const q = searchQuery.value.trim().toLowerCase();
+  localFiltered.value = articles.value.filter(a =>
+    a.title.toLowerCase().includes(q) || (a.summary || "").toLowerCase().includes(q)
+  );
+}
+
 function formatDate(dateStr: string) {
   if (!dateStr) return "";
   const d = new Date(dateStr);
@@ -174,8 +184,11 @@ onMounted(async () => {
           <h1>技术论坛</h1>
           <span class="article-count">共 {{ total }} 篇</span>
         </div>
-        <div class="header-right" v-if="!is_admin && auth.isLoggedIn()">
-          <el-button size="small" type="primary" plain @click="handleCreate">✏️ 发布文章</el-button>
+        <div class="header-right">
+          <div class="local-search">
+            <input v-model="searchQuery" placeholder="搜索文章..." class="local-search-input" @input="filterLocal" />
+          </div>
+          <el-button v-if="!is_admin && auth.isLoggedIn()" size="small" type="primary" plain @click="handleCreate">✏️ 发布文章</el-button>
         </div>
       </div>
 
@@ -192,7 +205,7 @@ onMounted(async () => {
       <!-- 文章列表 — 公众号风格 -->
       <div v-loading="loading" class="article-list">
         <div
-          v-for="article in articles"
+          v-for="article in (localFiltered || articles)"
           :key="article.id"
           class="article-card"
           @click="router.push(`/article/${article.id}`)"
@@ -373,6 +386,18 @@ onMounted(async () => {
   color: var(--text-light);
 }
 
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.local-search-input {
+  padding: 6px 12px; border: 1px solid #e0e0e0; border-radius: 16px;
+  font-size: 13px; outline: none; width: 160px; transition: all 0.2s;
+}
+.local-search-input:focus { border-color: #00ccaa; width: 200px; }
+
 /* 状态标签 */
 .status-tabs {
   display: flex;
@@ -520,13 +545,14 @@ onMounted(async () => {
   object-fit: cover;
 }
 
-/* 管理员操作 */
+/* 管理员操作 — 位于卡片底部，不重叠 */
 .article-actions {
-  position: absolute;
-  top: 16px;
-  right: 16px;
   display: flex;
-  gap: 0;
+  gap: 4px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #f0f0f0;
+  justify-content: flex-end;
   opacity: 0;
   transition: opacity 0.2s;
 }
@@ -572,9 +598,6 @@ onMounted(async () => {
 
   .article-actions {
     opacity: 1;
-    position: static;
-    margin-top: 8px;
-    justify-content: flex-end;
   }
 }
 </style>

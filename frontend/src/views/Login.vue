@@ -129,4 +129,11 @@ async function handleLogin() {
   color: #0066cc;
   margin-left: 4px;
 }
+
+@media (max-width: 768px) {
+  .auth-page { padding: 20px 16px; }
+  .auth-card { width: 100%; padding: 28px 20px; }
+  .auth-logo { font-size: 40px; }
+  .auth-header h2 { font-size: 20px; }
+}
 </style>
