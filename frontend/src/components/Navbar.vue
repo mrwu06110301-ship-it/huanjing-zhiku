@@ -118,7 +118,7 @@ function handleBlur() {
                 <Icon name="user" :size="16" />
               </div>
               <span class="user-name">{{ auth.user?.nickname || auth.user?.username || "用户" }}</span>
-              <Icon name="chevronDown" :size="14" />
+              <Icon name="arrowDown" :size="12" />
             </span>
             <template #dropdown>
               <el-dropdown-menu>
@@ -212,7 +212,7 @@ function handleBlur() {
   position: absolute;
   bottom: 0; left: 0; right: 0;
   height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(0, 184, 217, 0.3), rgba(0, 230, 168, 0.2), transparent);
+  background: linear-gradient(90deg, transparent, rgba(37, 99, 235, 0.4), rgba(0, 230, 168, 0.2), transparent);
 }
 
 .navbar-inner {
@@ -257,7 +257,7 @@ function handleBlur() {
   font-size: 18px;
   font-weight: 700;
   letter-spacing: 2px;
-  background: linear-gradient(90deg, #00e6a8, #00b8d9);
+  color: #fff;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
@@ -291,8 +291,8 @@ function handleBlur() {
 }
 
 .nav-link.active {
-  color: #00e6a8;
-  background: rgba(0, 230, 168, 0.08);
+  color: #60a5fa;
+  background: rgba(96, 165, 250, 0.1);
 }
 
 .nav-link.active::after {
@@ -304,8 +304,8 @@ function handleBlur() {
   width: 4px;
   height: 4px;
   border-radius: 50%;
-  background: #00e6a8;
-  box-shadow: 0 0 8px #00e6a8;
+  background: #60a5fa;
+  box-shadow: 0 0 8px #60a5fa;
 }
 
 /* 搜索 */
@@ -325,8 +325,8 @@ function handleBlur() {
 
 .navbar-search.expanded:focus-within {
   background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(0, 230, 168, 0.4);
-  box-shadow: 0 0 0 3px rgba(0, 230, 168, 0.08);
+  border-color: rgba(96, 165, 250, 0.4);
+  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.08);
 }
 
 .search-icon-btn {
@@ -372,7 +372,7 @@ function handleBlur() {
 }
 
 .search-btn:hover {
-  color: #00e6a8;
+  color: #60a5fa;
 }
 
 /* 用户 */
@@ -405,10 +405,10 @@ function handleBlur() {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 184, 217, 0.15);
-  border: 1px solid rgba(0, 184, 217, 0.3);
+  background: rgba(37, 99, 235, 0.2);
+  border: 1px solid rgba(37, 99, 235, 0.4);
   border-radius: 50%;
-  color: #00b8d9;
+  color: #60a5fa;
 }
 
 .btn {
@@ -427,9 +427,9 @@ function handleBlur() {
 }
 
 .btn-outline:hover {
-  border-color: rgba(0, 230, 168, 0.5);
-  color: #00e6a8;
-  background: rgba(0, 230, 168, 0.05);
+  border-color: rgba(96, 165, 250, 0.5);
+  color: #60a5fa;
+  background: rgba(96, 165, 250, 0.05);
 }
 
 .btn-primary {
@@ -513,7 +513,7 @@ function handleBlur() {
 }
 
 .mobile-nav-link:hover {
-  color: #00e6a8;
+  color: #60a5fa;
   padding-left: 14px;
 }
 

@@ -11,17 +11,18 @@ import Navbar from "@/components/Navbar.vue";
     <footer class="site-footer">
       <div class="footer-inner">
         <div class="footer-brand">
-          <span class="footer-logo">HJZK</span>
+          <span class="footer-logo">产品小吴知识库</span>
+          <span class="footer-divider"></span>
           <span class="footer-text">环境监测技术平台</span>
         </div>
-        <div class="footer-links">
+        <nav class="footer-links">
           <router-link to="/forum">论坛</router-link>
           <router-link to="/videos">视频</router-link>
           <router-link to="/standards">法规</router-link>
           <router-link to="/tools">工具</router-link>
           <router-link to="/about">关于</router-link>
-        </div>
-        <p class="footer-copy">产品小吴知识库 &copy; 2026 — 让现场监测，触手可感</p>
+        </nav>
+        <p class="footer-copy">© 2026 产品小吴知识库 · 让现场监测，触手可感</p>
       </div>
     </footer>
   </div>
@@ -29,59 +30,50 @@ import Navbar from "@/components/Navbar.vue";
 
 <style>
 :root {
-  /* Primary — Electric Cyan */
-  --primary: #00b8d9;
-  --primary-dark: #0099b8;
-  --primary-light: #e0f7fa;
-  --primary-glow: rgba(0, 184, 217, 0.25);
+  /* ===== Primary — 科技蓝（收敛单色系） ===== */
+  --primary: #2563eb;
+  --primary-dark: #1d4ed8;
+  --primary-light: #eff6ff;
+  --primary-glow: rgba(37, 99, 235, 0.18);
 
-  /* Accent — Emerald */
-  --accent: #00e6a8;
-  --accent-dark: #00c997;
-  --accent-light: #e0faf2;
-  --accent-glow: rgba(0, 230, 168, 0.2);
+  /* ===== Accent — 仅点缀 ===== */
+  --accent: #06b6d4;
+  --accent-light: #ecfeff;
 
-  /* Secondary — Indigo */
-  --secondary: #5b7cfa;
-  --secondary-glow: rgba(91, 124, 250, 0.2);
+  /* ===== Dark surfaces ===== */
+  --dark-900: #090d16;
+  --dark-800: #0d1320;
+  --dark-700: #111a2c;
 
-  /* Dark surfaces */
-  --dark-900: #060a14;
-  --dark-800: #0a0f1e;
-  --dark-700: #0f1629;
-  --dark-600: #141d35;
-  --dark-500: #1a253f;
-
-  /* Text */
-  --text: #1a2535;
-  --text-light: #64748b;
+  /* ===== Text ===== */
+  --text: #0f172a;
+  --text-light: #475569;
   --text-muted: #94a3b8;
 
-  /* Surface */
-  --bg: #f0f4f8;
-  --bg-soft: #f7f9fc;
+  /* ===== Surface ===== */
+  --bg: #f8fafc;
+  --bg-soft: #f1f5f9;
   --white: #ffffff;
   --border: #e2e8f0;
-  --border-light: #f1f5f9;
+  --border-light: #eef2f7;
 
-  /* Shadows */
-  --shadow: 0 1px 3px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
-  --shadow-md: 0 4px 12px rgba(15, 23, 42, 0.08);
-  --shadow-lg: 0 12px 32px rgba(15, 23, 42, 0.12);
-  --shadow-xl: 0 24px 48px rgba(15, 23, 42, 0.16);
+  /* ===== Shadows（更轻更柔） ===== */
+  --shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-md: 0 2px 8px rgba(15, 23, 42, 0.06);
+  --shadow-lg: 0 8px 24px rgba(15, 23, 42, 0.1);
+  --shadow-xl: 0 16px 40px rgba(15, 23, 42, 0.12);
 
-  /* Radius */
-  --radius: 10px;
-  --radius-sm: 6px;
+  /* ===== Radius ===== */
+  --radius: 12px;
+  --radius-sm: 8px;
   --radius-lg: 16px;
   --radius-xl: 20px;
 
-  /* Gradients */
-  --gradient-primary: linear-gradient(135deg, #00b8d9, #00e6a8);
-  --gradient-dark: linear-gradient(160deg, #060a14 0%, #0a1525 50%, #060a14 100%);
-  --gradient-tech: linear-gradient(135deg, #00b8d9 0%, #5b7cfa 100%);
+  /* ===== Gradients ===== */
+  --gradient-primary: linear-gradient(135deg, #2563eb, #06b6d4);
+  --gradient-dark: linear-gradient(165deg, #090d16 0%, #101a30 55%, #090d16 100%);
 
-  /* Transitions */
+  /* ===== Transitions ===== */
   --ease: cubic-bezier(0.25, 0.46, 0.45, 0.94);
   --ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
 }
@@ -97,12 +89,12 @@ html {
 }
 
 body {
-  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "PingFang SC", "Microsoft YaHei", sans-serif;
   color: var(--text);
   background: var(--bg);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  font-feature-settings: "cv11", "ss01";
 }
 
 .app-wrapper {
@@ -119,79 +111,6 @@ body {
   padding: 24px 20px;
 }
 
-/* ======== Footer ======== */
-.site-footer {
-  background: var(--dark-900);
-  color: rgba(255, 255, 255, 0.6);
-  margin-top: auto;
-  position: relative;
-  overflow: hidden;
-}
-
-.site-footer::before {
-  content: '';
-  position: absolute;
-  top: 0; left: 0; right: 0;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, var(--primary), var(--accent), transparent);
-  opacity: 0.5;
-}
-
-.footer-inner {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 32px 20px 24px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 16px;
-}
-
-.footer-brand {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.footer-logo {
-  font-size: 22px;
-  font-weight: 800;
-  letter-spacing: 3px;
-  background: var(--gradient-primary);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
-
-.footer-text {
-  font-size: 14px;
-  color: rgba(255, 255, 255, 0.5);
-}
-
-.footer-links {
-  display: flex;
-  gap: 24px;
-}
-
-.footer-links a {
-  color: rgba(255, 255, 255, 0.6);
-  font-size: 14px;
-  text-decoration: none;
-  transition: color 0.2s;
-}
-
-.footer-links a:hover {
-  color: var(--accent);
-}
-
-.footer-copy {
-  font-size: 13px;
-  color: rgba(255, 255, 255, 0.35);
-  padding-top: 8px;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
-  width: 100%;
-  text-align: center;
-}
-
 a {
   color: var(--primary);
   text-decoration: none;
@@ -199,6 +118,71 @@ a {
 }
 a:hover {
   color: var(--primary-dark);
+}
+
+/* ======== Footer ======== */
+.site-footer {
+  background: var(--dark-900);
+  color: rgba(255, 255, 255, 0.65);
+  margin-top: auto;
+}
+
+.footer-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 40px 20px 28px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+}
+
+.footer-brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.footer-logo {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: #fff;
+}
+
+.footer-divider {
+  width: 1px;
+  height: 14px;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.footer-text {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.footer-links {
+  display: flex;
+  gap: 28px;
+}
+
+.footer-links a {
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 13px;
+  transition: color 0.2s;
+}
+
+.footer-links a:hover {
+  color: #fff;
+}
+
+.footer-copy {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.3);
+  padding-top: 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  width: 100%;
+  text-align: center;
 }
 
 /* ======== Scrollbar ======== */
@@ -210,11 +194,11 @@ a:hover {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(0, 184, 217, 0.2);
+  background: rgba(37, 99, 235, 0.18);
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 184, 217, 0.4);
+  background: rgba(37, 99, 235, 0.35);
 }
 
 /* ======== Global Animations ======== */
@@ -223,11 +207,11 @@ a:hover {
   to { opacity: 1; }
 }
 @keyframes fadeInUp {
-  from { opacity: 0; transform: translateY(20px); }
+  from { opacity: 0; transform: translateY(16px); }
   to { opacity: 1; transform: translateY(0); }
 }
 @keyframes scaleIn {
-  from { opacity: 0; transform: scale(0.95); }
+  from { opacity: 0; transform: scale(0.96); }
   to { opacity: 1; transform: scale(1); }
 }
 @keyframes spin {
@@ -235,8 +219,8 @@ a:hover {
   to { transform: rotate(360deg); }
 }
 @keyframes pulse {
-  0%, 100% { opacity: 0.5; transform: scale(1); }
-  50% { opacity: 1; transform: scale(1.05); }
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
 }
 
 /* ======== Element Plus Overrides ======== */
@@ -251,17 +235,16 @@ a:hover {
   background-color: var(--primary);
 }
 
-/* ======== Utility Classes ======== */
+/* ======== Utility ======== */
 .page-title-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 48px;
-  height: 48px;
-  border-radius: 12px;
-  background: var(--gradient-primary);
-  color: #fff;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius);
+  background: var(--primary-light);
+  color: var(--primary);
   margin-bottom: 12px;
-  box-shadow: 0 4px 16px var(--primary-glow);
 }
 </style>
