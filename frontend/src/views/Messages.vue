@@ -8,6 +8,7 @@ import {
   type MessageOut,
 } from "@/api/message";
 import { ElMessage } from "element-plus";
+import Icon from "@/components/Icon.vue";
 
 const auth = useAuthStore();
 const publishedMessages = ref<MessageOut[]>([]);
@@ -124,14 +125,18 @@ function isSystemReply(msg: MessageOut): boolean {
 
 <template>
   <div class="messages-page">
-    <div class="msg-header">
-      <h1 class="msg-title">💬 留言墙</h1>
-      <p class="msg-subtitle">畅所欲言，分享见解，共建知识社区</p>
+    <!-- 页面标题 -->
+    <div class="page-header">
+      <div class="page-title-icon">
+        <Icon name="message" :size="28" />
+      </div>
+      <h1>留言墙</h1>
+      <p>畅所欲言，分享见解，共建知识社区</p>
     </div>
 
     <!-- 留言表单 -->
     <div class="msg-form-card">
-      <h3 class="form-title">📝 发表留言</h3>
+      <h3 class="form-title"><Icon name="edit" :size="17" /> 发表留言</h3>
       <el-input
         v-model="form.content"
         type="textarea"
@@ -152,38 +157,44 @@ function isSystemReply(msg: MessageOut): boolean {
 
     <!-- 标签切换 -->
     <div v-if="auth.isLoggedIn()" class="tab-bar">
-      <button :class="['tab-btn', { active: activeTab === 'all' }]" @click="activeTab = 'all'">全部留言</button>
-      <button :class="['tab-btn', { active: activeTab === 'mine' }]" @click="activeTab = 'mine'">我的留言</button>
+      <button :class="['tab-btn', { active: activeTab === 'all' }]" @click="activeTab = 'all'">
+        <Icon name="grid" :size="15" /> 全部留言
+      </button>
+      <button :class="['tab-btn', { active: activeTab === 'mine' }]" @click="activeTab = 'mine'">
+        <Icon name="user" :size="15" /> 我的留言
+      </button>
     </div>
 
     <!-- 全部留言 -->
     <div v-if="activeTab === 'all'" class="msg-list">
-      <h3 class="list-title">💬 全部留言 ({{ publishedMessages.length }})</h3>
+      <h3 class="list-title"><Icon name="message" :size="17" /> 全部留言 ({{ publishedMessages.length }})</h3>
       <div v-if="loading" class="loading">加载中...</div>
       <div v-else-if="publishedMessages.length === 0" class="empty">暂无留言，来做第一个吧！</div>
       <div v-else>
         <div v-for="msg in publishedMessages" :key="msg.id" class="msg-card">
           <div class="msg-meta">
-            <span class="msg-author">{{ msg.author_name || '匿名' }}</span>
+            <span class="msg-author"><Icon name="user" :size="13" /> {{ msg.author_name || '匿名' }}</span>
             <span class="msg-date">{{ formatDate(msg.created_at) }}</span>
-            <el-button v-if="auth.isAdmin()" type="danger" text size="small" @click="handleDelete(msg.id)">🗑️ 删除</el-button>
+            <el-button v-if="auth.isAdmin()" type="danger" text size="small" @click="handleDelete(msg.id)">
+              <Icon name="delete" :size="13" /> 删除
+            </el-button>
           </div>
           <div class="msg-content">{{ msg.content }}</div>
 
           <!-- 操作栏 -->
           <div class="msg-actions">
             <button class="action-btn" :class="{ liked: msg.liked }" @click="toggleLike(msg)">
-              {{ msg.liked ? '❤️' : '🤍' }} {{ msg.like_count || 0 }}
+              <Icon :name="msg.liked ? 'heartFill' : 'heart'" :size="14" /> {{ msg.like_count || 0 }}
             </button>
             <button class="action-btn" @click="toggleReplies(msg.id)">
-              💬 回复 <span v-if="expandedReplies[msg.id]?.length">({{ expandedReplies[msg.id].length }})</span>
+              <Icon name="message" :size="14" /> 回复 <span v-if="expandedReplies[msg.id]?.length">({{ expandedReplies[msg.id].length }})</span>
             </button>
             <button
               v-if="auth.isLoggedIn()"
               class="action-btn"
               @click="replyingTo = replyingTo === msg.id ? null : msg.id"
             >
-              ✏️ 回复
+              <Icon name="reply" :size="14" /> 回复
             </button>
           </div>
 
@@ -201,7 +212,7 @@ function isSystemReply(msg: MessageOut): boolean {
             <div v-else class="replies-list">
               <div v-for="reply in expandedReplies[msg.id]" :key="reply.id" class="reply-item">
                 <div class="reply-meta">
-                  <span class="reply-author">{{ reply.author_name || '匿名' }}</span>
+                  <span class="reply-author"><Icon name="user" :size="12" /> {{ reply.author_name || '匿名' }}</span>
                   <span class="reply-date">{{ formatDate(reply.created_at) }}</span>
                 </div>
                 <div class="reply-content">{{ reply.content }}</div>
@@ -214,19 +225,19 @@ function isSystemReply(msg: MessageOut): boolean {
 
     <!-- 我的留言 -->
     <div v-if="activeTab === 'mine' && auth.isLoggedIn()" class="msg-list">
-      <h3 class="list-title">📋 我的留言 ({{ myMessages.length }})</h3>
+      <h3 class="list-title"><Icon name="doc" :size="17" /> 我的留言 ({{ myMessages.length }})</h3>
       <div v-if="myMessages.length === 0" class="empty">您还没有留言</div>
       <div v-else>
         <div v-for="msg in myMessages" :key="msg.id" class="msg-card mine-card">
           <div class="msg-meta">
-            <span class="msg-author">{{ msg.author_name || '我' }}</span>
+            <span class="msg-author"><Icon name="user" :size="13" /> {{ msg.author_name || '我' }}</span>
             <span class="msg-date">{{ formatDate(msg.created_at) }}</span>
           </div>
 
           <!-- 系统自动回复 -->
           <template v-if="isSystemReply(msg)">
             <div class="auto-reply">
-              🤖 系统自动回复：{{ msg.reply }}
+              <Icon name="robot" :size="14" /> 系统自动回复：{{ msg.reply }}
             </div>
           </template>
 
@@ -238,7 +249,9 @@ function isSystemReply(msg: MessageOut): boolean {
               <span>{{ msg.reply }}</span>
             </div>
             <div v-if="auth.isAdmin()" class="admin-actions">
-              <el-button type="danger" size="small" @click="handleDelete(msg.id)">🗑️ 删除</el-button>
+              <el-button type="danger" size="small" @click="handleDelete(msg.id)">
+                <Icon name="delete" :size="13" /> 删除
+              </el-button>
             </div>
           </template>
         </div>
@@ -250,75 +263,84 @@ function isSystemReply(msg: MessageOut): boolean {
 <style scoped>
 .messages-page { max-width: 800px; margin: 0 auto; }
 
-.msg-header { text-align: center; margin-bottom: 28px; }
-.msg-title { font-size: 28px; font-weight: 800; color: #1a1a1a; margin-bottom: 6px; }
-.msg-subtitle { color: #888; font-size: 15px; }
+.page-header { text-align: center; padding: 48px 0 32px; }
+.page-header h1 { font-size: 28px; font-weight: 700; color: var(--text); margin-bottom: 8px; }
+.page-header p { color: var(--text-light); font-size: 15px; }
 
 /* 表单 */
 .msg-form-card {
-  background: #fff; border-radius: 12px; padding: 20px 24px;
-  box-shadow: 0 2px 16px rgba(0,0,0,0.06); margin-bottom: 20px;
+  background: var(--white); border-radius: var(--radius-lg); padding: 24px 28px;
+  box-shadow: var(--shadow); margin-bottom: 20px; border: 1px solid var(--border-light);
 }
-.form-title { font-size: 16px; font-weight: 600; margin-bottom: 12px; color: #333; }
-.form-row { display: flex; gap: 12px; margin-top: 10px; align-items: center; }
+.form-title { font-size: 16px; font-weight: 600; margin-bottom: 14px; color: var(--text); display: flex; align-items: center; gap: 8px; }
+.form-row { display: flex; gap: 12px; margin-top: 12px; align-items: center; }
 .contact-input { flex: 1; }
 
 /* 标签 */
 .tab-bar { display: flex; gap: 8px; margin-bottom: 16px; }
 .tab-btn {
-  padding: 8px 20px; border: 1px solid #e0e0e0; border-radius: 8px;
-  background: #fff; cursor: pointer; font-size: 14px; color: #666;
-  transition: all 0.2s;
+  padding: 9px 22px; border: 1px solid var(--border); border-radius: 10px;
+  background: var(--white); cursor: pointer; font-size: 14px; color: var(--text-light);
+  transition: all 0.2s var(--ease); display: flex; align-items: center; gap: 7px; font-weight: 500;
 }
-.tab-btn.active { background: #00ccaa; color: #fff; border-color: #00ccaa; }
+.tab-btn:hover { border-color: var(--primary); color: var(--primary); }
+.tab-btn.active { background: var(--gradient-primary); color: #fff; border-color: transparent; font-weight: 600; box-shadow: 0 2px 8px var(--primary-glow); }
 
 /* 列表 */
 .msg-list {
-  background: #fff; border-radius: 12px; padding: 20px 24px;
-  box-shadow: 0 2px 16px rgba(0,0,0,0.06);
+  background: var(--white); border-radius: var(--radius-lg); padding: 24px 28px;
+  box-shadow: var(--shadow); border: 1px solid var(--border-light);
 }
-.list-title { font-size: 16px; font-weight: 600; color: #333; margin-bottom: 16px; }
-.loading, .empty { text-align: center; color: #999; padding: 30px 0; }
+.list-title { font-size: 16px; font-weight: 600; color: var(--text); margin-bottom: 18px; display: flex; align-items: center; gap: 8px; }
+.loading, .empty { text-align: center; color: var(--text-muted); padding: 40px 0; }
 
 /* 留言卡片 */
-.msg-card { padding: 16px 0; border-bottom: 1px solid #f0f0f0; }
-.msg-card:last-child { border-bottom: none; }
-.msg-meta { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
-.msg-author { font-weight: 600; color: #333; font-size: 14px; }
-.msg-date { color: #aaa; font-size: 12px; }
-.msg-content { font-size: 15px; line-height: 1.8; color: #444; white-space: pre-line; }
+.msg-card { padding: 18px 0; border-bottom: 1px solid var(--border-light); }
+.msg-card:last-child { border-bottom: none; padding-bottom: 0; }
+.msg-meta { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; flex-wrap: wrap; }
+.msg-author { font-weight: 600; color: var(--text); font-size: 14px; display: flex; align-items: center; gap: 4px; }
+.msg-date { color: var(--text-muted); font-size: 12px; }
+.msg-content { font-size: 15px; line-height: 1.8; color: var(--text); white-space: pre-line; }
 
 /* 回复 */
 .admin-reply {
-  margin-top: 10px; padding: 10px 14px; background: #f0faf6;
-  border-radius: 8px; font-size: 14px; color: #555; border-left: 3px solid #00ccaa;
+  margin-top: 12px; padding: 12px 16px; background: var(--accent-light);
+  border-radius: 8px; font-size: 14px; color: var(--text-light); border-left: 3px solid var(--accent);
 }
-.admin-reply-label { font-weight: 600; color: #00aa88; margin-right: 6px; }
+.admin-reply-label { font-weight: 600; color: var(--accent-dark); margin-right: 8px; }
 .auto-reply {
-  margin-top: 10px; padding: 10px 14px; background: #f8f9fa;
-  border-radius: 8px; font-size: 13px; color: #888;
+  margin-top: 12px; padding: 12px 16px; background: var(--bg-soft);
+  border-radius: 8px; font-size: 13px; color: var(--text-muted);
+  display: flex; align-items: center; gap: 6px;
 }
 
 /* 操作栏 */
-.msg-actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.msg-actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
 .action-btn {
-  padding: 4px 12px; border: 1px solid #eee; border-radius: 6px;
-  background: #fafafa; cursor: pointer; font-size: 13px; color: #666; transition: all 0.2s;
+  padding: 5px 14px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--white); cursor: pointer; font-size: 13px; color: var(--text-light);
+  transition: all 0.2s var(--ease); display: flex; align-items: center; gap: 4px;
 }
-.action-btn:hover { background: #f0f0f0; border-color: #ddd; }
-.action-btn.liked { color: #e74c3c; border-color: #fadbd8; background: #fdf2f2; }
+.action-btn:hover { background: var(--bg); border-color: var(--primary-light); color: var(--primary); }
+.action-btn.liked { color: #ef4444; border-color: #fecaca; background: #fef2f2; }
 
-.reply-form { display: flex; gap: 8px; margin-top: 10px; align-items: center; }
+.reply-form { display: flex; gap: 8px; margin-top: 12px; align-items: center; }
 .reply-form .el-input { flex: 1; }
-.replies-wrap { margin-top: 10px; padding-left: 24px; border-left: 2px solid #f0f0f0; }
+.replies-wrap { margin-top: 12px; padding-left: 24px; border-left: 2px solid var(--border-light); }
 .replies-list { display: flex; flex-direction: column; gap: 10px; }
-.reply-item { padding: 10px 12px; background: #fafafa; border-radius: 8px; }
-.reply-meta { display: flex; gap: 8px; margin-bottom: 4px; }
-.reply-author { font-weight: 500; font-size: 13px; color: #333; }
-.reply-date { font-size: 11px; color: #bbb; }
-.reply-content { font-size: 14px; color: #555; line-height: 1.6; }
+.reply-item { padding: 12px 14px; background: var(--bg-soft); border-radius: 8px; }
+.reply-meta { display: flex; gap: 10px; margin-bottom: 4px; }
+.reply-author { font-weight: 500; font-size: 13px; color: var(--text); display: flex; align-items: center; gap: 4px; }
+.reply-date { font-size: 11px; color: var(--text-muted); }
+.reply-content { font-size: 14px; color: var(--text-light); line-height: 1.6; }
 
 /* 管理员 */
-.admin-actions { margin-top: 10px; padding-top: 10px; border-top: 1px dashed #eee; }
-.mine-card { background: #fafcfe; border-radius: 8px; padding: 16px; margin-bottom: 12px; border: 1px solid #f0f0f0; }
+.admin-actions { margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--border); }
+.mine-card { background: var(--bg-soft); border-radius: 10px; padding: 16px 20px; margin-bottom: 12px; border: 1px solid var(--border-light); }
+
+@media (max-width: 768px) {
+  .msg-form-card { padding: 20px 16px; }
+  .msg-list { padding: 20px 16px; }
+  .page-header { padding: 32px 0 24px; }
+}
 </style>

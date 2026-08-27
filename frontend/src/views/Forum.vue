@@ -6,6 +6,7 @@ import { getArticles, deleteArticle, approveArticle, rejectArticle } from "@/api
 import { getCategories } from "@/api/category";
 import type { ArticleListOut, CategoryOut } from "@/types";
 import { ElMessage, ElMessageBox } from "element-plus";
+import Icon from "@/components/Icon.vue";
 
 const router = useRouter();
 const auth = useAuthStore();
@@ -20,15 +21,10 @@ const total = ref(0);
 const page = ref(1);
 const pageSize = 10;
 
-// 管理员可见：待审核文章
 const showPending = ref(false);
 const pendingArticles = ref<ArticleListOut[]>([]);
 
 const is_admin = computed(() => auth.isAdmin());
-
-const categoryList = computed(() => {
-  return [{ id: null, name: "全部", slug: "all", icon: "📂" } as any, ...categories.value];
-});
 
 async function loadCategories() {
   const res = await getCategories("forum");
@@ -43,12 +39,8 @@ async function loadArticles() {
       page_size: pageSize,
       module: "forum",
     };
-    if (activeCategory.value) {
-      params.category_id = activeCategory.value;
-    }
-    if (showPending.value) {
-      params.status = "pending";
-    }
+    if (activeCategory.value) params.category_id = activeCategory.value;
+    if (showPending.value) params.status = "pending";
     const res = await getArticles(params as any);
     articles.value = res.data.items || [];
     total.value = res.data.total;
@@ -143,24 +135,31 @@ onMounted(async () => {
     <!-- 左侧分类目录 -->
     <aside class="forum-sidebar">
       <div class="sidebar-section">
-        <h3 class="sidebar-title">论坛分类</h3>
-        <ul class="category-list">
-          <li
-            v-for="cat in categoryList"
-            :key="cat.slug"
+        <h3 class="sidebar-title"><Icon name="folder" :size="17" /> 论坛分类</h3>
+        <div class="category-list">
+          <div
+            :class="['category-item', { active: activeCategory === null }]"
+            @click="switchCategory(null)"
+          >
+            <div class="cat-icon"><Icon name="grid" :size="18" /></div>
+            <span class="cat-name">全部</span>
+          </div>
+          <div
+            v-for="cat in categories"
+            :key="cat.id"
             :class="['category-item', { active: activeCategory === cat.id }]"
             @click="switchCategory(cat.id)"
           >
-            <span class="cat-icon">{{ cat.icon }}</span>
+            <div class="cat-icon"><Icon name="folder" :size="18" /></div>
             <span class="cat-name">{{ cat.name }}</span>
-          </li>
-        </ul>
+          </div>
+        </div>
       </div>
 
       <!-- 管理员：待审核提醒 -->
       <div v-if="is_admin && pendingArticles.length" class="sidebar-section pending-section">
         <h3 class="sidebar-title">
-          待审核
+          <Icon name="clock" :size="17" /> 待审核
           <span class="pending-badge">{{ pendingArticles.length }}</span>
         </h3>
         <div class="pending-toggle" @click="showPending = !showPending">
@@ -168,11 +167,11 @@ onMounted(async () => {
         </div>
       </div>
 
-      <!-- 管理员：发布按钮 -->
-      <div v-if="is_admin" class="sidebar-section">
-        <el-button type="primary" class="create-btn" @click="handleCreate">
-          ✏️ 发布文章
-        </el-button>
+      <!-- 管理员/已登录：发布按钮 -->
+      <div v-if="is_admin || auth.isLoggedIn()" class="sidebar-section">
+        <button class="create-btn" @click="handleCreate">
+          <Icon name="edit" :size="16" /> 发布文章
+        </button>
       </div>
     </aside>
 
@@ -181,14 +180,17 @@ onMounted(async () => {
       <!-- 顶部标题栏 -->
       <div class="forum-header">
         <div class="header-left">
+          <div class="page-title-icon">
+            <Icon name="forum" :size="26" />
+          </div>
           <h1>技术论坛</h1>
           <span class="article-count">共 {{ total }} 篇</span>
         </div>
         <div class="header-right">
-          <div class="local-search">
+          <div class="search-wrap">
+            <Icon name="search" :size="15" class="search-ic" />
             <input v-model="searchQuery" placeholder="搜索文章..." class="local-search-input" @input="filterLocal" />
           </div>
-          <el-button v-if="!is_admin && auth.isLoggedIn()" size="small" type="primary" plain @click="handleCreate">✏️ 发布文章</el-button>
         </div>
       </div>
 
@@ -202,7 +204,7 @@ onMounted(async () => {
         </span>
       </div>
 
-      <!-- 文章列表 — 公众号风格 -->
+      <!-- 文章列表 -->
       <div v-loading="loading" class="article-list">
         <div
           v-for="article in (localFiltered || articles)"
@@ -210,8 +212,9 @@ onMounted(async () => {
           class="article-card"
           @click="router.push(`/article/${article.id}`)"
         >
-          <!-- 置顶标签 -->
-          <div v-if="article.is_pinned" class="pin-tag">📌 置顶</div>
+          <div v-if="article.is_pinned" class="pin-tag">
+            <Icon name="pin" :size="12" /> 置顶
+          </div>
 
           <div class="article-body">
             <div class="article-info">
@@ -220,9 +223,9 @@ onMounted(async () => {
               <div class="article-meta">
                 <span class="meta-category">{{ article.category_name || "论坛" }}</span>
                 <span class="meta-dot">·</span>
-                <span>{{ article.author_name }}</span>
+                <span><Icon name="user" :size="12" /> {{ article.author_name }}</span>
                 <span class="meta-dot">·</span>
-                <span>{{ formatDate(article.created_at) }}</span>
+                <span><Icon name="clock" :size="12" /> {{ formatDate(article.created_at) }}</span>
               </div>
             </div>
             <div class="article-cover" v-if="article.cover_image">
@@ -233,12 +236,20 @@ onMounted(async () => {
           <!-- 管理员操作按钮 -->
           <div v-if="is_admin" class="article-actions" @click.stop>
             <template v-if="showPending">
-              <el-button size="small" text type="success" @click="handleApprove(article.id)">✓ 通过</el-button>
-              <el-button size="small" text type="warning" @click="handleReject(article.id)">✕ 拒绝</el-button>
+              <el-button size="small" text type="success" @click="handleApprove(article.id)">
+                <Icon name="check" :size="15" /> 通过
+              </el-button>
+              <el-button size="small" text type="warning" @click="handleReject(article.id)">
+                <Icon name="close" :size="15" /> 拒绝
+              </el-button>
             </template>
             <template v-else>
-              <el-button size="small" text type="primary" @click="handleEdit(article.id)">编辑</el-button>
-              <el-button size="small" text type="danger" @click="handleDelete(article.id)">删除</el-button>
+              <el-button size="small" text type="primary" @click="handleEdit(article.id)">
+                <Icon name="edit" :size="14" /> 编辑
+              </el-button>
+              <el-button size="small" text type="danger" @click="handleDelete(article.id)">
+                <Icon name="delete" :size="14" /> 删除
+              </el-button>
             </template>
           </div>
         </div>
@@ -266,7 +277,6 @@ onMounted(async () => {
   gap: 24px;
   max-width: 1200px;
   margin: 0 auto;
-  padding: 24px 20px;
 }
 
 /* ===== 左侧边栏 ===== */
@@ -280,10 +290,11 @@ onMounted(async () => {
 
 .sidebar-section {
   background: var(--white);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
   box-shadow: var(--shadow);
-  padding: 16px;
+  padding: 18px;
   margin-bottom: 16px;
+  border: 1px solid var(--border-light);
 }
 
 .sidebar-title {
@@ -293,13 +304,13 @@ onMounted(async () => {
   margin-bottom: 12px;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
 }
 
 .category-list {
-  list-style: none;
-  padding: 0;
-  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .category-item {
@@ -309,7 +320,7 @@ onMounted(async () => {
   padding: 10px 12px;
   border-radius: 8px;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.2s var(--ease);
   font-size: 14px;
   color: var(--text-light);
 }
@@ -326,7 +337,12 @@ onMounted(async () => {
 }
 
 .cat-icon {
-  font-size: 18px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 
 .cat-name {
@@ -334,16 +350,17 @@ onMounted(async () => {
 }
 
 .pending-badge {
-  background: #e74c3c;
+  background: #ef4444;
   color: #fff;
   font-size: 11px;
   padding: 1px 8px;
   border-radius: 10px;
-  font-weight: 500;
+  font-weight: 600;
+  margin-left: 6px;
 }
 
 .pending-section {
-  border-left: 3px solid #e74c3c;
+  border-left: 3px solid #ef4444;
 }
 
 .pending-toggle {
@@ -351,14 +368,32 @@ onMounted(async () => {
   color: var(--primary);
   cursor: pointer;
   padding: 6px 0;
+  transition: color 0.2s;
 }
-
 .pending-toggle:hover {
-  text-decoration: underline;
+  color: var(--accent);
 }
 
 .create-btn {
   width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: var(--gradient-primary);
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.25s var(--ease);
+  box-shadow: 0 2px 12px var(--primary-glow);
+}
+.create-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 20px var(--primary-glow);
 }
 
 /* ===== 右侧主内容 ===== */
@@ -370,20 +405,27 @@ onMounted(async () => {
 .forum-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-end;
   margin-bottom: 20px;
+  padding-top: 12px;
 }
 
-.forum-header h1 {
+.header-left {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.header-left h1 {
   font-size: 24px;
   font-weight: 700;
-  display: inline;
-  margin-right: 10px;
+  color: var(--text);
 }
 
 .article-count {
   font-size: 13px;
   color: var(--text-light);
+  margin-bottom: 2px;
 }
 
 .header-right {
@@ -392,11 +434,15 @@ onMounted(async () => {
   gap: 10px;
 }
 
-.local-search-input {
-  padding: 6px 12px; border: 1px solid #e0e0e0; border-radius: 16px;
-  font-size: 13px; outline: none; width: 160px; transition: all 0.2s;
+.search-wrap {
+  position: relative; display: flex; align-items: center;
 }
-.local-search-input:focus { border-color: #00ccaa; width: 200px; }
+.search-ic { position: absolute; left: 12px; color: var(--text-muted); pointer-events: none; }
+.local-search-input {
+  padding: 8px 14px 8px 36px; border: 1px solid var(--border); border-radius: 20px;
+  font-size: 13px; outline: none; width: 160px; transition: all 0.25s var(--ease); background: var(--white);
+}
+.local-search-input:focus { border-color: var(--primary); width: 200px; box-shadow: 0 0 0 3px var(--primary-glow); }
 
 /* 状态标签 */
 .status-tabs {
@@ -404,18 +450,20 @@ onMounted(async () => {
   gap: 4px;
   margin-bottom: 16px;
   background: var(--white);
-  border-radius: 8px;
+  border-radius: 10px;
   padding: 4px;
   box-shadow: var(--shadow);
+  border: 1px solid var(--border-light);
 }
 
 .status-tab {
-  padding: 6px 16px;
-  border-radius: 6px;
+  padding: 7px 20px;
+  border-radius: 8px;
   font-size: 13px;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.2s var(--ease);
   color: var(--text-light);
+  font-weight: 500;
 }
 
 .status-tab:hover {
@@ -423,12 +471,13 @@ onMounted(async () => {
 }
 
 .status-tab.active {
-  background: var(--primary);
+  background: var(--gradient-primary);
   color: #fff;
-  font-weight: 500;
+  font-weight: 600;
+  box-shadow: 0 2px 8px var(--primary-glow);
 }
 
-/* ===== 文章卡片 — 公众号风格 ===== */
+/* ===== 文章卡片 ===== */
 .article-list {
   display: flex;
   flex-direction: column;
@@ -437,42 +486,42 @@ onMounted(async () => {
 
 .article-card {
   background: var(--white);
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--border);
+  padding: 18px 24px;
+  border-bottom: 1px solid var(--border-light);
   cursor: pointer;
-  transition: background 0.15s;
+  transition: all 0.2s;
   position: relative;
 }
 
 .article-card:first-child {
-  border-radius: var(--radius) var(--radius) 0 0;
-  box-shadow: var(--shadow);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
 }
 
 .article-card:last-child {
-  border-radius: 0 0 var(--radius) var(--radius);
-  box-shadow: var(--shadow);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
   border-bottom: none;
 }
 
 .article-card:only-child {
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
+  border-radius: var(--radius-lg);
 }
 
 .article-card:hover {
-  background: #f8fafc;
+  background: var(--bg-soft);
 }
 
 .pin-tag {
-  display: inline-block;
-  padding: 2px 8px;
-  background: #fff3e0;
-  color: #e67e22;
-  border-radius: 4px;
-  font-size: 11px;
-  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  background: #fff7ed;
+  color: #ea580c;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
   margin-bottom: 8px;
+  border: 1px solid rgba(234, 88, 12, 0.15);
 }
 
 .article-body {
@@ -515,43 +564,52 @@ onMounted(async () => {
 .article-meta {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   font-size: 12px;
-  color: #999;
+  color: var(--text-muted);
   flex-wrap: wrap;
+}
+.article-meta span {
+  display: flex;
+  align-items: center;
+  gap: 3px;
 }
 
 .meta-category {
   color: var(--primary);
-  font-weight: 500;
+  font-weight: 600;
 }
 
 .meta-dot {
-  color: #ccc;
+  color: var(--border);
 }
 
 .article-cover {
-  width: 120px;
-  height: 90px;
+  width: 130px;
+  height: 96px;
   flex-shrink: 0;
-  border-radius: 6px;
+  border-radius: 8px;
   overflow: hidden;
-  background: #f0f0f0;
+  background: var(--bg);
 }
 
 .article-cover img {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  transition: transform 0.3s var(--ease);
+}
+.article-card:hover .article-cover img {
+  transform: scale(1.05);
 }
 
-/* 管理员操作 — 位于卡片底部，不重叠 */
+/* 管理员操作 */
 .article-actions {
   display: flex;
-  gap: 4px;
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px solid #f0f0f0;
+  gap: 6px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-light);
   justify-content: flex-end;
   opacity: 0;
   transition: opacity 0.2s;
@@ -565,14 +623,15 @@ onMounted(async () => {
 .pagination {
   display: flex;
   justify-content: center;
-  margin-top: 24px;
+  margin-top: 28px;
 }
 
 /* ===== 响应式 ===== */
 @media (max-width: 768px) {
   .forum-layout {
     flex-direction: column;
-    padding: 16px 12px;
+    padding: 0 12px;
+    gap: 16px;
   }
 
   .forum-sidebar {
@@ -581,14 +640,24 @@ onMounted(async () => {
   }
 
   .category-list {
-    display: flex;
+    flex-direction: row;
     flex-wrap: wrap;
     gap: 6px;
   }
 
   .category-item {
-    padding: 6px 12px;
+    padding: 7px 14px;
     font-size: 13px;
+    border-radius: 8px;
+    background: var(--bg);
+    border: 1px solid var(--border-light);
+  }
+  .cat-icon { display: none; }
+
+  .forum-header {
+    flex-direction: column;
+    gap: 12px;
+    align-items: flex-start;
   }
 
   .article-cover {

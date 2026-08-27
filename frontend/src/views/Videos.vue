@@ -6,6 +6,7 @@ import { getVideos, getRecommendedVideos, checkUploadPermission, type VideoOut }
 import { getCarousel, type CarouselSlide } from "@/api/carousel";
 import { getCategories } from "@/api/category";
 import type { CategoryOut } from "@/types";
+import Icon from "@/components/Icon.vue";
 
 const router = useRouter();
 const auth = useAuthStore();
@@ -99,26 +100,34 @@ function typeLabel(t: string) {
 }
 function tagColor(v: any) {
   if (v.category_color) return v.category_color;
-  const colorMap: Record<string, string> = { popularization: "#00ccaa", demo: "#ff6b00", discussion: "#3498db" };
-  return colorMap[v.video_type] || "#00ccaa";
+  const colorMap: Record<string, string> = { popularization: "#00b8d9", demo: "#ff6b00", discussion: "#5b7cfa" };
+  return colorMap[v.video_type] || "#00b8d9";
 }
 </script>
 
 <template>
   <div class="videos-page">
-    <!-- 工具栏 -->
-    <div class="toolbar">
-      <h3 class="page-title">📹 视频中心</h3>
-      <div class="toolbar-right">
-        <div class="search-box">
-          <span class="search-icon">🔍</span>
+    <!-- 页面标题 -->
+    <div class="page-header">
+      <div class="page-header-left">
+        <div class="page-title-icon">
+          <Icon name="video" :size="26" />
+        </div>
+        <h1>视频中心</h1>
+        <p>科普知识、实操演示与技术探讨</p>
+      </div>
+      <div class="header-actions">
+        <div class="search-wrap">
+          <Icon name="search" :size="15" class="search-ic" />
           <input v-model="searchQuery" placeholder="搜索视频..." class="search-input" />
         </div>
-        <button v-if="canUpload" class="upload-btn" @click="goUpload">＋ 上传视频</button>
+        <button v-if="canUpload" class="btn-upload" @click="goUpload">
+          <Icon name="upload" :size="15" />
+          <span>上传视频</span>
+        </button>
       </div>
     </div>
 
-    <!-- 分类筛选 -->
     <!-- 主区域：左轮播 + 右推荐 -->
     <div class="top-row">
       <!-- 左：轮播 -->
@@ -133,8 +142,8 @@ function tagColor(v: any) {
               </div>
             </div>
           </div>
-          <button class="car-btn prev" @click.stop="prevSlide">‹</button>
-          <button class="car-btn next" @click.stop="nextSlide">›</button>
+          <button class="car-btn prev" @click.stop="prevSlide"><Icon name="chevronLeft" :size="22" /></button>
+          <button class="car-btn next" @click.stop="nextSlide"><Icon name="chevronRight" :size="22" /></button>
           <div class="car-dots">
             <span v-for="(_, i) in featured" :key="i" :class="['dot', { active: i === currentSlide }]" @click="goToSlide(i)"></span>
           </div>
@@ -143,7 +152,7 @@ function tagColor(v: any) {
 
       <!-- 右：推荐视频 -->
       <div v-if="recommended.length > 0" class="recommend-section">
-        <h3 class="section-title">🔥 推荐视频</h3>
+        <h3 class="section-title"><Icon name="flame" :size="17" /> 推荐视频</h3>
         <div class="recommend-list">
           <div v-for="(v, i) in recommended.slice(0, 5)" :key="v.id" class="recommend-item" @click="goVideo(v.id)">
             <span class="rec-rank" :class="{ top: i < 3 }">{{ i + 1 }}</span>
@@ -162,7 +171,7 @@ function tagColor(v: any) {
     <!-- 全部视频 -->
     <div class="all-section">
       <div class="all-header">
-        <h3 class="section-title" style="margin:0">📹 全部视频 ({{ filteredVideos.length }})</h3>
+        <h3 class="section-title"><Icon name="grid" :size="17" /> 全部视频 ({{ filteredVideos.length }})</h3>
         <div v-if="videoCategories.length > 0" class="category-filter">
           <button
             :class="['cat-pill', { active: selectedCategoryId === null }]"
@@ -173,8 +182,8 @@ function tagColor(v: any) {
             :key="cat.id"
             :class="['cat-pill', { active: selectedCategoryId === cat.id }]"
             :style="{
-              '--cat-color': cat.color || '#00ccaa',
-              borderColor: selectedCategoryId === cat.id ? (cat.color || '#00ccaa') : '#e0e0e0'
+              '--cat-color': cat.color || '#00b8d9',
+              borderColor: selectedCategoryId === cat.id ? (cat.color || '#00b8d9') : 'var(--border)'
             }"
             @click="selectCategory(cat.id)"
           >
@@ -195,9 +204,9 @@ function tagColor(v: any) {
           <div class="card-info">
             <h4 class="card-title">{{ v.title }}</h4>
             <div class="card-meta">
-              <span>{{ v.author_name || '未知' }}</span>
-              <span class="dot">·</span>
-              <span>{{ v.view_count || 0 }}次播放</span>
+              <span><Icon name="user" :size="12" /> {{ v.author_name || '未知' }}</span>
+              <span class="meta-dot">·</span>
+              <span><Icon name="eye" :size="12" /> {{ v.view_count || 0 }}次播放</span>
             </div>
           </div>
         </div>
@@ -209,180 +218,193 @@ function tagColor(v: any) {
 <style scoped>
 .videos-page { max-width: 1200px; margin: 0 auto; }
 
-/* 工具栏 */
-.toolbar {
-  display: flex; justify-content: space-between; align-items: center;
-  margin-bottom: 20px;
-}
-.page-title { font-size: 20px; font-weight: 700; color: #1a1a1a; margin: 0; }
-.toolbar-right {
-  display: flex; align-items: center; gap: 10px;
-}
-.search-box {
+/* 页面标题 */
+.page-header { display: flex; justify-content: space-between; align-items: flex-start; padding: 40px 0 24px; }
+.page-header-left h1 { font-size: 28px; font-weight: 700; margin-bottom: 8px; color: var(--text); }
+.page-header-left p { color: var(--text-light); font-size: 15px; }
+.header-actions { display: flex; align-items: center; gap: 12px; }
+
+/* 搜索 */
+.search-wrap {
   position: relative; display: flex; align-items: center;
 }
+.search-ic { position: absolute; left: 12px; color: var(--text-muted); pointer-events: none; }
 .search-input {
-  padding: 7px 12px 7px 32px;
-  border: 1px solid #e0e0e0; border-radius: 18px;
-  font-size: 13px; outline: none; width: 180px; transition: all 0.2s;
+  padding: 8px 14px 8px 36px; border: 1px solid var(--border); border-radius: 20px;
+  font-size: 13px; outline: none; width: 180px; transition: all 0.25s var(--ease); background: var(--white);
 }
-.search-input:focus { border-color: #00ccaa; width: 220px; }
-.search-icon { position: absolute; left: 10px; font-size: 13px; pointer-events: none; }
+.search-input:focus { border-color: var(--primary); width: 220px; box-shadow: 0 0 0 3px var(--primary-glow); }
 
-/* 分类筛选 - 在全部视频标题旁 */
+/* 上传按钮 */
+.btn-upload {
+  display: flex; align-items: center; gap: 6px;
+  padding: 8px 20px; background: var(--gradient-primary);
+  color: #fff; border: none; border-radius: 10px; cursor: pointer;
+  font-size: 14px; font-weight: 600; transition: all 0.25s var(--ease);
+  box-shadow: 0 2px 12px var(--primary-glow);
+}
+.btn-upload:hover { transform: translateY(-1px); box-shadow: 0 4px 20px var(--primary-glow); }
+
+/* 顶部行 */
+.top-row {
+  display: flex; gap: 20px; margin-bottom: 32px;
+  height: 460px;
+}
+
+/* 左轮播 */
+.carousel-section { flex: 2; min-width: 0; height: 100%; display: flex; }
+.carousel-wrap {
+  position: relative; overflow: hidden; border-radius: var(--radius-lg);
+  flex: 1; height: 100%;
+}
+.carousel-inner { display: flex; transition: transform 0.5s var(--ease); height: 100%; }
+.carousel-slide { min-width: 100%; height: 100%; position: relative; cursor: pointer; overflow: hidden; }
+.slide-bg {
+  width: 100%; height: 100%;
+  background-size: cover; background-position: center;
+  transition: transform 0.4s var(--ease);
+}
+.carousel-slide:hover .slide-bg { transform: scale(1.05); }
+.slide-overlay {
+  position: absolute; inset: 0;
+  background: linear-gradient(to top, rgba(6, 10, 20, 0.9) 0%, rgba(6, 10, 20, 0.3) 50%, transparent 100%);
+}
+.slide-info {
+  position: absolute; bottom: 0; left: 0; right: 0; padding: 24px 28px; color: #fff;
+}
+.slide-title { font-size: 22px; font-weight: 700; margin-bottom: 4px; text-shadow: 0 2px 12px rgba(0,0,0,0.4); }
+
+.car-btn {
+  position: absolute; top: 50%; transform: translateY(-50%);
+  width: 40px; height: 40px; border-radius: 50%;
+  background: rgba(6, 10, 20, 0.5); color: #fff; border: 1px solid rgba(255,255,255,0.15);
+  backdrop-filter: blur(8px); cursor: pointer; opacity: 0; transition: all 0.25s var(--ease); z-index: 2;
+  display: flex; align-items: center; justify-content: center;
+}
+.carousel-wrap:hover .car-btn { opacity: 1; }
+.car-btn.prev { left: 12px; }
+.car-btn.next { right: 12px; }
+.car-btn:hover { background: rgba(6, 10, 20, 0.7); border-color: var(--accent); color: var(--accent); }
+
+.car-dots { position: absolute; bottom: 14px; right: 28px; display: flex; gap: 6px; z-index: 2; }
+.dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: rgba(255,255,255,0.3); cursor: pointer; transition: all 0.3s var(--ease);
+}
+.dot.active { background: var(--accent); width: 24px; border-radius: 4px; box-shadow: 0 0 8px rgba(0, 230, 168, 0.4); }
+
+/* 右推荐 */
+.recommend-section {
+  flex: 1; min-width: 0; height: 100%;
+  display: flex; flex-direction: column;
+  background: var(--white); border-radius: var(--radius-lg); padding: 20px;
+  box-shadow: var(--shadow); border: 1px solid var(--border-light);
+}
+.section-title { font-size: 16px; font-weight: 700; color: var(--text); margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+
+.recommend-list {
+  display: flex; flex-direction: column; gap: 8px;
+  flex: 1; overflow-y: auto;
+}
+.recommend-item {
+  display: flex; gap: 12px; align-items: center;
+  padding: 8px 10px; border-radius: 10px; cursor: pointer; transition: all 0.2s var(--ease);
+}
+.recommend-item:hover { background: var(--bg); }
+
+.rec-rank {
+  width: 24px; text-align: center; font-weight: 700; font-size: 15px; color: var(--text-muted); flex-shrink: 0;
+}
+.rec-rank.top { color: #ff6b00; }
+
+.rec-cover {
+  width: 110px; height: 68px; border-radius: 8px; overflow: hidden; flex-shrink: 0; background: var(--bg);
+}
+.rec-cover img { width: 100%; height: 100%; object-fit: cover; }
+
+.rec-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.rec-title {
+  font-size: 13px; font-weight: 600; color: var(--text);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.4;
+}
+.rec-views { font-size: 12px; color: var(--text-muted); }
+
+/* 全部视频 */
+.all-section { margin-top: 12px; }
+.loading, .empty { text-align: center; padding: 48px 0; color: var(--text-muted); font-size: 15px; }
+
 .all-header {
-  display: flex; align-items: center; gap: 12px;
-  margin-bottom: 16px; flex-wrap: wrap;
+  display: flex; align-items: center; gap: 14px;
+  margin-bottom: 20px; flex-wrap: wrap;
 }
 .category-filter {
-  display: flex; flex-wrap: wrap; gap: 6px; flex: 1;
+  display: flex; flex-wrap: wrap; gap: 8px; flex: 1;
 }
 .cat-pill {
-  display: inline-flex; align-items: center; gap: 5px;
-  padding: 6px 14px; border-radius: 20px;
-  border: 1.5px solid #e0e0e0; background: #fff;
-  font-size: 13px; color: #555; cursor: pointer;
-  transition: all 0.15s; white-space: nowrap;
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 16px; border-radius: 20px;
+  border: 1.5px solid var(--border); background: var(--white);
+  font-size: 13px; color: var(--text-light); cursor: pointer;
+  transition: all 0.2s var(--ease); white-space: nowrap;
 }
-.cat-pill:hover { border-color: #00ccaa; color: #00ccaa; }
+.cat-pill:hover { border-color: var(--primary); color: var(--primary); }
 .cat-pill.active {
-  background: var(--cat-color, #00ccaa);
-  color: #fff; border-color: var(--cat-color, #00ccaa);
-  font-weight: 600;
+  background: var(--cat-color, var(--primary));
+  color: #fff; border-color: var(--cat-color, var(--primary));
+  font-weight: 600; box-shadow: 0 2px 8px rgba(0, 184, 217, 0.2);
 }
 .cat-dot {
   width: 8px; height: 8px; border-radius: 50%; display: inline-block;
 }
 
-.upload-btn {
-  padding: 8px 20px; background: linear-gradient(135deg, #00ccaa, #00b894);
-  color: #fff; border: none; border-radius: 8px; cursor: pointer;
-  font-size: 14px; font-weight: 600; white-space: nowrap;
-}
-.upload-btn:hover { opacity: 0.9; }
-
-/* 顶部行 — 占两排卡片高度 */
-.top-row {
-  display: flex; gap: 20px; margin-bottom: 28px;
-  height: 480px;
-}
-
-/* 左轮播 — 占据大部分空间 */
-.carousel-section { flex: 2; min-width: 0; height: 100%; display: flex; }
-.carousel-wrap {
-  position: relative; overflow: hidden; border-radius: 12px;
-  flex: 1; height: 100%;
-}
-.carousel-inner { display: flex; transition: transform 0.5s ease; height: 100%; }
-.carousel-slide { min-width: 100%; height: 100%; position: relative; cursor: pointer; overflow: hidden; }
-.slide-bg {
-  width: 100%; height: 100%;
-  background-size: cover; background-position: center;
-  transition: transform 0.3s;
-}
-.carousel-slide:hover .slide-bg { transform: scale(1.05); }
-.slide-overlay {
-  position: absolute; inset: 0;
-  background: linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.3) 50%, transparent 100%);
-}
-.slide-info {
-  position: absolute; bottom: 0; left: 0; right: 0; padding: 24px 28px; color: #fff;
-}
-.slide-title { font-size: 22px; font-weight: 700; margin-bottom: 4px; text-shadow: 0 2px 8px rgba(0,0,0,0.3); }
-.slide-desc { font-size: 14px; color: rgba(255,255,255,0.7); line-height: 1.5; }
-
-.car-btn {
-  position: absolute; top: 50%; transform: translateY(-50%);
-  width: 36px; height: 36px; border-radius: 50%;
-  background: rgba(0,0,0,0.4); color: #fff; border: none;
-  font-size: 24px; cursor: pointer; opacity: 0; transition: all 0.2s; z-index: 2;
-}
-.carousel-wrap:hover .car-btn { opacity: 1; }
-.car-btn.prev { left: 12px; }
-.car-btn.next { right: 12px; }
-.car-btn:hover { background: rgba(0,0,0,0.6); }
-
-.car-dots { position: absolute; bottom: 10px; right: 28px; display: flex; gap: 5px; z-index: 2; }
-.dot {
-  width: 7px; height: 7px; border-radius: 50%;
-  background: rgba(255,255,255,0.4); cursor: pointer; transition: all 0.2s;
-}
-.dot.active { background: #00ccaa; width: 20px; border-radius: 4px; }
-
-/* 右推荐 — 填满整个高度 */
-.recommend-section {
-  flex: 1; min-width: 0; height: 100%;
-  display: flex; flex-direction: column;
-  background: #fff; border-radius: 12px; padding: 16px;
-  box-shadow: 0 1px 6px rgba(0,0,0,0.06);
-}
-.section-title { font-size: 16px; font-weight: 700; color: #1a1a1a; margin-bottom: 10px; }
-
-.recommend-list {
-  display: flex; flex-direction: column; gap: 6px;
-  flex: 1; overflow-y: auto;
-}
-.recommend-item {
-  display: flex; gap: 10px; align-items: center;
-  padding: 6px 8px; border-radius: 8px; cursor: pointer; transition: background 0.15s;
-}
-.recommend-item:hover { background: #f5f8fa; }
-
-.rec-rank {
-  width: 22px; text-align: center; font-weight: 700; font-size: 14px; color: #aaa; flex-shrink: 0;
-}
-.rec-rank.top { color: #ff6b00; }
-
-.rec-cover {
-  width: 100px; height: 62px; border-radius: 6px; overflow: hidden; flex-shrink: 0; background: #f0f0f0;
-}
-.rec-cover img { width: 100%; height: 100%; object-fit: cover; }
-
-.rec-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.rec-title {
-  font-size: 13px; font-weight: 600; color: #333;
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.4;
-}
-.rec-views { font-size: 11px; color: #999; }
-
-/* 全部视频 */
-.all-section {}
-.loading, .empty { text-align: center; padding: 40px 0; color: #999; }
-
+/* 视频网格 */
 .video-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 20px;
 }
 .video-card {
-  cursor: pointer; border-radius: 10px; overflow: hidden;
-  background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,0.04); transition: all 0.2s;
+  cursor: pointer; border-radius: var(--radius-lg); overflow: hidden;
+  background: var(--white); box-shadow: var(--shadow); transition: all 0.3s var(--ease);
+  border: 1px solid var(--border-light);
 }
-.video-card:hover { transform: translateY(-3px); box-shadow: 0 8px 24px rgba(0,0,0,0.1); }
+.video-card:hover {
+  transform: translateY(-4px); box-shadow: var(--shadow-lg);
+  border-color: rgba(0, 184, 217, 0.2);
+}
 
-.card-cover { position: relative; padding-top: 56.25%; overflow: hidden; background: #f0f0f0; }
-.card-cover img { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; }
+.card-cover { position: relative; padding-top: 56.25%; overflow: hidden; background: var(--bg); }
+.card-cover img { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; transition: transform 0.4s var(--ease); }
+.video-card:hover .card-cover img { transform: scale(1.05); }
 .card-duration {
-  position: absolute; bottom: 5px; right: 5px;
-  background: rgba(0,0,0,0.7); color: #fff; padding: 2px 6px; border-radius: 4px; font-size: 11px;
+  position: absolute; bottom: 6px; right: 6px;
+  background: rgba(6, 10, 20, 0.75); color: #fff; padding: 2px 8px; border-radius: 6px; font-size: 11px;
+  backdrop-filter: blur(4px);
 }
 .card-tag {
-  position: absolute; top: 5px; left: 5px;
-  padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 500; color: #fff;
+  position: absolute; top: 8px; left: 8px;
+  padding: 3px 10px; border-radius: 6px; font-size: 11px; font-weight: 600; color: #fff;
 }
-.card-info { padding: 10px 12px; }
+.card-info { padding: 14px 16px; }
 .card-title {
-  font-size: 14px; font-weight: 600; color: #333; margin-bottom: 4px;
+  font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 8px;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  line-height: 1.5;
 }
-.card-meta { font-size: 12px; color: #999; display: flex; gap: 4px; align-items: center; }
-.dot { color: #ddd; }
+.card-meta { font-size: 12px; color: var(--text-muted); display: flex; gap: 4px; align-items: center; }
+.card-meta span { display: flex; align-items: center; gap: 2px; }
+.meta-dot { color: var(--border); }
 
 @media (max-width: 768px) {
-  .top-row { flex-direction: column; }
+  .page-header { flex-direction: column; gap: 16px; padding: 24px 0 16px; }
+  .top-row { flex-direction: column; height: auto; }
+  .carousel-section { height: 240px; }
+  .recommend-section { height: auto; }
   .videos-page { padding: 0 12px; }
-  .video-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+  .video-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
   .slide-title { font-size: 18px; }
-  .slide-desc { display: none; }
+  .header-actions { width: 100%; flex-wrap: wrap; }
+  .search-input { width: 140px; }
+  .search-input:focus { width: 160px; }
 }
 </style>

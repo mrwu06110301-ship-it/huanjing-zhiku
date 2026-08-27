@@ -8,6 +8,7 @@ import { getTools } from "@/api/tool";
 import { getMessages } from "@/api/message";
 import { getFAQs } from "@/api/faq";
 import type { ArticleListOut, VideoOut, StandardOut, ToolOut } from "@/types";
+import Icon from "@/components/Icon.vue";
 
 const router = useRouter();
 const latestArticles = ref<ArticleListOut[]>([]);
@@ -16,7 +17,7 @@ const standards = ref<StandardOut[]>([]);
 const tools = ref<ToolOut[]>([]);
 const loading = ref(true);
 
-// 动画统计数值 — 扩展为 6 项
+// 动画统计数值
 const animatedStats = ref([0, 0, 0, 0, 0, 0]);
 const targetStats = ref([0, 0, 0, 0, 0, 0]);
 
@@ -75,50 +76,63 @@ function animateNumbers() {
   }, stepTime);
 }
 
+// 统计数据（简化版，在 Hero 右侧展示）
 const stats = computed(() => [
-  { label: "技术干货", value: animatedStats.value[0], icon: "📄", suffix: "篇", desc: "深度技术文章与案例分享" },
-  { label: "精品课程", value: animatedStats.value[1], icon: "🎬", suffix: "节", desc: "现场实操与技术讲解" },
-  { label: "标准规范", value: animatedStats.value[2], icon: "📊", suffix: "项", desc: "权威方法标准与解读" },
-  { label: "专业工具", value: animatedStats.value[3], icon: "⚡", suffix: "个", desc: "采样计算与数据转换" },
-  { label: "维保方案", value: animatedStats.value[4], icon: "🛠️", suffix: "条", desc: "设备维护与现场问题" },
-  { label: "用户反馈", value: animatedStats.value[5], icon: "💡", suffix: "条", desc: "留言互动与答疑解惑" },
+  { label: "技术干货", value: animatedStats.value[0], icon: "doc", suffix: "篇" },
+  { label: "精品课程", value: animatedStats.value[1], icon: "play", suffix: "节" },
+  { label: "标准规范", value: animatedStats.value[2], icon: "standard", suffix: "项" },
+  { label: "专业工具", value: animatedStats.value[3], icon: "calculator", suffix: "个" },
+  { label: "维保方案", value: animatedStats.value[4], icon: "wrench", suffix: "条" },
+  { label: "用户反馈", value: animatedStats.value[5], icon: "message", suffix: "条" },
 ]);
+
+function getToolIcon(slug: string): string {
+  const map: Record<string, string> = {
+    "atmospheric-stability": "trendUp",
+    "unit-converter": "layers",
+    "air-sampling-model": "flame",
+    "pollution-source-model": "fire",
+    "doas-model": "beaker",
+    "flue-sampling": "filter",
+  };
+  return map[slug] || "tool";
+}
 
 const modules = [
   {
     title: "技术论坛",
     desc: "数智化畅享、案例分享、技术探讨",
-    icon: "💬",
+    icon: "forum",
     path: "/forum",
-    gradient: "linear-gradient(135deg, #0044cc, #0066ff, #3399ff)",
+    gradient: "linear-gradient(135deg, #0099b8, #00b8d9, #5b7cfa)",
   },
   {
     title: "学习视频",
     desc: "知识科普、实操演示、技术探讨",
-    icon: "🎬",
+    icon: "video",
     path: "/videos",
-    gradient: "linear-gradient(135deg, #009977, #00ccaa, #00eebb)",
+    gradient: "linear-gradient(135deg, #00b894, #00e6a8, #00f5b8)",
   },
   {
     title: "方法标准",
     desc: "标准文档、标准解读、选型手册",
-    icon: "📋",
+    icon: "standard",
     path: "/standards",
-    gradient: "linear-gradient(135deg, #cc7700, #ff9900, #ffbb33)",
+    gradient: "linear-gradient(135deg, #d97706, #f59e0b, #fbbf24)",
   },
   {
     title: "常见问题",
     desc: "现场问题、设备维护、用户答疑",
-    icon: "❓",
+    icon: "faq",
     path: "/faq",
-    gradient: "linear-gradient(135deg, #cc2233, #e74c3c, #ff6b6b)",
+    gradient: "linear-gradient(135deg, #dc2626, #ef4444, #f87171)",
   },
   {
     title: "常用工具",
     desc: "采样模型、单位换算、布点计算",
-    icon: "🧮",
+    icon: "tool",
     path: "/tools",
-    gradient: "linear-gradient(135deg, #7733aa, #9b59b6, #bb7dd4)",
+    gradient: "linear-gradient(135deg, #7c3aed, #8b5cf6, #a78bfa)",
   },
 ];
 </script>
@@ -128,46 +142,51 @@ const modules = [
     <!-- Hero 区域 -->
     <section class="hero">
       <div class="hero-grid-bg"></div>
+      <div class="hero-glow"></div>
       <div class="hero-particles">
         <div class="particle" v-for="i in 20" :key="i" :style="{ '--delay': i * 0.5 + 's', '--x': (i * 7) % 100 + '%' }"></div>
       </div>
       <div class="hero-content">
-        <div class="hero-badge">🔬 环境监测技术平台</div>
+        <div class="hero-badge">
+          <Icon name="atom" :size="14" />
+          <span>环境监测技术平台</span>
+        </div>
         <h1 class="hero-title">产品小吴知识库</h1>
         <p class="hero-slogan">让现场监测，触手可感</p>
         <p class="hero-desc">
           聚焦环境监测领域，提供技术交流、学习视频、方法标准、现场问题解决方案与专业计算工具
         </p>
         <div class="hero-actions">
-          <router-link to="/forum" class="hero-btn primary">进入论坛</router-link>
-          <router-link to="/tools" class="hero-btn outline">使用工具</router-link>
+          <router-link to="/forum" class="hero-btn primary">
+            <Icon name="forum" :size="18" />
+            <span>进入论坛</span>
+          </router-link>
+          <router-link to="/tools" class="hero-btn outline">
+            <Icon name="tool" :size="18" />
+            <span>使用工具</span>
+          </router-link>
         </div>
       </div>
 
-      <!-- 统计卡片 — 嵌入 Hero 右侧 -->
+      <!-- Hero 右侧统计卡片 - 2x3 紧凑网格 -->
       <div class="hero-stats">
         <div class="stats-glass">
-          <div class="stat-row" v-for="(s, i) in stats" :key="s.label" :style="{ '--i': i }">
-            <div class="stat-icon-wrap">
-              <span class="stat-icon">{{ s.icon }}</span>
-            </div>
-            <div class="stat-body">
-              <span class="stat-value">{{ s.value }}<small>{{ s.suffix }}</small></span>
-              <span class="stat-label">{{ s.label }}</span>
+          <div class="stats-label">平台数据</div>
+          <div class="stats-grid">
+            <div class="stat-item" v-for="(s, i) in stats" :key="s.label" :style="{ '--i': i }">
+              <div class="stat-icon">
+                <Icon :name="s.icon" :size="20" />
+              </div>
+              <div class="stat-val">{{ s.value.toLocaleString() }}</div>
+              <div class="stat-unit">{{ s.suffix }}</div>
+              <div class="stat-label">{{ s.label }}</div>
             </div>
           </div>
         </div>
       </div>
-
-      <div class="hero-visual">
-        <div class="orbit orbit-1"><div class="orbit-dot"></div></div>
-        <div class="orbit orbit-2"><div class="orbit-dot"></div></div>
-        <div class="orbit orbit-3"><div class="orbit-dot"></div></div>
-        <div class="center-glow"></div>
-      </div>
     </section>
 
-    <!-- 功能模块 — 圆角大图标横幅 -->
+    <!-- 功能模块 -->
     <section class="modules-section">
       <h2 class="section-title">探索功能</h2>
       <div class="modules-grid">
@@ -179,11 +198,14 @@ const modules = [
           :style="{ '--card-gradient': m.gradient }"
         >
           <div class="module-icon-bg" :style="{ background: m.gradient }">
-            <span class="module-icon">{{ m.icon }}</span>
+            <Icon :name="m.icon" :size="36" :stroke="1.8" class="module-icon" />
           </div>
           <div class="module-body">
             <h3>{{ m.title }}</h3>
             <p>{{ m.desc }}</p>
+          </div>
+          <div class="module-arrow">
+            <Icon name="arrowRight" :size="18" />
           </div>
           <div class="module-shimmer"></div>
         </div>
@@ -207,8 +229,14 @@ const modules = [
           <h3>{{ article.title }}</h3>
           <p>{{ article.summary }}</p>
           <div class="article-footer">
-            <span>{{ article.author_name }}</span>
-            <span>👁 {{ article.view_count }}</span>
+            <span class="article-author">
+              <Icon name="user" :size="13" />
+              {{ article.author_name }}
+            </span>
+            <span class="article-views">
+              <Icon name="eye" :size="13" />
+              {{ article.view_count }}
+            </span>
           </div>
         </div>
       </div>
@@ -224,7 +252,9 @@ const modules = [
           class="tool-card"
           @click="router.push(`/tools/${tool.slug}`)"
         >
-          <span class="tool-icon">{{ tool.icon }}</span>
+          <div class="tool-icon-wrap">
+            <Icon :name="getToolIcon(tool.slug)" :size="28" />
+          </div>
           <h4>{{ tool.name }}</h4>
           <p>{{ tool.description }}</p>
           <span class="tool-badge">{{ tool.category }}</span>
@@ -247,24 +277,25 @@ const modules = [
 
 .loading-overlay {
   position: fixed; inset: 0;
-  background: rgba(255, 255, 255, 0.8);
+  background: rgba(240, 244, 248, 0.85);
+  backdrop-filter: blur(4px);
   display: flex; align-items: center; justify-content: center;
   z-index: 1000;
 }
 .loading-spinner {
-  width: 40px; height: 40px;
-  border: 3px solid #f3f3f3;
-  border-top: 3px solid #0066cc;
+  width: 44px; height: 44px;
+  border: 3px solid rgba(0, 184, 217, 0.15);
+  border-top: 3px solid var(--primary);
   border-radius: 50%;
-  animation: spin 1s linear infinite;
+  animation: spin 0.8s linear infinite;
 }
 
 /* ======== Hero ======== */
 .hero {
   position: relative;
-  background: linear-gradient(160deg, #070f1c 0%, #0a1a33 35%, #0d2b55 70%, #0a1a33 100%);
+  background: var(--gradient-dark);
   color: #fff;
-  padding: 80px 40px 60px;
+  padding: 72px 40px 56px;
   overflow: hidden;
   min-height: 520px;
   display: flex;
@@ -272,16 +303,26 @@ const modules = [
   gap: 40px;
 }
 
-/* 蓝色网格背景 */
+/* 网格背景 */
 .hero-grid-bg {
   position: absolute; inset: 0;
   background-image:
-    linear-gradient(rgba(0, 204, 170, 0.04) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(0, 204, 170, 0.04) 1px, transparent 1px);
-  background-size: 60px 60px;
-  mask-image: radial-gradient(ellipse at 50% 30%, black 30%, transparent 70%);
-  -webkit-mask-image: radial-gradient(ellipse at 50% 30%, black 30%, transparent 70%);
+    linear-gradient(rgba(0, 230, 168, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 230, 168, 0.04) 1px, transparent 1px);
+  background-size: 50px 50px;
+  mask-image: radial-gradient(ellipse at 50% 30%, black 20%, transparent 70%);
+  -webkit-mask-image: radial-gradient(ellipse at 50% 30%, black 20%, transparent 70%);
   pointer-events: none;
+}
+
+/* 光晕 */
+.hero-glow {
+  position: absolute;
+  width: 600px; height: 600px;
+  top: -200px; right: -100px;
+  background: radial-gradient(circle, rgba(0, 184, 217, 0.12), transparent 60%);
+  pointer-events: none;
+  animation: pulse 8s ease-in-out infinite;
 }
 
 .hero-particles {
@@ -291,7 +332,7 @@ const modules = [
 .particle {
   position: absolute;
   width: 3px; height: 3px;
-  background: rgba(0, 204, 170, 0.5);
+  background: rgba(0, 230, 168, 0.5);
   border-radius: 50%;
   top: -10px; left: var(--x);
   animation: fall 8s linear infinite;
@@ -307,38 +348,36 @@ const modules = [
 .hero-content {
   position: relative; z-index: 2;
   flex: 1; max-width: 520px;
-  animation: fadeInUp 0.8s ease-out;
-}
-@keyframes fadeInUp {
-  from { opacity: 0; transform: translateY(30px); }
-  to { opacity: 1; transform: translateY(0); }
+  animation: fadeInUp 0.8s var(--ease);
 }
 
 .hero-badge {
-  display: inline-block; padding: 6px 16px;
-  background: rgba(0, 204, 170, 0.12);
-  border: 1px solid rgba(0, 204, 170, 0.25);
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 7px 18px;
+  background: rgba(0, 230, 168, 0.1);
+  border: 1px solid rgba(0, 230, 168, 0.2);
   border-radius: 20px;
-  font-size: 13px; color: #00ccaa;
-  margin-bottom: 20px;
+  font-size: 13px; color: #00e6a8;
+  margin-bottom: 24px;
   animation: fadeIn 0.6s ease-out 0.2s both;
 }
+
 .hero-title {
-  font-size: 48px; font-weight: 800;
-  letter-spacing: 6px; margin-bottom: 12px;
-  background: linear-gradient(90deg, #00ccaa, #3399ff, #66bbff);
+  font-size: 52px; font-weight: 800;
+  letter-spacing: 4px; margin-bottom: 12px;
+  background: linear-gradient(90deg, #00e6a8, #00b8d9, #5b7cfa);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   animation: fadeIn 0.6s ease-out 0.4s both;
 }
 .hero-slogan {
-  font-size: 22px; color: rgba(255,255,255,0.8);
-  margin-bottom: 16px; font-weight: 300; letter-spacing: 4px;
+  font-size: 22px; color: rgba(255,255,255,0.75);
+  margin-bottom: 16px; font-weight: 300; letter-spacing: 3px;
   animation: fadeIn 0.6s ease-out 0.6s both;
 }
 .hero-desc {
-  font-size: 15px; color: rgba(255,255,255,0.5);
-  line-height: 1.7; margin-bottom: 32px;
+  font-size: 15px; color: rgba(255,255,255,0.45);
+  line-height: 1.8; margin-bottom: 32px;
   animation: fadeIn 0.6s ease-out 0.8s both;
 }
 
@@ -347,118 +386,117 @@ const modules = [
   animation: fadeIn 0.6s ease-out 1s both;
 }
 .hero-btn {
-  padding: 12px 32px; border-radius: 8px;
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 12px 28px; border-radius: 10px;
   font-size: 15px; font-weight: 600; text-decoration: none;
-  transition: all 0.3s;
+  transition: all 0.3s var(--ease);
 }
 .hero-btn.primary {
-  background: linear-gradient(135deg, #00ccaa, #0099cc);
+  background: var(--gradient-primary);
   color: #fff;
+  box-shadow: 0 4px 20px rgba(0, 184, 217, 0.3);
 }
 .hero-btn.primary:hover {
-  box-shadow: 0 4px 24px rgba(0,204,170,0.4);
   transform: translateY(-2px);
+  box-shadow: 0 8px 28px rgba(0, 184, 217, 0.45);
 }
 .hero-btn.outline {
-  border: 1px solid rgba(255,255,255,0.3);
-  color: rgba(255,255,255,0.9);
+  border: 1px solid rgba(255,255,255,0.2);
+  color: rgba(255,255,255,0.85);
 }
 .hero-btn.outline:hover {
-  border-color: #fff;
-  background: rgba(255,255,255,0.08);
+  border-color: rgba(0, 230, 168, 0.5);
+  background: rgba(0, 230, 168, 0.05);
+  color: #00e6a8;
 }
 
-/* ======== Hero 右侧统计玻璃卡片 ======== */
+/* ======== Hero 右侧统计 ======== */
 .hero-stats {
   position: relative; z-index: 2;
-  flex-shrink: 0; width: 380px;
+  flex-shrink: 0; width: 360px;
+  margin-right: -40px;
+  align-self: center;
   animation: fadeIn 0.8s ease-out 0.6s both;
 }
 .stats-glass {
   background: rgba(255,255,255,0.04);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255,255,255,0.06);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255,255,255,0.08);
   border-radius: 16px;
-  padding: 16px;
+  padding: 16px 14px 14px;
+}
+.stats-label {
+  text-align: center;
+  font-size: 11px;
+  letter-spacing: 4px;
+  color: rgba(255,255,255,0.25);
+  margin-bottom: 12px;
+}
+.stats-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 6px;
 }
-.stat-row {
-  display: flex; align-items: center; gap: 12px;
-  padding: 10px 12px;
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 10px 6px 8px;
   border-radius: 10px;
-  transition: all 0.2s;
+  transition: all 0.25s var(--ease);
   cursor: default;
-  animation: statSlideIn 0.5s ease-out both;
-  animation-delay: calc(0.6s + var(--i) * 0.08s);
+  animation: statIn 0.5s ease-out both;
+  animation-delay: calc(0.6s + var(--i) * 0.06s);
 }
-.stat-row:hover {
-  background: rgba(0, 204, 170, 0.06);
+.stat-item:hover {
+  background: rgba(0, 230, 168, 0.06);
+  transform: translateY(-2px);
 }
-@keyframes statSlideIn {
-  from { opacity: 0; transform: translateY(10px); }
+@keyframes statIn {
+  from { opacity: 0; transform: translateY(12px); }
   to { opacity: 1; transform: translateY(0); }
 }
-.stat-icon-wrap {
-  width: 44px; height: 44px;
-  display: flex; align-items: center; justify-content: center;
-  background: rgba(0, 204, 170, 0.1);
-  border-radius: 10px;
-  flex-shrink: 0;
-}
 .stat-icon {
-  font-size: 22px; line-height: 1;
+  width: 36px; height: 36px;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0, 184, 217, 0.08);
+  border: 1px solid rgba(0, 184, 217, 0.12);
+  border-radius: 10px;
+  color: #00b8d9;
+  transition: all 0.25s var(--ease);
+  margin-bottom: 4px;
 }
-.stat-body { flex: 1; min-width: 0; }
-.stat-value {
-  font-size: 20px; font-weight: 700;
-  font-family: "JetBrains Mono", "Cascadia Code", monospace;
-  color: #00ccaa;
-  line-height: 1.3; display: block;
+.stat-item:hover .stat-icon {
+  background: rgba(0, 230, 168, 0.12);
+  border-color: rgba(0, 230, 168, 0.25);
+  color: #00e6a8;
+  box-shadow: 0 0 12px rgba(0, 230, 168, 0.08);
 }
-.stat-value small {
-  font-size: 12px; font-weight: 400;
-  color: rgba(255,255,255,0.35); margin-left: 2px;
+.stat-val {
+  font-size: 22px;
+  font-weight: 800;
+  font-family: "JetBrains Mono", "Cascadia Code", "SF Mono", "Consolas", monospace;
+  color: #00e6a8;
+  line-height: 1.2;
+  transition: color 0.25s var(--ease);
 }
-.stat-label { font-size: 13px; color: rgba(255,255,255,0.6); display: block; }
+.stat-item:hover .stat-val {
+  color: #fff;
+  text-shadow: 0 0 10px rgba(0, 230, 168, 0.4);
+}
+.stat-unit {
+  font-size: 11px;
+  font-weight: 400;
+  color: rgba(255,255,255,0.2);
+}
+.stat-label {
+  font-size: 11px;
+  color: rgba(255,255,255,0.45);
+}
 
-/* ======== 轨道动画 ======== */
-.hero-visual {
-  position: absolute; right: 5%; top: 50%;
-  transform: translateY(-50%);
-  width: 280px; height: 280px;
-}
-.orbit {
-  position: absolute;
-  border: 1px solid rgba(0,204,170,0.1);
-  border-radius: 50%;
-  animation: spin 20s linear infinite;
-}
-.orbit-1 { width: 280px; height: 280px; top: 0; left: 0; }
-.orbit-2 { width: 200px; height: 200px; top: 40px; left: 40px; animation-duration: 15s; animation-direction: reverse; border-color: rgba(0,102,204,0.1); }
-.orbit-3 { width: 120px; height: 120px; top: 80px; left: 80px; animation-duration: 10s; }
-
-.orbit-dot {
-  position: absolute; width: 6px; height: 6px;
-  background: #00ccaa; border-radius: 50%;
-  top: -3px; left: 50%; transform: translateX(-50%);
-  box-shadow: 0 0 8px rgba(0,204,170,0.6);
-}
-.center-glow {
-  position: absolute;
-  width: 50px; height: 50px;
-  top: 115px; left: 115px;
-  background: radial-gradient(circle, rgba(0,204,170,0.25), transparent 70%);
-  border-radius: 50%;
-  animation: pulse 3s ease-in-out infinite;
-}
-@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-@keyframes pulse { 0%,100% { opacity: 0.5; transform: scale(1); } 50% { opacity: 1; transform: scale(1.15); } }
-@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-
-/* ======== 功能模块 — 大图标渐变卡片 ======== */
+/* ======== 功能模块 ======== */
 .modules-section,
 .articles-section,
 .tools-section {
@@ -470,14 +508,10 @@ const modules = [
 .section-title {
   font-size: 24px; font-weight: 700;
   margin-bottom: 24px;
-  padding-left: 12px;
+  padding-left: 14px;
   border-left: 4px solid var(--primary);
-  background: linear-gradient(90deg, var(--primary), #3399ff);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
-.section-title::before {
-  content: none;
+  color: var(--text);
+  position: relative;
 }
 
 .modules-grid {
@@ -488,23 +522,22 @@ const modules = [
 
 .module-card {
   position: relative;
-  border-radius: 16px;
+  border-radius: 14px;
   padding: 0;
   cursor: pointer;
-  transition: all 0.35s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-  box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+  transition: all 0.35s var(--ease);
+  box-shadow: var(--shadow);
   overflow: hidden;
   background: #fff;
 }
 .module-card:hover {
-  transform: translateY(-8px);
-  box-shadow: 0 16px 48px rgba(0,0,0,0.12);
+  transform: translateY(-6px);
+  box-shadow: var(--shadow-lg);
 }
 
-/* 图标横幅 — 平铺占满顶部 */
 .module-icon-bg {
   width: 100%;
-  height: 120px;
+  height: 110px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -514,35 +547,48 @@ const modules = [
 .module-icon-bg::after {
   content: '';
   position: absolute; inset: 0;
-  background: linear-gradient(180deg, transparent 50%, rgba(0,0,0,0.08) 100%);
+  background: linear-gradient(180deg, transparent 50%, rgba(0,0,0,0.1) 100%);
   pointer-events: none;
 }
 .module-icon {
-  font-size: 52px;
-  filter: drop-shadow(0 4px 8px rgba(0,0,0,0.2));
-  transition: transform 0.3s;
+  color: #fff;
+  filter: drop-shadow(0 4px 8px rgba(0,0,0,0.15));
+  transition: transform 0.35s var(--ease);
 }
 .module-card:hover .module-icon {
-  transform: scale(1.15);
+  transform: scale(1.2);
 }
 
 .module-body {
-  padding: 16px 20px 20px;
+  padding: 14px 18px 16px;
   position: relative;
 }
 .module-body h3 {
-  font-size: 16px; font-weight: 700; margin-bottom: 6px;
+  font-size: 16px; font-weight: 700; margin-bottom: 4px;
 }
 .module-body p {
   font-size: 13px; color: var(--text-light); line-height: 1.5;
 }
 
-/* 流光 shimmer 效果 */
+.module-arrow {
+  position: absolute;
+  right: 16px; bottom: 16px;
+  color: var(--text-muted);
+  opacity: 0;
+  transform: translateX(-8px);
+  transition: all 0.3s var(--ease);
+}
+.module-card:hover .module-arrow {
+  opacity: 1;
+  transform: translateX(0);
+  color: var(--primary);
+}
+
+/* 流光效果 */
 .module-shimmer {
   position: absolute; top: 0; left: -100%;
   width: 60%; height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent);
-  transition: none;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
   pointer-events: none;
 }
 .module-card:hover .module-shimmer {
@@ -561,29 +607,40 @@ const modules = [
 }
 .article-card {
   background: #fff;
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
   padding: 20px;
   cursor: pointer;
-  transition: all 0.3s;
+  transition: all 0.3s var(--ease);
   box-shadow: var(--shadow);
+  border: 1px solid var(--border-light);
 }
 .article-card:hover {
-  box-shadow: 0 8px 30px rgba(0,0,0,0.1);
+  box-shadow: var(--shadow-lg);
   transform: translateY(-4px);
+  border-color: rgba(0, 184, 217, 0.2);
 }
 .article-meta {
   display: flex; justify-content: space-between;
-  margin-bottom: 8px; font-size: 12px; color: var(--text-light);
+  margin-bottom: 10px; font-size: 12px;
 }
-.article-category { color: var(--primary); font-weight: 500; }
-.article-card h3 { font-size: 16px; margin-bottom: 8px; line-height: 1.4; }
+.article-category {
+  color: var(--primary); font-weight: 600;
+  padding: 2px 10px; background: var(--primary-light);
+  border-radius: 4px;
+}
+.article-date { color: var(--text-muted); }
+.article-card h3 { font-size: 16px; margin-bottom: 8px; line-height: 1.5; font-weight: 600; }
 .article-card p {
   font-size: 13px; color: var(--text-light); line-height: 1.6;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
 .article-footer {
   display: flex; justify-content: space-between;
-  margin-top: 12px; font-size: 12px; color: var(--text-light);
+  margin-top: 14px; font-size: 12px; color: var(--text-muted);
+  padding-top: 12px; border-top: 1px solid var(--border-light);
+}
+.article-author, .article-views {
+  display: flex; align-items: center; gap: 4px;
 }
 
 /* ======== 工具卡片 ======== */
@@ -594,43 +651,55 @@ const modules = [
 }
 .tool-card {
   background: #fff;
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
   padding: 20px; text-align: center;
-  cursor: pointer; transition: all 0.3s;
+  cursor: pointer; transition: all 0.3s var(--ease);
   box-shadow: var(--shadow);
+  border: 1px solid var(--border-light);
 }
 .tool-card:hover {
   transform: translateY(-4px);
-  box-shadow: 0 8px 24px rgba(0,0,0,0.1);
+  box-shadow: var(--shadow-lg);
+  border-color: rgba(0, 184, 217, 0.2);
 }
-.tool-icon { font-size: 36px; display: block; margin-bottom: 12px; transition: transform 0.3s; }
-.tool-card:hover .tool-icon { transform: scale(1.2); }
-.tool-card h4 { font-size: 14px; margin-bottom: 4px; }
+.tool-icon-wrap {
+  width: 56px; height: 56px;
+  margin: 0 auto 12px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--primary-light);
+  border-radius: 14px;
+  color: var(--primary);
+  transition: all 0.3s var(--ease);
+}
+.tool-card:hover .tool-icon-wrap {
+  background: var(--gradient-primary);
+  color: #fff;
+  transform: scale(1.1);
+  box-shadow: 0 4px 16px var(--primary-glow);
+}
+.tool-card h4 { font-size: 14px; margin-bottom: 4px; font-weight: 600; }
 .tool-card p { font-size: 12px; color: var(--text-light); }
 .tool-badge {
   display: inline-block; margin-top: 8px;
-  padding: 2px 8px; background: var(--primary-light);
-  color: var(--primary); border-radius: 4px; font-size: 11px;
+  padding: 2px 10px; background: var(--bg-soft);
+  color: var(--text-light); border-radius: 4px; font-size: 11px;
+  border: 1px solid var(--border);
 }
 
 /* ======== 响应式 ======== */
 @media (max-width: 1024px) {
-  .hero { flex-direction: column; align-items: center; text-align: center; gap: 24px; }
+  .hero { flex-direction: column; align-items: center; text-align: center; gap: 32px; min-height: auto; padding-bottom: 48px; }
   .hero-content { max-width: 100%; }
   .hero-actions { justify-content: center; }
-  .hero-stats { width: 100%; max-width: 420px; }
-  .hero-visual { display: none; }
+  .hero-stats { width: 100%; max-width: 460px; margin-right: 0; align-self: auto; }
 }
 @media (max-width: 768px) {
   .hero { padding: 48px 20px 40px; min-height: auto; }
-  .hero-title { font-size: 32px; }
+  .hero-title { font-size: 36px; }
   .hero-slogan { font-size: 18px; }
-  .stat-value { font-size: 18px; }
-  .stats-glass { padding: 12px; gap: 6px; }
-  .stat-row { padding: 8px 10px; }
-  .stat-icon-wrap { width: 36px; height: 36px; }
-  .stat-icon { font-size: 18px; }
-  .module-icon-bg { height: 100px; }
-  .module-icon { font-size: 40px; }
+  .stat-val { font-size: 24px; }
+  .stat-label { font-size: 14px; }
+  .stat-icon { width: 40px; height: 40px; }
+  .module-icon-bg { height: 90px; }
 }
 </style>

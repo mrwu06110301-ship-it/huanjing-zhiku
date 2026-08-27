@@ -3,6 +3,7 @@ import { ref, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { getTools } from "@/api/tool";
 import type { ToolOut } from "@/types";
+import Icon from "@/components/Icon.vue";
 
 const router = useRouter();
 const tools = ref<ToolOut[]>([]);
@@ -18,6 +19,18 @@ async function loadTools() {
   categories.value = Array.from(cats);
 }
 
+function getToolIcon(slug: string): string {
+  const map: Record<string, string> = {
+    "atmospheric-stability": "trendUp",
+    "unit-converter": "layers",
+    "air-sampling-model": "flame",
+    "pollution-source-model": "fire",
+    "doas-model": "beaker",
+    "flue-sampling": "filter",
+  };
+  return map[slug] || "tool";
+}
+
 onMounted(() => {
   loadTools();
 });
@@ -30,7 +43,10 @@ function goTool(slug: string) {
 <template>
   <div class="page">
     <div class="page-header">
-      <h1>🧮 常用工具</h1>
+      <div class="page-title-icon">
+        <Icon name="tool" :size="26" />
+      </div>
+      <h1>常用工具</h1>
       <p>大气监测采样模型与计算工具</p>
     </div>
 
@@ -54,11 +70,13 @@ function goTool(slug: string) {
         class="tool-card"
         @click="goTool(t.slug)"
       >
-        <div class="tool-icon">{{ t.icon }}</div>
+        <div class="tool-icon">
+          <Icon :name="getToolIcon(t.slug)" :size="40" />
+        </div>
         <h3>{{ t.name }}</h3>
         <p>{{ t.description }}</p>
         <span class="tool-category">{{ t.category }}</span>
-        <span class="tool-arrow">→</span>
+        <span class="tool-arrow"><Icon name="arrowRight" :size="16" /></span>
       </div>
       <el-empty v-if="tools.length === 0" description="暂无工具" />
     </div>
@@ -71,17 +89,36 @@ function goTool(slug: string) {
 .page-header h1 { font-size: 28px; font-weight: 700; margin-bottom: 8px; }
 .page-header p { color: var(--text-light); font-size: 15px; }
 
-.category-tabs { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
-.tab { padding: 8px 20px; border-radius: 20px; cursor: pointer; font-size: 14px; background: var(--white); border: 1px solid var(--border); transition: all 0.2s; }
+.category-tabs { display: flex; gap: 8px; margin-bottom: 24px; flex-wrap: wrap; }
+.tab {
+  padding: 8px 20px; border-radius: 20px; cursor: pointer; font-size: 14px;
+  background: var(--white); border: 1px solid var(--border); transition: all 0.2s var(--ease);
+}
 .tab:hover { border-color: var(--primary); color: var(--primary); }
-.tab.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+.tab.active { background: var(--gradient-primary); color: #fff; border-color: transparent; font-weight: 600; }
 
-.tool-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 20px; }
-.tool-card { background: var(--white); border-radius: var(--radius); padding: 24px; text-align: center; cursor: pointer; transition: all 0.25s; box-shadow: var(--shadow); position: relative; }
-.tool-card:hover { transform: translateY(-4px); box-shadow: 0 8px 30px rgba(0,0,0,0.12); }
-.tool-icon { font-size: 40px; display: block; margin-bottom: 12px; }
-.tool-card h3 { font-size: 16px; margin-bottom: 8px; }
+.tool-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 20px; }
+.tool-card {
+  background: var(--white); border-radius: var(--radius-lg); padding: 28px 24px; text-align: center;
+  cursor: pointer; transition: all 0.3s var(--ease); box-shadow: var(--shadow); position: relative;
+  border: 1px solid var(--border-light);
+}
+.tool-card:hover {
+  transform: translateY(-4px); box-shadow: var(--shadow-lg); border-color: rgba(0, 184, 217, 0.2);
+}
+.tool-icon { font-size: 40px; display: block; margin-bottom: 14px; transition: transform 0.3s var(--ease); }
+.tool-card:hover .tool-icon { transform: scale(1.15); }
+.tool-card h3 { font-size: 16px; margin-bottom: 8px; font-weight: 600; }
 .tool-card p { font-size: 13px; color: var(--text-light); line-height: 1.5; }
-.tool-category { display: inline-block; margin-top: 8px; padding: 2px 10px; background: var(--primary-light); color: var(--primary); border-radius: 4px; font-size: 11px; }
-.tool-arrow { position: absolute; right: 16px; bottom: 16px; color: var(--text-light); font-size: 18px; }
+.tool-category {
+  display: inline-block; margin-top: 10px;
+  padding: 3px 12px; background: var(--primary-light); color: var(--primary);
+  border-radius: 4px; font-size: 11px; font-weight: 500;
+}
+.tool-arrow {
+  position: absolute; right: 16px; bottom: 16px;
+  color: var(--text-muted); opacity: 0; transform: translateX(-8px);
+  transition: all 0.3s var(--ease);
+}
+.tool-card:hover .tool-arrow { opacity: 1; transform: translateX(0); color: var(--primary); }
 </style>

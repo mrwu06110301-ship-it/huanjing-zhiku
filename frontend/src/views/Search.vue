@@ -2,6 +2,7 @@
 import { ref, watch, onMounted } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import { globalSearch, type SearchResultItem } from "@/api/search";
+import Icon from "@/components/Icon.vue";
 
 const router = useRouter();
 const route = useRoute();
@@ -13,32 +14,17 @@ const searched = ref(false);
 let timer: ReturnType<typeof setTimeout> | null = null;
 
 onMounted(() => {
-  // 支持从 URL 参数读取搜索词
   const q = route.query.q as string;
-  if (q) {
-    query.value = q;
-    doSearch();
-  }
+  if (q) { query.value = q; doSearch(); }
 });
 
 function doSearch() {
-  if (!query.value.trim()) {
-    results.value = [];
-    searched.value = false;
-    return;
-  }
-  searching.value = true;
-  searched.value = true;
+  if (!query.value.trim()) { results.value = []; searched.value = false; return; }
+  searching.value = true; searched.value = true;
   globalSearch(query.value.trim())
-    .then((res) => {
-      results.value = res.data.items;
-    })
-    .catch(() => {
-      results.value = [];
-    })
-    .finally(() => {
-      searching.value = false;
-    });
+    .then((res) => { results.value = res.data.items; })
+    .catch(() => { results.value = []; })
+    .finally(() => { searching.value = false; });
 }
 
 watch(query, () => {
@@ -46,13 +32,11 @@ watch(query, () => {
   timer = setTimeout(doSearch, 400);
 });
 
-function goResult(item: SearchResultItem) {
-  router.push(item.url);
-}
+function goResult(item: SearchResultItem) { router.push(item.url); }
 
-function typeIcon(type: string) {
-  const map: Record<string, string> = { article: "📄", tool: "🧮", standard: "📋", faq: "❓" };
-  return map[type] || "📌";
+function typeIcon(type: string): string {
+  const map: Record<string, string> = { article: "doc", tool: "tools", standard: "standard", faq: "faq" };
+  return map[type] || "pin";
 }
 
 function typeLabel(type: string) {
@@ -64,7 +48,7 @@ function typeLabel(type: string) {
 <template>
   <div class="search-page">
     <div class="search-header">
-      <h1 class="search-title">🔍 全局检索</h1>
+      <h1 class="search-title"><Icon name="search" :size="34" /> 全局检索</h1>
       <p class="search-subtitle">搜索文章、工具、标准和问答</p>
     </div>
 
@@ -78,7 +62,7 @@ function typeLabel(type: string) {
         @keyup.enter="doSearch"
       >
         <template #prefix>
-          <span style="font-size: 18px">🔍</span>
+          <Icon name="search" :size="20" style="opacity:0.5" />
         </template>
       </el-input>
     </div>
@@ -89,133 +73,48 @@ function typeLabel(type: string) {
     </div>
     <div v-else-if="results.length > 0" class="search-results">
       <p class="results-count">找到 {{ results.length }} 条结果</p>
-      <div
-        v-for="item in results"
-        :key="`${item.type}-${item.id}`"
-        class="result-card"
-        @click="goResult(item)"
-      >
+      <div v-for="item in results" :key="`${item.type}-${item.id}`" class="result-card" @click="goResult(item)">
         <div class="result-type">
-          <span class="type-icon">{{ typeIcon(item.type) }}</span>
+          <Icon :name="typeIcon(item.type)" :size="24" />
           <span class="type-label">{{ typeLabel(item.type) }}</span>
         </div>
         <div class="result-body">
           <h3 class="result-title">{{ item.title }}</h3>
           <p class="result-summary">{{ item.summary }}</p>
         </div>
-        <span class="result-arrow">→</span>
+        <Icon name="arrowRight" :size="18" class="result-arrow" />
       </div>
     </div>
   </div>
 </template>
 
 <style scoped>
-.search-page {
-  max-width: 800px;
-  margin: 0 auto;
-}
-
-.search-header {
-  text-align: center;
-  margin-bottom: 24px;
-}
-
-.search-title {
-  font-size: 28px;
-  font-weight: 800;
-  color: #1a1a1a;
-  margin-bottom: 8px;
-}
-
-.search-subtitle {
-  color: #888;
-  font-size: 15px;
-}
-
-.search-box {
-  margin-bottom: 24px;
-}
-
+.search-page { max-width: 800px; margin: 0 auto; padding: 24px 0; }
+.search-header { text-align: center; margin-bottom: 28px; }
+.search-title { font-size: 30px; font-weight: 800; display: flex; align-items: center; justify-content: center; gap: 10px; background: linear-gradient(135deg, var(--primary), var(--accent)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+.search-subtitle { color: var(--text-light); font-size: 15px; margin-top: 8px; }
+.search-box { margin-bottom: 24px; }
 .search-input :deep(.el-input__wrapper) {
-  border-radius: 12px;
-  padding: 4px 16px;
-  font-size: 16px;
-  box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+  border-radius: 14px; padding: 6px 18px; font-size: 16px;
+  box-shadow: var(--shadow); border: 1px solid var(--card-border);
+  transition: all 0.3s;
 }
-
-.search-status {
-  text-align: center;
-  color: #999;
-  padding: 40px 0;
-  font-size: 15px;
-}
-
-.results-count {
-  color: #888;
-  font-size: 14px;
-  margin-bottom: 16px;
-}
-
+.search-input :deep(.el-input__wrapper:hover) { border-color: var(--primary); box-shadow: 0 4px 20px rgba(0,204,170,0.1); }
+.search-status { text-align: center; color: var(--text-light); padding: 60px 0; font-size: 15px; }
+.results-count { color: var(--text-light); font-size: 14px; margin-bottom: 16px; }
 .result-card {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 16px 20px;
-  background: #fff;
-  border-radius: 10px;
-  margin-bottom: 10px;
-  box-shadow: 0 1px 6px rgba(0,0,0,0.04);
-  cursor: pointer;
-  transition: all 0.2s;
+  display: flex; align-items: center; gap: 16px; padding: 18px 20px;
+  background: var(--card-bg); border: 1px solid var(--card-border);
+  border-radius: 12px; margin-bottom: 10px; cursor: pointer;
+  transition: all 0.3s; box-shadow: var(--shadow);
 }
-
-.result-card:hover {
-  box-shadow: 0 4px 16px rgba(0,0,0,0.1);
-  transform: translateY(-1px);
-}
-
-.result-type {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  min-width: 50px;
-}
-
-.type-icon {
-  font-size: 24px;
-}
-
-.type-label {
-  font-size: 11px;
-  color: #999;
-  background: #f5f5f5;
-  padding: 2px 6px;
-  border-radius: 4px;
-}
-
-.result-body {
-  flex: 1;
-  min-width: 0;
-}
-
-.result-title {
-  font-size: 16px;
-  font-weight: 600;
-  color: #333;
-  margin-bottom: 4px;
-}
-
-.result-summary {
-  font-size: 13px;
-  color: #888;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.result-arrow {
-  color: #ccc;
-  font-size: 18px;
-}
+.result-card:hover { border-color: var(--primary); box-shadow: 0 8px 30px rgba(0,204,170,0.12); transform: translateY(-2px); }
+.result-type { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 50px; color: var(--primary); }
+.type-label { font-size: 11px; color: var(--primary); background: rgba(0,204,170,0.1); padding: 2px 8px; border-radius: 6px; font-weight: 500; }
+.result-body { flex: 1; min-width: 0; }
+.result-title { font-size: 16px; font-weight: 600; color: var(--text); margin-bottom: 4px; }
+.result-summary { font-size: 13px; color: var(--text-light); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.result-arrow { color: var(--text-light); flex-shrink: 0; transition: transform 0.2s; }
+.result-card:hover .result-arrow { transform: translateX(4px); color: var(--primary); }
+@media (max-width: 768px) { .search-page { padding: 16px; } }
 </style>
