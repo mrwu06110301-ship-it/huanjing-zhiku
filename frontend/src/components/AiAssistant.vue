@@ -331,6 +331,7 @@ function askQuick(q: string) {
 .msg-row.assistant .msg-bubble { background: var(--white, #fff); color: var(--text, #1e293b); border-bottom-left-radius: 4px; box-shadow: var(--shadow, 0 1px 3px rgba(0,0,0,0.06)); }
 
 /* ---- markdown 渲染样式（AI 消息） ---- */
+.msg-text.md { white-space: normal; }
 .msg-text.md :deep(p) { margin: 0 0 6px; }
 .msg-text.md :deep(p:last-child) { margin-bottom: 0; }
 .msg-text.md :deep(strong) { font-weight: 600; color: var(--primary, #2563eb); }
