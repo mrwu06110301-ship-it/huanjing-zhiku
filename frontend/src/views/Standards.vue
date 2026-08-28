@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from "vue";
-import { useRouter } from "vue-router";
+import { ref, onMounted, onBeforeUnmount, computed, watch } from "vue";
 import { getStandards } from "@/api/standard";
 import { getCategories } from "@/api/category";
 import type { StandardOut, CategoryOut } from "@/types";
@@ -8,7 +7,6 @@ import { useShare } from "@/composables/useShare";
 import Icon from "@/components/Icon.vue";
 
 const { share } = useShare();
-const router = useRouter();
 const standards = ref<StandardOut[]>([]);
 const categories = ref<CategoryOut[]>([]);
 const activeCat = ref<number | null>(null);
@@ -21,12 +19,17 @@ const loadingMore = ref(false);
 
 const hasMore = computed(() => standards.value.length < total.value);
 
-const filtered = computed(() => {
-  if (!searchQuery.value.trim()) return standards.value;
-  const q = searchQuery.value.trim().toLowerCase();
-  return standards.value.filter(s =>
-    s.title.toLowerCase().includes(q) || (s.description || "").toLowerCase().includes(q)
-  );
+/** 关键词防抖搜索：走后端 API 查全量，而非本地过滤 */
+let searchTimer: ReturnType<typeof setTimeout> | null = null;
+watch(searchQuery, () => {
+  if (searchTimer) clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => {
+    page.value = 1;
+    loadStandards();
+  }, 400);
+});
+onBeforeUnmount(() => {
+  if (searchTimer) clearTimeout(searchTimer);
 });
 
 async function loadStandards(append = false) {
@@ -42,6 +45,7 @@ async function loadStandards(append = false) {
       std_type: "document",
     };
     if (activeCat.value) params.category_id = activeCat.value;
+    if (searchQuery.value.trim()) params.keyword = searchQuery.value.trim();
     const res = await getStandards(params as any);
     const items = res.data.items || [];
     if (append) {
@@ -73,20 +77,12 @@ function switchCat(id: number | null) {
   loadStandards();
 }
 
-/** 混合预览路由：PDF 走站内 pdf.js（秒开），Word/Excel 等走 kkFileView */
+/** 统一走 kkFileView 在线预览（服务器已开启缓存持久化，二次预览秒开） */
 function openPdf(s: StandardOut) {
   if (!s.file_url) return;
   const absUrl = `${window.location.origin}${s.file_url}`;
-  const isPdf = /\.pdf(\?|$)/i.test(s.file_url);
-  if (isPdf) {
-    router.push({
-      name: "StandardPreview",
-      query: { url: absUrl, title: s.title },
-    });
-  } else {
-    const previewUrl = `${window.location.origin}/preview/onlinePreview?url=${encodeURIComponent(btoa(absUrl))}`;
-    window.open(previewUrl, "_blank", "noopener");
-  }
+  const previewUrl = `${window.location.origin}/preview/onlinePreview?url=${encodeURIComponent(btoa(absUrl))}`;
+  window.open(previewUrl, "_blank", "noopener");
 }
 </script>
 
@@ -116,12 +112,13 @@ function openPdf(s: StandardOut) {
       <div class="search-wrap">
         <Icon name="search" :size="15" class="search-ic" />
         <input v-model="searchQuery" placeholder="搜索标准号/名称..." class="local-search" />
+        <span v-if="searchQuery" class="search-clear" @click="searchQuery = ''">×</span>
       </div>
     </div>
 
     <div v-loading="loading" class="std-grid">
       <div
-        v-for="s in filtered"
+        v-for="s in standards"
         :key="s.id"
         class="std-card"
         @click="openPdf(s)"
@@ -173,6 +170,11 @@ function openPdf(s: StandardOut) {
   position: relative; margin-left: auto; display: flex; align-items: center;
 }
 .search-ic { position: absolute; left: 12px; color: var(--text-muted); pointer-events: none; }
+.search-clear {
+  position: absolute; right: 10px; color: var(--text-muted);
+  cursor: pointer; font-size: 16px; line-height: 1; padding: 2px;
+}
+.search-clear:hover { color: var(--primary); }
 .local-search {
   padding: 7px 14px 7px 34px; border: 1px solid var(--border); border-radius: 20px;
   font-size: 13px; outline: none; width: 170px; transition: all 0.2s; background: var(--white);
