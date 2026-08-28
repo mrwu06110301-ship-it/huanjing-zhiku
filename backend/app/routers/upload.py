@@ -70,3 +70,34 @@ async def upload_video(file: UploadFile = File(...)):
 
     url = f"/uploads/{unique_name}"
     return UploadResponse(url=url, filename=unique_name)
+
+
+FILE_TYPES = {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".zip", ".rar", ".txt"}
+FILE_MAX_SIZE = 200 * 1024 * 1024  # 200MB
+
+
+@router.post("/file", response_model=UploadResponse)
+async def upload_file(file: UploadFile = File(...)):
+    """上传通用文档文件（标准 PDF 等）"""
+    ext = os.path.splitext(file.filename or "file.pdf")[1].lower()
+    if ext not in FILE_TYPES:
+        raise HTTPException(status_code=400, detail=f"不支持的文件类型: {ext}，仅支持 {', '.join(FILE_TYPES)}")
+
+    unique_name = f"{uuid.uuid4().hex}{ext}"
+    file_path = os.path.join(UPLOAD_DIR, unique_name)
+
+    size = 0
+    with open(file_path, "wb") as f:
+        while True:
+            chunk = await file.read(1024 * 1024)
+            if not chunk:
+                break
+            f.write(chunk)
+            size += len(chunk)
+            if size > FILE_MAX_SIZE:
+                f.close()
+                os.remove(file_path)
+                raise HTTPException(status_code=400, detail="文件过大，最大支持 200MB")
+
+    url = f"/uploads/{unique_name}"
+    return UploadResponse(url=url, filename=unique_name)
