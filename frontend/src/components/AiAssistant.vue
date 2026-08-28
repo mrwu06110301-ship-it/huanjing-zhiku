@@ -30,6 +30,7 @@ interface Msg {
   content: string;
   sources?: Source[];
   reasoning?: string;
+  showReasoning?: boolean;
   error?: boolean;
 }
 
@@ -83,7 +84,7 @@ async function send() {
   if (!q || thinking.value) return;
   input.value = "";
   msgs.value.push({ role: "user", content: q });
-  msgs.value.push({ role: "assistant", content: "" });
+  msgs.value.push({ role: "assistant", content: "", showReasoning: true });
   // 关键：必须取数组内的响应式代理，直接持有原始对象修改不触发渲染（流式失效根因）
   const aiMsg = msgs.value[msgs.value.length - 1]!;
   thinking.value = true;
@@ -118,8 +119,13 @@ async function send() {
         try {
           const evt = JSON.parse(line.slice(5));
           if (evt.type === "sources") aiMsg.sources = evt.sources;
-          else if (evt.type === "reasoning") aiMsg.reasoning = (aiMsg.reasoning || "") + evt.text;
+          else if (evt.type === "reasoning") {
+            aiMsg.reasoning = (aiMsg.reasoning || "") + evt.text;
+            scrollBottom();
+          }
           else if (evt.type === "delta") {
+            // 正文开始输出时自动收起思考过程
+            if (!aiMsg.content && aiMsg.showReasoning) aiMsg.showReasoning = false;
             aiMsg.content += evt.text;
             scrollBottom();
           } else if (evt.type === "error") {
@@ -185,8 +191,12 @@ function askQuick(q: string) {
 
         <div v-for="(m, i) in msgs" :key="i" :class="['msg-row', m.role]">
           <div class="msg-bubble">
-            <div v-if="m.reasoning && thinking && !m.content" class="msg-reasoning">
-              <span class="r-dot"></span> 思考中：{{ m.reasoning.slice(-60) }}
+            <div v-if="m.reasoning" class="msg-reasoning" :class="{ done: !!m.content }">
+              <button class="r-toggle" @click="m.showReasoning = !m.showReasoning">
+                <span class="r-dot" :class="{ idle: !!m.content }"></span>
+                {{ m.content ? (m.showReasoning ? "▼ 收起思考过程" : "▶ 展开思考过程") : "思考中…" }}
+              </button>
+              <div v-if="m.showReasoning" class="r-body">{{ m.reasoning }}</div>
             </div>
             <!-- AI 消息：markdown 实时渲染；用户消息：纯文本 -->
             <div
@@ -351,12 +361,23 @@ function askQuick(q: string) {
 .msg-row.assistant .msg-bubble:has(.msg-sources) { min-width: 60%; }
 .msg-reasoning {
   font-size: 11px; color: var(--text-muted, #94a3b8); margin-bottom: 6px;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+.r-toggle {
+  border: none; background: none; cursor: pointer; padding: 0;
+  font-size: 11px; color: var(--text-muted, #94a3b8); display: inline-flex; align-items: center; gap: 4px;
+}
+.r-toggle:hover { color: var(--primary, #2563eb); }
 .r-dot {
   display: inline-block; width: 6px; height: 6px; border-radius: 50%;
-  background: var(--primary, #2563eb); margin-right: 4px;
+  background: var(--primary, #2563eb);
   animation: blink 0.9s infinite; vertical-align: middle;
+}
+.r-dot.idle { animation: none; opacity: 0.5; }
+.r-body {
+  margin-top: 5px; padding: 8px 10px; border-radius: 8px;
+  background: var(--bg, #f8fafc); color: var(--text-light, #475569);
+  font-size: 11.5px; line-height: 1.6; white-space: pre-wrap; word-break: break-word;
+  max-height: 160px; overflow-y: auto;
 }
 .cursor { animation: blink 0.9s infinite; color: var(--primary, #2563eb); }
 @keyframes blink { 50% { opacity: 0; } }
