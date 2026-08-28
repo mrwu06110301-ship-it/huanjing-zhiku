@@ -56,14 +56,12 @@ function switchType(type: string) {
 <template>
   <div class="page">
     <div class="page-header">
-      <div class="page-header-left">
-        <div class="page-title-icon">
-          <Icon name="faq" :size="26" />
-        </div>
-        <h1>常见问题</h1>
-        <p>现场问题、设备维护、用户答疑</p>
+      <div class="page-title-icon">
+        <Icon name="faq" :size="26" />
       </div>
-      <el-button plain size="small" @click="share('常见问题', '现场问题、设备维护、用户答疑')">
+      <h1>常见问题</h1>
+      <p>现场问题、设备维护、用户答疑</p>
+      <el-button plain size="small" class="share-btn" @click="share('常见问题', '现场问题、设备维护、用户答疑')">
         <Icon name="share" :size="14" style="margin-right:6px" /> 分享
       </el-button>
     </div>
@@ -109,9 +107,10 @@ function switchType(type: string) {
 
 <style scoped>
 .page { max-width: 1200px; margin: 0 auto; }
-.page-header { display: flex; justify-content: space-between; align-items: flex-start; padding: 40px 0 24px; }
-.page-header-left h1 { font-size: 28px; font-weight: 700; margin-bottom: 8px; color: var(--text); }
-.page-header-left p { color: var(--text-light); font-size: 15px; }
+.page-header { text-align: center; padding: 40px 0 24px; }
+.page-header h1 { font-size: 28px; font-weight: 700; margin-bottom: 8px; color: var(--text); }
+.page-header p { color: var(--text-light); font-size: 15px; }
+.page-header .share-btn { margin-top: 14px; }
 
 .controls { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; flex-wrap: wrap; }
 .category-tabs { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -155,7 +154,7 @@ function switchType(type: string) {
 }
 
 @media (max-width: 768px) {
-  .page-header { flex-direction: column; gap: 12px; padding: 24px 0 16px; }
+  .page-header { padding: 24px 0 16px; }
   .controls { flex-direction: column; align-items: stretch; }
   .search-wrap { margin-left: 0; }
   .local-search { width: 100%; }

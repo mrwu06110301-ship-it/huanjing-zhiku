@@ -89,14 +89,12 @@ function openPdf(s: StandardOut) {
 <template>
   <div class="page">
     <div class="page-header">
-      <div class="page-header-left">
-        <div class="page-title-icon">
-          <Icon name="standard" :size="26" />
-        </div>
-        <h1>方法标准</h1>
-        <p>环境标准 · 职业卫生标准 · EPA标准（共 {{ total }} 项）</p>
+      <div class="page-title-icon">
+        <Icon name="standard" :size="26" />
       </div>
-      <el-button plain size="small" @click="share('方法标准', '环境标准 · 职业卫生标准 · EPA标准')">
+      <h1>方法标准</h1>
+      <p>环境标准 · 职业卫生标准 · EPA标准（共 {{ total }} 项）</p>
+      <el-button plain size="small" class="share-btn" @click="share('方法标准', '环境标准 · 职业卫生标准 · EPA标准')">
         <Icon name="share" :size="14" style="margin-right:6px" /> 分享
       </el-button>
     </div>
@@ -154,9 +152,10 @@ function openPdf(s: StandardOut) {
 
 <style scoped>
 .page { max-width: 1200px; margin: 0 auto; }
-.page-header { display: flex; justify-content: space-between; align-items: flex-start; padding: 40px 0 24px; }
-.page-header-left h1 { font-size: 28px; font-weight: 700; margin-bottom: 8px; }
-.page-header-left p { color: var(--text-light); font-size: 15px; }
+.page-header { text-align: center; padding: 40px 0 24px; }
+.page-header h1 { font-size: 28px; font-weight: 700; margin-bottom: 8px; }
+.page-header p { color: var(--text-light); font-size: 15px; }
+.page-header .share-btn { margin-top: 14px; }
 
 .category-tabs { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; align-items: center; }
 .tab {
@@ -231,8 +230,7 @@ function openPdf(s: StandardOut) {
 
 @media (max-width: 768px) {
   .page-header { padding: 24px 0 16px; }
-  .page-header-left h1 { font-size: 22px; }
-  .std-grid { grid-template-columns: 1fr; gap: 10px; }
+  .page-header h1 { font-size: 22px; }  .std-grid { grid-template-columns: 1fr; gap: 10px; }
   .search-wrap { margin-left: 0; width: 100%; }
   .local-search { width: 100%; }
   .local-search:focus { width: 100%; }

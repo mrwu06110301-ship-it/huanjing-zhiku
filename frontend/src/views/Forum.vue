@@ -179,18 +179,16 @@ onMounted(async () => {
     <main class="forum-main">
       <!-- 顶部标题栏 -->
       <div class="forum-header">
-        <div class="header-left">
-          <div class="page-title-icon">
-            <Icon name="forum" :size="26" />
-          </div>
-          <h1>技术论坛</h1>
-          <span class="article-count">共 {{ total }} 篇</span>
+        <div class="page-title-icon">
+          <Icon name="forum" :size="26" />
         </div>
-        <div class="header-right">
-          <div class="search-wrap">
-            <Icon name="search" :size="15" class="search-ic" />
-            <input v-model="searchQuery" placeholder="搜索文章..." class="local-search-input" @input="filterLocal" />
-          </div>
+        <h1>技术论坛</h1>
+        <p class="article-count">共 {{ total }} 篇技术干货</p>
+      </div>
+      <div class="header-actions">
+        <div class="search-wrap">
+          <Icon name="search" :size="15" class="search-ic" />
+          <input v-model="searchQuery" placeholder="搜索文章..." class="local-search-input" @input="filterLocal" />
         </div>
       </div>
 
@@ -403,35 +401,29 @@ onMounted(async () => {
 }
 
 .forum-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-end;
-  margin-bottom: 20px;
+  text-align: center;
+  margin-bottom: 16px;
   padding-top: 12px;
 }
 
-.header-left {
-  display: flex;
-  align-items: flex-end;
-  gap: 12px;
-}
-
-.header-left h1 {
-  font-size: 24px;
+.forum-header h1 {
+  font-size: 28px;
   font-weight: 700;
   color: var(--text);
+  margin-bottom: 8px;
 }
 
 .article-count {
-  font-size: 13px;
+  font-size: 15px;
   color: var(--text-light);
-  margin-bottom: 2px;
 }
 
-.header-right {
+.header-actions {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 10px;
+  margin-bottom: 20px;
 }
 
 .search-wrap {
@@ -655,9 +647,11 @@ onMounted(async () => {
   .cat-icon { display: none; }
 
   .forum-header {
-    flex-direction: column;
-    gap: 12px;
-    align-items: flex-start;
+    padding-top: 0;
+  }
+
+  .header-actions {
+    margin-bottom: 14px;
   }
 
   .article-cover {
