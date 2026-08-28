@@ -4,6 +4,7 @@ import { useRoute, useRouter } from "vue-router";
 import { getToolBySlug } from "@/api/tool";
 import type { ToolOut } from "@/types";
 import FlueSamplingCalculator from "@/components/FlueSamplingCalculator.vue";
+import AtmosphericStabilityCalculator from "@/components/AtmosphericStabilityCalculator.vue";
 import { useShare } from "@/composables/useShare";
 import Icon from "@/components/Icon.vue";
 
@@ -20,6 +21,7 @@ onMounted(async () => {
 });
 
 const isFlueSampling = computed(() => tool.value?.slug === "flue-sampling");
+const isAtmosphericStability = computed(() => tool.value?.slug === "atmospheric-stability");
 
 function handleCalculate() { alert("计算功能开发中"); }
 </script>
@@ -27,6 +29,7 @@ function handleCalculate() { alert("计算功能开发中"); }
 <template>
   <div class="tool-page" v-if="tool">
     <FlueSamplingCalculator v-if="isFlueSampling" />
+    <AtmosphericStabilityCalculator v-else-if="isAtmosphericStability" />
 
     <template v-else>
       <div class="page-header">
@@ -45,7 +48,8 @@ function handleCalculate() { alert("计算功能开发中"); }
       <div class="tool-body">
         <div class="tool-inputs">
           <h3>输入参数</h3>
-          <div class="input-group" v-if="tool.slug === 'atmospheric-stability'">
+          <div class="input-group" v-if="false">
+            <!-- atmospheric-stability 已由独立组件 AtmosphericStabilityCalculator 承接 -->
             <label>风速（m/s）</label>
             <el-input v-model.number="inputValues.windSpeed" type="number" placeholder="请输入" />
             <label>太阳辐射等级</label>
