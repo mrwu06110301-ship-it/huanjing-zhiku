@@ -96,7 +96,8 @@ def parse_one_pdf(args: tuple) -> tuple[int, str, list[dict]]:
             for ci, c in enumerate(split_text(ptext, size=600, overlap=60)):
                 out.append(
                     {"source_type": "standard_pdf", "source_id": sid,
-                     "chunk_idx": 10000 + pi * 10 + ci,
+                     # 页号×1000 + 页内序号：每页可容 1000 片（60万字），杜绝跨页 idx 碰撞
+                     "chunk_idx": 10000 + pi * 1000 + ci,
                      "title": f"{t}（第{pi + 1}页）", "content": c,
                      "url": "/standards"}
                 )
@@ -158,13 +159,18 @@ def collect_chunks(db: sqlite3.Connection, with_pdf: bool = True, workers: int =
                 "SELECT fingerprint FROM kb_pdf_files WHERE source_id=?", (sid,)
             ).fetchone()
             if row and row[0] == fp:
-                # 自愈：指纹未变但切片缺失（如索引损坏）时也要重新解析
-                has = db.execute(
-                    "SELECT 1 FROM kb_chunks WHERE source_type='standard_pdf' AND source_id=? LIMIT 1",
-                    (sid,),
-                ).fetchone()
-                if has:
-                    continue  # 文件未变且切片在，跳过解析
+                # 自愈：指纹未变但切片数不完整（历史崩溃残留）时也要重新解析。
+                # 期望切片数未知，用启发式：standard_pdf 切片 ≥ 页数下限不可靠，
+                # 改为验证该源在 kb_fts 与 kb_chunks 行数一致且 > 0
+                ok = db.execute(
+                    """SELECT
+                         (SELECT COUNT(*) FROM kb_chunks WHERE source_type='standard_pdf' AND source_id=?)
+                         = (SELECT COUNT(*) FROM kb_fts WHERE rowid_map LIKE 'standard_pdf:' || ? || ':%')
+                       AND EXISTS (SELECT 1 FROM kb_chunks WHERE source_type='standard_pdf' AND source_id=?)""",
+                    (sid, sid, sid),
+                ).fetchone()[0]
+                if ok:
+                    continue  # 文件未变且索引完整，跳过解析
             pdf_jobs.append((sid, t, file_url, fp))
 
     if pdf_jobs:
@@ -276,8 +282,20 @@ def build_fts(db: sqlite3.Connection, chunks: list[dict], rebuild: bool, live_ke
             "DELETE FROM kb_chunks WHERE source_type=? AND source_id=?",
             (stype, sid),
         )
-        if stype == "standard_pdf":
-            cur.execute("DELETE FROM kb_pdf_files WHERE source_id=?", (sid,))
+        # 同源标准（meta+pdf 共享 sid）：任一类型变脏即清两表旧行，防旧切片残留
+        if stype in ("standard_meta", "standard_pdf"):
+            cur.execute(
+                "DELETE FROM kb_fts WHERE rowid_map LIKE ?",
+                (f"standard_pdf:{sid}:%",),
+            )
+            cur.execute(
+                "DELETE FROM kb_fts WHERE rowid_map LIKE ?",
+                (f"standard_meta:{sid}:%",),
+            )
+            cur.execute(
+                "DELETE FROM kb_chunks WHERE source_type IN ('standard_meta','standard_pdf') AND source_id=?",
+                (sid,),
+            )
 
     # 插入新切片
     for i, c in enumerate(todo):
