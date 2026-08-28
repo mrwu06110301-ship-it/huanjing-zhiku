@@ -169,7 +169,7 @@ const modules = [
               <Icon :name="s.icon" :size="22" />
             </div>
             <div class="stat-body">
-              <span class="stat-val">{{ s.value.toLocaleString() }}<small>{{ s.suffix }}</small></span>
+              <span class="stat-val">{{ s.value }}<small>{{ s.suffix }}</small></span>
               <span class="stat-label">{{ s.label }}</span>
             </div>
           </div>
@@ -399,6 +399,7 @@ const modules = [
 .stat-item {
   display: flex;
   align-items: center;
+  justify-content: center;  /* 内容整体居中 */
   gap: 14px;
   padding: 11px 14px;
   border-radius: var(--radius);
@@ -430,11 +431,12 @@ const modules = [
   color: #93c5fd;
 }
 .stat-body {
-  flex: 1;
+  flex: 0 1 auto;               /* 不强制撑满，跟随内容收缩 */
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  flex-direction: column;        /* 数字与标签上下排列 */
+  align-items: center;           /* 数值与标签居中对齐 */
+  text-align: center;
+  gap: 2px;
 }
 .stat-val {
   font-size: 24px;

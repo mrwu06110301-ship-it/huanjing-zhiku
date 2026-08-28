@@ -118,7 +118,6 @@ function handleBlur() {
                 <Icon name="user" :size="16" />
               </div>
               <span class="user-name">{{ auth.user?.nickname || auth.user?.username || "用户" }}</span>
-              <Icon name="arrowDown" :size="12" />
             </span>
             <template #dropdown>
               <el-dropdown-menu>
@@ -223,6 +222,7 @@ function handleBlur() {
   align-items: center;
   height: 60px;
   gap: 20px;
+  position: relative;  /* 搜索浮层定位基准 */
 }
 
 /* 品牌 */
@@ -247,6 +247,9 @@ function handleBlur() {
   box-shadow: 0 4px 12px var(--primary-glow);
   color: #fff;
   transition: transform 0.3s var(--ease);
+  /* 图标垂直居中修正：抵消 IconPark svg 默认基线偏移 */
+  line-height: 0;
+  padding-bottom: 0;
 }
 
 .navbar-brand:hover .brand-logo {
@@ -283,6 +286,8 @@ function handleBlur() {
   align-items: center;
   gap: 6px;
   position: relative;
+  white-space: nowrap;  /* 防搜索展开挤压时文字换行 */
+  flex-shrink: 0;
 }
 
 .nav-link:hover {
@@ -296,37 +301,40 @@ function handleBlur() {
 }
 
 .nav-link.active::after {
-  content: '';
-  position: absolute;
-  bottom: -2px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background: #60a5fa;
-  box-shadow: 0 0 8px #60a5fa;
+  /* 移除原激活小圆点（用户反馈不需要） */
+  content: none;
 }
 
-/* 搜索 */
+/* 搜索：绝对定位浮层展开，不挤压导航（修复点击搜索后标题换行） */
 .navbar-search {
   display: flex;
   align-items: center;
   flex-shrink: 0;
+  position: static;
 }
 
 .navbar-search.expanded {
-  background: rgba(255, 255, 255, 0.06);
+  position: absolute;
+  right: 20px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 60;
+  background: rgba(10, 15, 28, 0.96);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border-radius: 20px;
   padding: 0 4px 0 14px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  transition: all 0.3s var(--ease);
+  border: 1px solid rgba(96, 165, 250, 0.35);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+  transition: border-color 0.2s;
 }
 
 .navbar-search.expanded:focus-within {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(96, 165, 250, 0.4);
-  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.08);
+  border-color: rgba(96, 165, 250, 0.6);
+}
+
+.navbar-search.expanded .search-input {
+  width: 200px;
 }
 
 .search-icon-btn {
@@ -445,15 +453,19 @@ function handleBlur() {
 
 /* 移动端 */
 .mobile-menu-btn {
-  display: none;
+  display: none;  /* 桌面端隐藏（此前被后面的 display:flex 覆盖导致桌面也显示汉堡菜单） */
   background: none;
   border: none;
   color: #fff;
   cursor: pointer;
-  margin-left: auto;
   padding: 4px;
-  display: flex;
   align-items: center;
+}
+
+@media (max-width: 900px) {
+  .mobile-menu-btn {
+    display: flex;
+  }
 }
 
 .mobile-nav {
@@ -567,9 +579,6 @@ function handleBlur() {
   .navbar-actions,
   .navbar-search {
     display: none;
-  }
-  .mobile-menu-btn {
-    display: flex;
   }
 }
 </style>

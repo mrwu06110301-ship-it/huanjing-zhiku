@@ -1,22 +1,36 @@
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
+import { ref, computed, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { getTools } from "@/api/tool";
+import { getCategories } from "@/api/category";
 import type { ToolOut } from "@/types";
 import Icon from "@/components/Icon.vue";
 
 const router = useRouter();
-const tools = ref<ToolOut[]>([]);
-const categories = ref<string[]>([]);
+const allTools = ref<ToolOut[]>([]);
+const categories = ref<{ id: number; name: string }[]>([]);
 const activeCategory = ref("");
 
+// 本地过滤：切换分类时其他分类与工具不消失，列表即时切换
+const tools = computed(() =>
+  activeCategory.value
+    ? allTools.value.filter((t) => t.category === activeCategory.value)
+    : allTools.value
+);
+
 async function loadTools() {
-  const res = await getTools(activeCategory.value ? { category: activeCategory.value } : {});
-  tools.value = res.data || [];
-  // 提取所有分类
-  const cats = new Set<string>();
-  (res.data || []).forEach((t: ToolOut) => cats.add(t.category));
-  categories.value = Array.from(cats);
+  const res = await getTools();
+  allTools.value = res.data || [];
+}
+
+async function loadCategories() {
+  // 分类与管理后台挂钩：module=tool 的分类即工具分类
+  try {
+    const res = await getCategories("tool");
+    categories.value = (res.data || []).map((c: { id: number; name: string }) => ({ id: c.id, name: c.name }));
+  } catch {
+    categories.value = [];
+  }
 }
 
 function getToolIcon(slug: string): string {
@@ -33,6 +47,7 @@ function getToolIcon(slug: string): string {
 
 onMounted(() => {
   loadTools();
+  loadCategories();
 });
 
 function goTool(slug: string) {
@@ -53,14 +68,14 @@ function goTool(slug: string) {
     <div class="category-tabs" v-if="categories.length">
       <span
         :class="['tab', { active: activeCategory === '' }]"
-        @click="activeCategory = ''; loadTools()"
+        @click="activeCategory = ''"
       >全部</span>
       <span
         v-for="cat in categories"
-        :key="cat"
-        :class="['tab', { active: activeCategory === cat }]"
-        @click="activeCategory = cat; loadTools()"
-      >{{ cat }}</span>
+        :key="cat.id"
+        :class="['tab', { active: activeCategory === cat.name }]"
+        @click="activeCategory = activeCategory === cat.name ? '' : cat.name"
+      >{{ cat.name }}</span>
     </div>
 
     <div class="tool-grid">

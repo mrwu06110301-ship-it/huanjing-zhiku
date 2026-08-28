@@ -138,6 +138,7 @@ const strokeWidth = computed(() => {
 .ip-icon {
   flex-shrink: 0;
   vertical-align: middle;
+  display: block;  /* block 消除 svg 基线空隙，flex 容器内真正居中（修复标题栏图标偏上） */
 }
 .icon-fallback {
   display: inline-block;
