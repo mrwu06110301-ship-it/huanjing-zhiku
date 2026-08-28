@@ -288,6 +288,7 @@ const modules = [
   overflow: hidden;
   display: flex;
   align-items: center;
+  justify-content: center;  /* 左右两块整体水平居中 */
   gap: 48px;
 }
 
@@ -315,11 +316,16 @@ const modules = [
   position: relative; z-index: 2;
   flex: 1;
   max-width: 540px;
+  text-align: center;           /* 标题/口号/描述水平居中 */
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;          /* badge 与按钮组也居中 */
   animation: fadeInUp 0.7s var(--ease);
 }
 
 .hero-badge {
-  display: inline-flex; align-items: center; gap: 7px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
   padding: 6px 14px;
   background: rgba(96, 165, 250, 0.09);
   border: 1px solid rgba(96, 165, 250, 0.16);
@@ -345,6 +351,7 @@ const modules = [
   font-size: 14.5px; color: rgba(255,255,255,0.42);
   line-height: 1.9; margin-bottom: 32px;
   max-width: 460px;
+  margin-left: auto; margin-right: auto;  /* 描述文字块居中 */
   animation: fadeIn 0.5s ease-out 0.45s both;
 }
 
@@ -399,7 +406,6 @@ const modules = [
 .stat-item {
   display: flex;
   align-items: center;
-  justify-content: center;  /* 内容整体居中 */
   gap: 14px;
   padding: 11px 14px;
   border-radius: var(--radius);
@@ -407,6 +413,10 @@ const modules = [
   cursor: default;
   animation: statIn 0.45s ease-out both;
   animation-delay: calc(0.5s + var(--i) * 0.07s);
+  /* 图标居左 + 文字区自适应宽度并整体居中：外层 margin auto 让内容块水平居中 */
+  justify-content: flex-start;
+  width: fit-content;
+  margin: 0 auto;
 }
 .stat-item:hover {
   background: rgba(96, 165, 250, 0.07);
@@ -431,10 +441,11 @@ const modules = [
   color: #93c5fd;
 }
 .stat-body {
-  flex: 0 1 auto;               /* 不强制撑满，跟随内容收缩 */
+  /* 文字区固定宽度（与最长标签对齐），数字在其中水平居中 */
+  width: 96px;
   display: flex;
-  flex-direction: column;        /* 数字与标签上下排列 */
-  align-items: center;           /* 数值与标签居中对齐 */
+  flex-direction: column;
+  align-items: center;
   text-align: center;
   gap: 2px;
 }
