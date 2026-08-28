@@ -73,11 +73,18 @@ function switchCat(id: number | null) {
   loadStandards();
 }
 
-/** 跳转 kkFileView 在线预览（全格式，手机端可用） */
+/** 混合预览路由：PDF 走站内 pdf.js（秒开），Word/Excel 等走 kkFileView */
 function openPdf(s: StandardOut) {
-  if (s.file_url) {
-    const fileAbsUrl = `${window.location.origin}${s.file_url}`;
-    const previewUrl = `${window.location.origin}/preview/onlinePreview?url=${encodeURIComponent(btoa(fileAbsUrl))}`;
+  if (!s.file_url) return;
+  const absUrl = `${window.location.origin}${s.file_url}`;
+  const isPdf = /\.pdf(\?|$)/i.test(s.file_url);
+  if (isPdf) {
+    router.push({
+      name: "StandardPreview",
+      query: { url: absUrl, title: s.title },
+    });
+  } else {
+    const previewUrl = `${window.location.origin}/preview/onlinePreview?url=${encodeURIComponent(btoa(absUrl))}`;
     window.open(previewUrl, "_blank", "noopener");
   }
 }
