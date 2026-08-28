@@ -168,10 +168,8 @@ const modules = [
             <div class="stat-icon">
               <Icon :name="s.icon" :size="22" />
             </div>
-            <div class="stat-body">
-              <span class="stat-val">{{ s.value }}<small>{{ s.suffix }}</small></span>
-              <span class="stat-label">{{ s.label }}</span>
-            </div>
+            <span class="stat-val">{{ s.value }}<small>{{ s.suffix }}</small></span>
+            <span class="stat-label">{{ s.label }}</span>
           </div>
         </div>
       </div>
@@ -397,9 +395,10 @@ const modules = [
   gap: 4px;
 }
 .stat-item {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  gap: 14px;
+  gap: 10px;
   padding: 11px 14px;
   border-radius: var(--radius);
   transition: all 0.2s var(--ease);
@@ -429,26 +428,23 @@ const modules = [
   border-color: rgba(96, 165, 250, 0.3);
   color: #93c5fd;
 }
-.stat-body {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;   /* 数字与标签整体右对齐（靠统计面板右侧） */
-  gap: 10px;
-  min-width: 0;
-}
+/* 数字+单位整体落在行水平中心（1fr auto 1fr 的中列） */
+.stat-icon { justify-self: start; }
 .stat-val {
+  justify-self: center;
   font-size: 24px;
   font-weight: 700;
   font-family: "JetBrains Mono", "SF Mono", "Consolas", monospace;
   color: #e2e8f0;
   line-height: 1.2;
+  white-space: nowrap;
 }
 .stat-val small {
   font-size: 12px; font-weight: 400;
   color: rgba(255,255,255,0.3); margin-left: 3px;
 }
 .stat-label {
+  justify-self: end;
   font-size: 14px;
   font-weight: 500;
   color: rgba(255,255,255,0.5);
