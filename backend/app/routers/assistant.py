@@ -184,8 +184,10 @@ async def chat(req: ChatRequest):
                 async with client.stream(
                     "POST", f"{ZHIPU_BASE}/chat/completions",
                     headers={"Authorization": f"Bearer {key}"},
+                    # glm-5.3-Flash 是推理模型：思考+答案共享 max_tokens，
+                    # 之前 1500 全被思考耗尽导致"一直思考无答案"，放宽到 4096
                     json={"model": CHAT_MODEL, "messages": messages, "stream": True,
-                          "max_tokens": 1500},
+                          "max_tokens": 4096},
                 ) as resp:
                     resp.raise_for_status()
                     async for line in resp.aiter_lines():
