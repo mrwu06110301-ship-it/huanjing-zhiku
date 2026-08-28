@@ -83,8 +83,9 @@ async function send() {
   if (!q || thinking.value) return;
   input.value = "";
   msgs.value.push({ role: "user", content: q });
-  const aiMsg: Msg = { role: "assistant", content: "" };
-  msgs.value.push(aiMsg);
+  msgs.value.push({ role: "assistant", content: "" });
+  // 关键：必须取数组内的响应式代理，直接持有原始对象修改不触发渲染（流式失效根因）
+  const aiMsg = msgs.value[msgs.value.length - 1]!;
   thinking.value = true;
   scrollBottom();
 
