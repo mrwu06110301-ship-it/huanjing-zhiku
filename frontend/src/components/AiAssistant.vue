@@ -13,6 +13,7 @@ interface Msg {
   role: "user" | "assistant";
   content: string;
   sources?: Source[];
+  reasoning?: string;
   error?: boolean;
 }
 
@@ -100,6 +101,7 @@ async function send() {
         try {
           const evt = JSON.parse(line.slice(5));
           if (evt.type === "sources") aiMsg.sources = evt.sources;
+          else if (evt.type === "reasoning") aiMsg.reasoning = (aiMsg.reasoning || "") + evt.text;
           else if (evt.type === "delta") {
             aiMsg.content += evt.text;
             scrollBottom();
@@ -166,6 +168,9 @@ function askQuick(q: string) {
 
         <div v-for="(m, i) in msgs" :key="i" :class="['msg-row', m.role]">
           <div class="msg-bubble">
+            <div v-if="m.reasoning && thinking && !m.content" class="msg-reasoning">
+              <span class="r-dot"></span> 思考中：{{ m.reasoning.slice(-60) }}
+            </div>
             <div class="msg-text">{{ m.content }}<span v-if="thinking && i === msgs.length - 1 && m.role === 'assistant'" class="cursor">▋</span></div>
             <div v-if="m.sources && m.sources.length" class="msg-sources">
               <div class="src-label">来源：</div>
@@ -291,6 +296,15 @@ function askQuick(q: string) {
 .msg-row.user .msg-bubble { background: var(--primary, #2563eb); color: #fff; border-bottom-right-radius: 4px; }
 .msg-row.assistant .msg-bubble { background: var(--white, #fff); color: var(--text, #1e293b); border-bottom-left-radius: 4px; box-shadow: var(--shadow, 0 1px 3px rgba(0,0,0,0.06)); }
 .msg-row.assistant .msg-bubble:has(.msg-sources) { min-width: 60%; }
+.msg-reasoning {
+  font-size: 11px; color: var(--text-muted, #94a3b8); margin-bottom: 6px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.r-dot {
+  display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--primary, #2563eb); margin-right: 4px;
+  animation: blink 0.9s infinite; vertical-align: middle;
+}
 .cursor { animation: blink 0.9s infinite; color: var(--primary, #2563eb); }
 @keyframes blink { 50% { opacity: 0; } }
 

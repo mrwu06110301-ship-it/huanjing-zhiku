@@ -18,11 +18,11 @@ from pydantic import BaseModel
 
 router = APIRouter(prefix="/api/assistant", tags=["AI助手"])
 
-ZHIPU_BASE = "https://open.bigmodel.cn/api/paas/v4"
-CHAT_MODEL = os.getenv("ZHIPU_CHAT_MODEL", "glm-4-flash")
+ZHIPU_BASE = os.getenv("ZHIPU_BASE_URL", "https://open.bigmodel.cn/api/coding/paas/v4")
+CHAT_MODEL = os.getenv("ZHIPU_CHAT_MODEL", "glm-5.3-Flash")
 TOP_K = 6
 
-BACKEND_DIR = Path(__file__).resolve().parent.parent
+BACKEND_DIR = Path(__file__).resolve().parent.parent.parent
 DB_PATH = BACKEND_DIR / "hjzk.db"
 
 STOPWORDS = {"的", "了", "是", "在", "我", "有", "和", "就", "不", "人", "都", "一", "上",
@@ -177,12 +177,12 @@ async def chat(req: ChatRequest):
         messages.append({"role": "user", "content": _build_prompt(req.question, chunks)})
 
         try:
-            async with httpx.AsyncClient(timeout=120) as client:
+            async with httpx.AsyncClient(timeout=180) as client:
                 async with client.stream(
                     "POST", f"{ZHIPU_BASE}/chat/completions",
                     headers={"Authorization": f"Bearer {key}"},
                     json={"model": CHAT_MODEL, "messages": messages, "stream": True,
-                          "temperature": 0.6, "max_tokens": 1500},
+                          "max_tokens": 1500},
                 ) as resp:
                     resp.raise_for_status()
                     async for line in resp.aiter_lines():
@@ -193,8 +193,12 @@ async def chat(req: ChatRequest):
                             break
                         try:
                             delta = json.loads(payload)["choices"][0]["delta"]
+                            # 推理模型: reasoning_content 是思考过程（可推送前端显示"思考中"），content 才是答案
+                            reasoning = delta.get("reasoning_content") or ""
+                            if reasoning:
+                                yield _sse({"type": "reasoning", "text": reasoning[:200]})
+                                continue
                             piece = delta.get("content") or ""
-                            # glm-4.5 系有 reasoning_content，跳过
                             if piece:
                                 yield _sse({"type": "delta", "text": piece})
                         except (json.JSONDecodeError, KeyError, IndexError):
