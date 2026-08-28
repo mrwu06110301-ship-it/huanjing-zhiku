@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import Navbar from "@/components/Navbar.vue";
+import AiAssistant from "@/components/AiAssistant.vue";
 </script>
 
 <template>
@@ -25,6 +26,7 @@ import Navbar from "@/components/Navbar.vue";
         <p class="footer-copy">© 2026 产品小吴知识库 · 让现场监测，触手可感</p>
       </div>
     </footer>
+    <AiAssistant />
   </div>
 </template>
 
