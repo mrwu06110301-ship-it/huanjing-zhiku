@@ -1,7 +1,23 @@
 <script setup lang="ts">
 import { ref, nextTick, onMounted } from "vue";
 import { useRouter } from "vue-router";
+import { marked } from "marked";
 import Icon from "@/components/Icon.vue";
+
+// marked 配置：换行+打断（流式渲染友好）
+marked.setOptions({ gfm: true, breaks: true });
+
+/** markdown → HTML（AI 输出为受控文本，先整体转义再解析标记，防注入） */
+function renderMd(md: string): string {
+  if (!md) return "";
+  const escaped = md
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+  // 转义后恢复 markdown 语法字符（marked 能识别的子集）
+  const unescaped = escaped
+    .replace(/&quot;/g, '"');
+  return marked.parse(unescaped) as string;
+}
 
 interface Source {
   title: string;
@@ -171,7 +187,14 @@ function askQuick(q: string) {
             <div v-if="m.reasoning && thinking && !m.content" class="msg-reasoning">
               <span class="r-dot"></span> 思考中：{{ m.reasoning.slice(-60) }}
             </div>
-            <div class="msg-text">{{ m.content }}<span v-if="thinking && i === msgs.length - 1 && m.role === 'assistant'" class="cursor">▋</span></div>
+            <!-- AI 消息：markdown 实时渲染；用户消息：纯文本 -->
+            <div
+              v-if="m.role === 'assistant'"
+              class="msg-text md"
+              v-html="renderMd(m.content)"
+            ></div>
+            <div v-else class="msg-text">{{ m.content }}</div>
+            <span v-if="thinking && i === msgs.length - 1 && m.role === 'assistant'" class="cursor">▋</span>
             <div v-if="m.sources && m.sources.length" class="msg-sources">
               <div class="src-label">来源：</div>
               <span v-for="(s, j) in m.sources" :key="j" class="src-chip" @click="gotoSource(s)">
@@ -295,6 +318,35 @@ function askQuick(q: string) {
 }
 .msg-row.user .msg-bubble { background: var(--primary, #2563eb); color: #fff; border-bottom-right-radius: 4px; }
 .msg-row.assistant .msg-bubble { background: var(--white, #fff); color: var(--text, #1e293b); border-bottom-left-radius: 4px; box-shadow: var(--shadow, 0 1px 3px rgba(0,0,0,0.06)); }
+
+/* ---- markdown 渲染样式（AI 消息） ---- */
+.msg-text.md :deep(p) { margin: 0 0 6px; }
+.msg-text.md :deep(p:last-child) { margin-bottom: 0; }
+.msg-text.md :deep(strong) { font-weight: 600; color: var(--primary, #2563eb); }
+.msg-text.md :deep(ul), .msg-text.md :deep(ol) { margin: 4px 0 8px; padding-left: 18px; }
+.msg-text.md :deep(li) { margin: 3px 0; }
+.msg-text.md :deep(h1), .msg-text.md :deep(h2), .msg-text.md :deep(h3), .msg-text.md :deep(h4) {
+  font-size: 14px; font-weight: 700; margin: 10px 0 6px; color: var(--text, #1e293b);
+}
+.msg-text.md :deep(h1:first-child), .msg-text.md :deep(h2:first-child), .msg-text.md :deep(h3:first-child) { margin-top: 0; }
+.msg-text.md :deep(code) {
+  background: var(--bg-soft, #f1f5f9); padding: 1px 5px; border-radius: 4px;
+  font-size: 12px; font-family: Consolas, monospace;
+}
+.msg-text.md :deep(pre) {
+  background: var(--dark-800, #0d1320); color: #e2e8f0; padding: 10px 12px;
+  border-radius: 8px; overflow-x: auto; margin: 6px 0;
+}
+.msg-text.md :deep(pre code) { background: transparent; color: inherit; padding: 0; }
+.msg-text.md :deep(blockquote) {
+  border-left: 3px solid var(--primary, #2563eb); padding: 2px 10px; margin: 6px 0;
+  color: var(--text-light, #475569); background: var(--bg, #f8fafc); border-radius: 0 6px 6px 0;
+}
+.msg-text.md :deep(table) { border-collapse: collapse; margin: 6px 0; font-size: 12px; width: 100%; }
+.msg-text.md :deep(th), .msg-text.md :deep(td) { border: 1px solid var(--border, #e2e8f0); padding: 4px 8px; text-align: left; }
+.msg-text.md :deep(th) { background: var(--bg-soft, #f1f5f9); font-weight: 600; }
+.msg-text.md :deep(a) { color: var(--primary, #2563eb); text-decoration: underline; }
+.msg-text.md :deep(hr) { border: none; border-top: 1px solid var(--border, #e2e8f0); margin: 8px 0; }
 .msg-row.assistant .msg-bubble:has(.msg-sources) { min-width: 60%; }
 .msg-reasoning {
   font-size: 11px; color: var(--text-muted, #94a3b8); margin-bottom: 6px;
