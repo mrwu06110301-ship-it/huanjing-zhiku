@@ -73,13 +73,12 @@ function switchCat(id: number | null) {
   loadStandards();
 }
 
-/** 跳转站内 PDF 预览页（pdf.js canvas 渲染，兼容手机端） */
+/** 跳转 kkFileView 在线预览（全格式，手机端可用） */
 function openPdf(s: StandardOut) {
   if (s.file_url) {
-    router.push({
-      name: "StandardPreview",
-      query: { url: s.file_url, title: s.title },
-    });
+    const fileAbsUrl = `${window.location.origin}${s.file_url}`;
+    const previewUrl = `${window.location.origin}/preview/onlinePreview?url=${encodeURIComponent(btoa(fileAbsUrl))}`;
+    window.open(previewUrl, "_blank", "noopener");
   }
 }
 </script>
