@@ -433,7 +433,7 @@ const modules = [
   flex: 1;
   display: flex;
   align-items: center;
-  justify-content: center;   /* 数字块在图标右侧文字区水平居中 */
+  justify-content: flex-end;   /* 数字与标签整体右对齐（靠统计面板右侧） */
   gap: 10px;
   min-width: 0;
 }
