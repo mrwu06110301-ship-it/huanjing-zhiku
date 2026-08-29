@@ -13,7 +13,8 @@ const faqs = ref<FAQOut[]>([]);
 const { share } = useShare();
 const auth = useAuthStore();
 const categories = ref<CategoryOut[]>([]);
-const activeType = ref("");
+/** 当前筛选分类（null=全部），数据源与管理员分类管理(module=faq)一致 */
+const activeCategory = ref<number | null>(null);
 const searchQuery = ref("");
 const loading = ref(false);
 /** 是否具备新增权限（管理员或被授权上传权限的账号，与论坛/视频一致） */
@@ -27,20 +28,11 @@ const filtered = computed(() => {
   );
 });
 
-// 类型标签（固定四种，与管理端 faq_type 对应）
-const typeTabs = [
-  { label: "全部", value: "" },
-  { label: "现场常见问题", value: "onsite" },
-  { label: "用户提问", value: "user_question" },
-  { label: "设备问题", value: "equipment" },
-  { label: "维修维护指南", value: "maintenance" },
-];
-
 async function loadFAQs() {
   loading.value = true;
   try {
     const params: Record<string, unknown> = { page: 1, page_size: 50 };
-    if (activeType.value) params.faq_type = activeType.value;
+    if (activeCategory.value) params.category_id = activeCategory.value;
     const res = await getFAQs(params as any);
     faqs.value = res.data.items || [];
   } finally {
@@ -61,8 +53,8 @@ onMounted(async () => {
   }
 });
 
-function switchType(type: string) {
-  activeType.value = type;
+function switchCategory(catId: number | null) {
+  activeCategory.value = activeCategory.value === catId ? null : catId;
   loadFAQs();
 }
 
@@ -72,19 +64,11 @@ const submitting = ref(false);
 const faqForm = ref({
   question: "",
   answer: "",
-  faq_type: "onsite",
   category_id: null as number | null,
 });
 
-const faqTypeOptions = [
-  { label: "现场常见问题", value: "onsite" },
-  { label: "用户提问", value: "user_question" },
-  { label: "设备问题", value: "equipment" },
-  { label: "维修维护指南", value: "maintenance" },
-];
-
 function openCreate() {
-  faqForm.value = { question: "", answer: "", faq_type: "onsite", category_id: null };
+  faqForm.value = { question: "", answer: "", category_id: null };
   dialogVisible.value = true;
 }
 
@@ -111,6 +95,7 @@ async function addCategory() {
     newCatName.value = "";
     const catRes = await getCategories("faq");
     categories.value = catRes.data;
+    loadFAQs();
   } catch (e: any) {
     ElMessage.error(e?.response?.data?.detail || "新增分类失败（需管理员权限）");
   } finally {
@@ -130,8 +115,11 @@ function removeCategory(cat: CategoryOut) {
       await deleteCategory(cat.id);
       ElMessage.success("分类已删除");
       if (faqForm.value.category_id === cat.id) faqForm.value.category_id = null;
+      // 正在筛选被删分类时重置为全部
+      if (activeCategory.value === cat.id) activeCategory.value = null;
       const catRes = await getCategories("faq");
       categories.value = catRes.data;
+      loadFAQs();
     } catch (e: any) {
       ElMessage.error(e?.response?.data?.detail || "删除分类失败（需管理员权限）");
     }
@@ -148,7 +136,6 @@ async function submitFAQ() {
     await createFAQ({
       question: faqForm.value.question.trim(),
       answer: faqForm.value.answer.trim(),
-      faq_type: faqForm.value.faq_type,
       category_id: faqForm.value.category_id,
     });
     ElMessage.success("新增成功");
@@ -193,12 +180,13 @@ function handleDelete(id: number) {
 
     <div class="controls">
       <div class="cat-pills category-tabs">
+        <span :class="['cat-pill', { active: activeCategory === null }]" @click="switchCategory(null)">全部</span>
         <span
-          v-for="tab in typeTabs"
-          :key="tab.value"
-          :class="['cat-pill', { active: activeType === tab.value }]"
-          @click="switchType(tab.value)"
-        >{{ tab.label }}</span>
+          v-for="c in categories"
+          :key="c.id"
+          :class="['cat-pill', { active: activeCategory === c.id }]"
+          @click="switchCategory(c.id)"
+        >{{ c.name }}</span>
       </div>
       <div class="search-wrap">
         <Icon name="search" :size="15" class="search-ic" />
@@ -246,24 +234,17 @@ function handleDelete(id: number) {
             placeholder="填写问题的处理办法、排查步骤或经验总结"
           />
         </el-form-item>
-        <div class="form-row">
-          <el-form-item label="问题类型" class="grow">
-            <el-select v-model="faqForm.faq_type" style="width:100%">
-              <el-option v-for="t in faqTypeOptions" :key="t.value" :value="t.value" :label="t.label" />
-            </el-select>
-          </el-form-item>
-          <el-form-item class="grow">
-            <template #label>
-              分类
-              <el-link type="primary" :underline="false" style="font-size:12px;margin-left:6px" @click="openManage">
-                <Icon name="filter" :size="12" style="vertical-align:-1px" /> 选项管理
-              </el-link>
-            </template>
-            <el-select v-model="faqForm.category_id" clearable placeholder="可选" style="width:100%">
-              <el-option v-for="c in categories" :key="c.id" :value="c.id" :label="c.name" />
-            </el-select>
-          </el-form-item>
-        </div>
+        <el-form-item>
+          <template #label>
+            分类
+            <el-link type="primary" :underline="false" style="font-size:12px;margin-left:6px" @click="openManage">
+              <Icon name="filter" :size="12" style="vertical-align:-1px" /> 选项管理
+            </el-link>
+          </template>
+          <el-select v-model="faqForm.category_id" clearable placeholder="请选择分类" style="width:100%">
+            <el-option v-for="c in categories" :key="c.id" :value="c.id" :label="c.name" />
+          </el-select>
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
@@ -340,9 +321,6 @@ function handleDelete(id: number) {
 .faq-delete { margin-left: auto; cursor: pointer; transition: color 0.2s; }
 .faq-delete:hover { color: #ef4444; }
 
-.form-row { display: flex; gap: 14px; }
-.form-row .grow { flex: 1; }
-
 /* 分类选项管理 */
 .manage-add { display: flex; gap: 10px; margin-bottom: 14px; }
 .manage-list { max-height: 260px; overflow-y: auto; }
@@ -361,6 +339,5 @@ function handleDelete(id: number) {
   .search-wrap { margin-left: 0; }
   .local-search { width: 100%; }
   .faq-list { padding: 8px 16px 20px; }
-  .form-row { flex-direction: column; gap: 0; }
 }
 </style>
