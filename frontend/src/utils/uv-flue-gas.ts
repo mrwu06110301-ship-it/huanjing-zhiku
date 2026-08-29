@@ -1,171 +1,138 @@
 /**
- * uv-flue-gas.ts — 紫外烟气模型计算引擎
+ * uv-flue-gas.ts — 紫外烟气模型计算引擎（v2 重写）
  *
- * 依据：
- *  - HJ 1045-2019《固定污染源烟气（二氧化硫和氮氧化物）便携式紫外吸收法测量仪器技术要求及检测方法》
- *  - HJ 1131-2020《固定污染源废气 二氧化硫的测定 便携式紫外吸收法》
- *  - HJ 1132-2020《固定污染源废气 氮氧化物的测定 便携式紫外吸收法》
+ * 依据 HJ 75-2017 / HJ 1045-2019 附录 A 折算公式链（用户截图 A1~A9）：
+ *  (A1) 工况浓度 ↔ 标况浓度：Csn = Cs × 101325/(Ba+Ps) × (273+ts)/273
+ *       （工况/标况的干湿基状态相同；Ba 环境大气压 Pa、Ps 烟气静压 Pa、ts 烟温 ℃）
+ *  (A2) 干基 ↔ 湿基：C干 = C湿 / (1 − Xsw/100)
+ *  (A3) 体积浓度 ↔ 标态干质量浓度：CQ = M/22.4 × Cv
+ *       （M 摩尔质量 g/mol；Cv 体积浓度 μmol/mol；22.4 标态摩尔体积 L/mol）
+ *  (A4) NOx 质量浓度（以 NO2 计）：CNOx = CNO × M(NO2)/M(NO) + CNO2
+ *  (A5) NOx 体积浓度（以 NO2 计）：CNOx = (CNOv + CNO2v) × M(NO2)/22.4
+ *  (A7) 折算浓度（基准过量空气系数 αs）：C折 = Csn干 × α/αs
+ *  (A8) 实测过剩空气系数：α = 21 / (21 − O2干)
+ *  (A9) 折算浓度（基准含氧量 O2s）：C折 = Csn干 × (21 − O2s)/(21 − O2干)
  *
- * 紫外差分吸收光谱法（DOAS）：朗伯-比尔定律 + 差分算法
- *  I(λ) = I0(λ) · exp[−Σ (σi(λ)·ci·L)]
- *  差分吸收：σ = σb(宽带) + σ'(窄带差分截面)，对光谱做高通滤波分离慢变化（粉尘/水汽/光源漂移）与快变化（气体窄带吸收），
- *  用差分截面 σ' 经最小二乘反演浓度 c。
- *
- * 本工具提供：
- *  1) 朗伯-比尔定律浓度反演（已知 σ'、L、差分吸光度 A'）
- *  2) NOx 换算（NO + NO2、NO→NO2 质量换算 46/30）
- *  3) 千基/湿基转换、标况换算
- *  4) 折算浓度（过剩空气系数法）与排放速率
- *  5) 检出限/示值误差判定（HJ 1045/1131/1132 指标）
+ * 单位约定：
+ *  - 体积浓度 μmol/mol（=ppm）；质量浓度 mg/m³（标态干基）
+ *  - M：SO2=64.06、NO=30.006、NO2=46.005
+ *  - 压力单位 Pa（Ba+Ps 绝对压），与 A1 的 101325 对应
  */
 
-export interface BeerLambertInput {
-  absorbance: number;     // 差分吸光度 A' = ln(I0'/I')（无量纲）
-  crossSection: number;   // 差分吸收截面 σ'（cm²/mol 分子）
-  pathLength: number;     // 光程 L（cm 或 m，与截面单位配套，见 unitFlag）
-  pathUnit?: "cm" | "m";
+// 摩尔质量 g/mol
+export const MOL = {
+  SO2: 64.06,
+  NO: 30.006,
+  NO2: 46.005,
+} as const;
+
+export type GasKey = "SO2" | "NO" | "NO2";
+
+/** A3：体积浓度 μmol/mol → 标态质量浓度 mg/m³（CQ = M/22.4 × Cv） */
+export function volumeToMass(cv: number, M: number): number {
+  return (M / 22.4) * cv;
 }
 
-/** 朗伯-比尔：c(ppm) = A' / (σ'·L) ，σ' 单位 cm²/molecule、L 单位 cm 时结果为 molecule/cm³，再换 ppm */
-export function beerLambert(input: BeerLambertInput): { ppm: number; moleculesPerCm3: number; steps: string[] } {
-  const L_cm = input.pathUnit === "m" ? input.pathLength * 100 : input.pathLength;
-  const N = input.absorbance / (input.crossSection * L_cm); // molecule/cm³
-  // 1 ppm = 2.463e13 molecule/cm³（25℃、101.325kPa，Loschmidt 2.463e19 / 1e6）
-  const ppm = N / 2.463e13;
-  const steps = [
-    `A' = ln(I0'/I') = ${input.absorbance}`,
-    `分子数浓度 N = A'/(σ'·L) = ${input.absorbance}/(${input.crossSection.toExponential(2)} × ${L_cm}) = ${N.toExponential(3)} molecule/cm³`,
-    `c(ppm) = N / 2.463×10¹³ = ${ppm.toFixed(3)} ppm（25℃、101.325 kPa）`,
-  ];
-  return { ppm, moleculesPerCm3: N, steps };
+/** A3 逆：标态质量浓度 → 体积浓度 */
+export function massToVolume(cq: number, M: number): number {
+  return (cq * 22.4) / M;
 }
 
-// ==================== NOx 换算 ====================
-
-/** NOx 相关换算：NO/NO2 质量比 46/30（M_NO=30.006, M_NO2=46.006） */
-export const M_NO = 30.006;
-export const M_NO2 = 46.006;
-
-export function noxSum(no_ppm: number, no2_ppm: number): { noxPpm: number; steps: string[] } {
-  // 以 NO2 计：NO 折算为等效 NO2
-  const nox = no_ppm + no2_ppm;
-  const steps = [
-    `NOx(以 NO2 计) = NO + NO2 = ${no_ppm} + ${no2_ppm} = ${nox} μmol/mol(ppm)`,
-  ];
-  return { noxPpm: nox, steps };
-}
-
-/** ppm → mg/m³（25℃ 参比 24.45 / 0℃ 标况 22.414） */
-export function ppmToMgm3(ppm: number, molarMass: number, temp: "25C" | "0C" = "25C"): number {
-  const Vm = temp === "25C" ? 24.45 : 22.414;
-  return (ppm * molarMass) / Vm;
-}
-
-// ==================== 干湿基 / 标况换算 ====================
-
-/** 湿基浓度 → 干基浓度：c干 = c湿/(1 − Xsw/100) */
-export function wetToDry(cWet: number, Xsw: number): { cDry: number; steps: string[] } {
-  const cDry = cWet / (1 - Xsw / 100);
+/** A1：工况 → 标况（干湿基状态相同）。压力单位 Pa */
+export function workingToStandard(
+  cs: number, ba: number, ps: number, ts: number
+): { csn: number; factor: number; steps: string[] } {
+  const factor = (101325 / (ba + ps)) * ((273 + ts) / 273);
+  const csn = cs * factor;
   return {
-    cDry,
-    steps: [`c干 = c湿/(1 − Xsw/100) = ${cWet}/(1 − ${Xsw}/100) = ${cDry.toFixed(2)} mg/m³`],
+    csn,
+    factor,
+    steps: [
+      `折标系数 = 101325/(Ba+Ps) × (273+ts)/273 = 101325/${ba + ps} × ${(273 + ts)}/273 = ${factor.toFixed(5)}`,
+      `Csn = Cs × ${factor.toFixed(5)} = ${cs.toFixed(2)} → ${csn.toFixed(2)}`,
+    ],
   };
 }
 
-/** 干基浓度 → 湿基浓度：c湿 = c干 × (1 − Xsw/100) */
-export function dryToWet(cDry: number, Xsw: number): number {
+/** A1 逆：标况 → 工况 */
+export function standardToWorking(csn: number, ba: number, ps: number, ts: number): number {
+  return csn / ((101325 / (ba + ps)) * ((273 + ts) / 273));
+}
+
+/** A2：湿基 → 干基（C干 = C湿/(1−Xsw/100)，单位不限，干湿状态相同） */
+export function wetToDryBase(cWet: number, Xsw: number): { cDry: number; steps: string[] } {
+  const cDry = cWet / (1 - Xsw / 100);
+  return { cDry, steps: [`C干 = C湿/(1−Xsw/100) = ${cWet}/(1−${Xsw}/100) = ${cDry.toFixed(3)}`] };
+}
+
+/** A2 逆：干基 → 湿基 */
+export function dryToWetBase(cDry: number, Xsw: number): number {
   return cDry * (1 - Xsw / 100);
 }
 
-// ==================== 折算与排放速率 ====================
-
-export interface AdjustInput {
-  concentration: number; // 实测干基浓度 mg/m³
-  O2: number;            // 实测氧量 %
-  O2Base: number;        // 基准含氧量 %
-  loadFactor?: number;    // 负荷系数（一般 1）
-}
-
-export function adjustConcentration(input: AdjustInput): { alpha: number; alphaS: number; adjusted: number; steps: string[] } {
-  const { concentration: c, O2, O2Base, loadFactor = 1 } = input;
-  const alpha = 21 / (21 - O2);
-  const alphaS = 21 / (21 - O2Base);
-  const adjusted = c * (alpha / alphaS) * loadFactor;
-  const steps = [
-    `α = 21/(21 − O2实测) = 21/(21 − ${O2}) = ${alpha.toFixed(4)}`,
-    `αs = 21/(21 − O2基准) = 21/(21 − ${O2Base}) = ${alphaS.toFixed(4)}`,
-    `折算浓度 = ${c} × ${alpha.toFixed(4)}/${alphaS.toFixed(4)} × ${loadFactor} = ${adjusted.toFixed(2)} mg/m³`,
-  ];
-  return { alpha, alphaS, adjusted, steps };
-}
-
-/** 排放速率：G = c × Qsnd × 10⁻⁶（c：mg/m³ 干基；Qsnd：标干流量 m³/h） */
-export function emissionRate(cDry: number, Qsnd: number): { rate: number; steps: string[] } {
-  const rate = cDry * Qsnd * 1e-6;
-  return { rate, steps: [`排放速率 G = c干 × Qsnd × 10⁻⁶ = ${cDry} × ${Qsnd} × 10⁻⁶ = ${rate.toFixed(3)} kg/h`] };
-}
-
-// ==================== HJ 指标判定 ====================
-
-export interface HJIndicator {
-  name: string;      // 指标名
-  value: number;     // 实测值
-  limit: number;     // 限值
-  unit: string;
-  betterWhenLower: boolean; // 越小越好
-  note?: string;
-}
-
-export function judgeIndicator(ind: HJIndicator): { pass: boolean; text: string } {
-  const pass = ind.betterWhenLower ? ind.value <= ind.limit : Math.abs(ind.value) <= ind.limit;
-  const arrow = pass ? "≤" : ">";
+/** A4：NOx 质量浓度（以 NO2 计）= CNO×M(NO2)/M(NO) + CNO2（同状态 mg/m³） */
+export function noxMass(cno: number, cno2: number): { nox: number; steps: string[] } {
+  const nox = (cno * MOL.NO2) / MOL.NO + cno2;
   return {
-    pass,
-    text: `${ind.name}: ${ind.value}${ind.unit} ${arrow} ${ind.limit}${ind.unit} ${pass ? "✓ 合格" : "✗ 不合格"}${ind.note ? "（" + ind.note + "）" : ""}`,
+    nox,
+    steps: [`CNOx = CNO×M(NO2)/M(NO) + CNO2 = ${cno}×${MOL.NO2}/${MOL.NO} + ${cno2} = ${nox.toFixed(2)} mg/m³`],
   };
 }
 
-/** HJ 1045-2019 / HJ 1131 / HJ 1132 关键性能指标限值 */
-export const HJ_LIMITS = {
-  /** 示值误差 ≤ ±2% FS（HJ 1045）；HJ 1131/1132 ≤±3% 或 ≤3.0 μmol/mol（量程≤100） */
-  indicationErrorFS: 2,
-  indicationErrorHJ: 3,
-  /** 重复性：相对标准偏差 RSD ≤ 2%（HJ 1045） */
-  rsd: 2,
-  /** 1h 零点漂移 / 量程漂移 ≤ ±2% FS */
-  drift1h: 2,
-  /** 检出限（mg/m³）：SO2=2（HJ 1131），NO=1、NO2=2（HJ 1132） */
-  lod: { SO2: 2, NO: 1, NO2: 2 },
-  /** 环境温度影响 ≤ ±5% FS（0~40℃） */
-  tempEffect: 5,
-  /** 平行性：三台仪器 RSD ≤ 5% */
-  parallelism: 5,
-  /** NO2→NO 转化器效率 ≥ 95%（HJ 1045 附录） */
-  converterEff: 95,
-} as const;
-
-/** 重复性 RSD(%) = s/x̄×100，输入多次测量值 */
-export function calcRSD(values: number[]): { rsd: number; mean: number; steps: string[] } {
-  const n = values.length;
-  const mean = values.reduce((a, b) => a + b, 0) / n;
-  const s = Math.sqrt(values.reduce((a, b) => a + (b - mean) ** 2, 0) / (n - 1));
-  const rsd = (s / mean) * 100;
+/** A5：NOx 体积浓度（以 NO2 计）= (CNOv+CNO2v) × M(NO2)/22.4 → 标态质量 mg/m³ */
+export function noxVolume(cnov: number, cno2v: number): { noxPpm: number; noxMass: number; steps: string[] } {
+  const noxPpm = cnov + cno2v;
+  const mass = ((cnov + cno2v) * MOL.NO2) / 22.4;
   return {
-    rsd, mean,
-    steps: [`x̄ = ${mean.toFixed(3)}，s = ${s.toFixed(4)}（n=${n}）`, `RSD = s/x̄×100 = ${rsd.toFixed(2)}%`],
+    noxPpm,
+    noxMass: mass,
+    steps: [
+      `CNOx体积 = CNOv + CNO2v = ${cnov} + ${cno2v} = ${noxPpm} μmol/mol`,
+      `CNOx质量 = (CNOv+CNO2v) × M(NO2)/22.4 = ${noxPpm} × ${MOL.NO2}/22.4 = ${mass.toFixed(2)} mg/m³`,
+    ],
   };
 }
 
-// ==================== 演示数据 ====================
+/** A8：实测过剩空气系数 α = 21/(21 − O2干) */
+export function excessAir(O2dry: number): { alpha: number; steps: string[] } {
+  const alpha = 21 / (21 - O2dry);
+  return { alpha, steps: [`α = 21/(21 − O2干) = 21/(21 − ${O2dry}) = ${alpha.toFixed(4)}`] };
+}
+
+/** A7：折算浓度（αs 基准过量空气系数）C折 = Csn干 × α/αs */
+export function adjustByAlpha(csnDry: number, alpha: number, alphaS: number): { adjusted: number; steps: string[] } {
+  const adjusted = csnDry * (alpha / alphaS);
+  return { adjusted, steps: [`C折 = Csn干 × α/αs = ${csnDry} × ${alpha.toFixed(4)}/${alphaS.toFixed(4)} = ${adjusted.toFixed(2)} mg/m³`] };
+}
+
+/** A9：折算浓度（基准含氧量 O2s）C折 = Csn干 × (21−O2s)/(21−O2干) */
+export function adjustByO2(csnDry: number, O2dry: number, O2s: number): { adjusted: number; steps: string[] } {
+  const adjusted = csnDry * ((21 - O2s) / (21 - O2dry));
+  return {
+    adjusted,
+    steps: [`C折 = Csn干 × (21−O2s)/(21−O2干) = ${csnDry} × (21−${O2s})/(21−${O2dry}) = ${adjusted.toFixed(2)} mg/m³`],
+  };
+}
+
+/** 常用行业基准值（GB 13223 燃煤锅炉等） */
+export const O2S_PRESETS = [
+  { label: "燃煤锅炉", o2s: 6 },
+  { label: "燃气锅炉", o2s: 3.5 },
+  { label: "燃油锅炉", o2s: 3 },
+  { label: "垃圾焚烧", o2s: 11 },
+  { label: "钢铁烧结", o2s: 16 },
+];
+
 export const UV_DEMO = {
-  absorbance: 0.082,
-  crossSection: 2.6e-19, // SO2 差分截面示例 cm²/molecule（200-230nm 波段量级）
-  pathLength: 0.3,
-  pathUnit: "m" as const,
-  no_ppm: 86,
+  // 仪器直读：标态干基 μmol/mol（多数紫外烟气分析仪直读形式）
+  so2_ppm: 86,
+  no_ppm: 92,
   no2_ppm: 6,
-  Xsw: 7.8,
-  O2: 13.5,
-  O2Base: 9,
-  Qsnd: 228000,
+  // 现场参数
+  ba: 101300,   // 环境大气压 Pa
+  ps: -800,     // 烟气静压 Pa（负压烟道）
+  ts: 93.4,     // 烟温 ℃
+  Xsw: 7.8,     // 含湿量 %
+  O2dry: 13.5,  // 氧量干基 %
+  o2s: 6,       // 基准含氧量（燃煤锅炉）
 };
