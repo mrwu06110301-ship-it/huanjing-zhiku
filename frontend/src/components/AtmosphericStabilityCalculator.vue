@@ -42,6 +42,108 @@ const rows = ref<Row[]>(
 const result = ref<StabilityResult | null>(null);
 const showExplanation = ref(false);
 
+// ====================== 设备定位 ======================
+const locating = ref(false);
+
+function locateDevice() {
+  if (!navigator.geolocation) {
+    ElMessage.warning("当前设备/浏览器不支持定位功能");
+    return;
+  }
+  locating.value = true;
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      form.longitude = Number(pos.coords.longitude.toFixed(4));
+      form.latitude = Number(pos.coords.latitude.toFixed(4));
+      locating.value = false;
+      ElMessage.success("定位成功，已填入经纬度");
+    },
+    (err) => {
+      locating.value = false;
+      if (err.code === err.PERMISSION_DENIED) {
+        ElMessage.error("定位被拒绝，请在浏览器设置中允许位置权限（手机需开启系统定位）");
+      } else if (err.code === err.POSITION_UNAVAILABLE) {
+        ElMessage.error("无法获取位置信息，请检查设备定位服务是否开启");
+      } else {
+        ElMessage.error("定位超时，请手动输入经纬度");
+      }
+    },
+    { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 }
+  );
+}
+
+// ====================== 标准查表快查 ======================
+interface TableDef { title: string; note?: string; head: string[]; rows: string[][] }
+const tableViewer = ref(false);
+const activeTable = ref<TableDef | null>(null);
+
+function showTable(key: string) {
+  activeTable.value = REF_TABLES[key] ?? null;
+  if (activeTable.value) tableViewer.value = true;
+}
+
+const REF_TABLES: Record<string, TableDef> = {
+  t3: {
+    title: "表3 太阳辐射等级",
+    note: "云量按天空十分制。白天按太阳高度角 h₀ 分档，夜间取「夜间」列。",
+    head: ["总云量/低云量", "夜间", "h₀≤15°", "15°<h₀≤35°", "35°<h₀≤65°", "h₀>65°"],
+    rows: [
+      ["≤4/≤4", "-2", "-1", "+1", "+2", "+3"],
+      ["5~7/≤4", "-1", "0", "+1", "+2", "+3"],
+      ["≥8/≤4", "-1", "0", "0", "+1", "+1"],
+      ["≥5/5~7", "0", "0", "0", "0", "+1"],
+      ["≥8/≥8", "0", "0", "0", "0", "0"],
+    ],
+  },
+  t4: {
+    title: "表4 大气稳定度等级",
+    note: "按地面风速（10m 高 10 分钟平均）与太阳辐射等级交叉查取。",
+    head: ["地面风速(m/s)", "+3", "+2", "+1", "0", "-1", "-2"],
+    rows: [
+      ["≤1.9", "A", "A-B", "B", "D", "E", "F"],
+      ["2~2.9", "A-B", "B", "C", "D", "E", "F"],
+      ["3~4.9", "B", "B-C", "C", "D", "D", "E"],
+      ["≥6", "D", "D", "D", "D", "D", "D"],
+    ],
+  },
+  n: {
+    title: "风廓线幂指数 n",
+    note: "各种稳定度条件下的风廓线幂指数值（附录D 推荐值）。",
+    head: ["地区", "A", "B", "C", "D", "E·F"],
+    rows: [
+      ["城市", "0.10", "0.15", "0.20", "0.25", "0.30"],
+      ["乡村", "0.07", "0.07", "0.10", "0.15", "0.25"],
+    ],
+  },
+  t5: {
+    title: "表5 风向变化的适宜程度分类",
+    note: "风向变化大小以风向标准差 σθ（±5°）表征。",
+    head: ["风向变化大小 (σθ)", "<15°", "15°~29°", "30°~45°", ">45°"],
+    rows: [["适宜程度类别", "a", "b", "c", "d"]],
+  },
+  t6: {
+    title: "表6 风速的适宜程度分类",
+    note: "以平均风速（10 分钟平均值）划分。",
+    head: ["平均风速 (m/s)", "1.0~2.0", "2.1~3.0", "3.1~4.5", ">4.5"],
+    rows: [["适宜程度类别", "a", "b", "c", "d"]],
+  },
+  t7: {
+    title: "表7 大气稳定度的适宜程度分类",
+    note: "按大气稳定度等级划分。",
+    head: ["大气稳定度等级", "F、E", "D", "C", "B、A"],
+    rows: [["适宜程度类别", "a", "b", "c", "d"]],
+  },
+  r853: {
+    title: "8.5.3 监测取消条件",
+    note: "原文：如果三项气象因子中的任一项达到 d 类，或者其中两项达到 c 类，则该次无组织排放监测应取消，或更换时日。",
+    head: ["情形", "处理"],
+    rows: [
+      ["任一项达到 d 类", "取消监测或更换时日"],
+      ["其中两项达到 c 类", "取消监测或更换时日"],
+    ],
+  },
+};
+
 // ====================== 计算 ======================
 const canCalc = computed(() => {
   const base =
@@ -127,8 +229,8 @@ function downloadTemplate() {
     ["低云量（0-10 十分制）", "3"],
     ["区域（城市/农村）", "农村"],
     [],
-    ["【过程数据】每分钟一组，共10组"],
-    ["序号", "风速(m/s)", "风向(°)", "大气压(hPa)", "温度(℃)", "湿度(%RH)"],
+    ["【过程数据】每分钟一组，共10组；风速1位小数，风向整数"],
+    ["序号", "风速(m/s)", "风向(°)", "大气压(kPa)", "温度(℃)", "湿度(%RH)"],
   ];
   for (let i = 1; i <= 10; i++) {
     header.push([String(i), "", "", "", "", ""]);
@@ -283,24 +385,16 @@ function radiationLabel(lv: number): string {
       </el-alert>
 
       <div class="base-grid">
-        <div class="field">
-          <label>测量时间（结束时间）<span class="req">*</span></label>
-          <el-date-picker
-            v-model="form.measureTime"
-            type="datetime"
-            format="YYYY-MM-DD HH:mm:ss"
-            value-format="YYYY-MM-DD HH:mm:ss"
-            placeholder="选择日期时间"
-            style="width: 100%"
-          />
-        </div>
-        <div class="field">
-          <label>经度（°）<span class="req">*</span></label>
-          <el-input-number v-model="form.longitude" :min="-180" :max="180" :precision="4" :controls="false" placeholder="东经为正" style="width: 100%" />
-        </div>
-        <div class="field">
-          <label>纬度（°）<span class="req">*</span></label>
-          <el-input-number v-model="form.latitude" :min="-90" :max="90" :precision="4" :controls="false" placeholder="北纬为正" style="width: 100%" />
+        <div class="field geo-field">
+          <label>经纬度<span class="req">*</span></label>
+          <div class="geo-row">
+            <el-input-number v-model="form.longitude" :min="-180" :max="180" :precision="4" :controls="false" placeholder="经度（东经为正）" style="flex:1" />
+            <el-input-number v-model="form.latitude" :min="-90" :max="90" :precision="4" :controls="false" placeholder="纬度（北纬为正）" style="flex:1" />
+            <el-button :loading="locating" @click="locateDevice" title="获取设备当前定位">
+              <Icon name="globe" :size="15" />
+              <span class="geo-btn-text">定位</span>
+            </el-button>
+          </div>
         </div>
         <div class="field">
           <label>测量高度（m）<span class="req">*</span></label>
@@ -321,6 +415,17 @@ function radiationLabel(lv: number): string {
             <el-radio-button value="rural">农村</el-radio-button>
           </el-radio-group>
         </div>
+        <div class="field geo-field">
+          <label>测量时间（结束时间）<span class="req">*</span></label>
+          <el-date-picker
+            v-model="form.measureTime"
+            type="datetime"
+            format="YYYY-MM-DD HH:mm:ss"
+            value-format="YYYY-MM-DD HH:mm:ss"
+            placeholder="选择日期时间"
+            style="width: 100%"
+          />
+        </div>
       </div>
 
       <div class="rows-head">
@@ -334,7 +439,7 @@ function radiationLabel(lv: number): string {
               <th style="width: 48px">#</th>
               <th>风速 (m/s)<span class="req">*</span></th>
               <th>风向 (°)<span class="req">*</span></th>
-              <th>大气压 (hPa)</th>
+              <th>大气压 (kPa)</th>
               <th>温度 (℃)</th>
               <th>湿度 (%RH)</th>
             </tr>
@@ -342,9 +447,9 @@ function radiationLabel(lv: number): string {
           <tbody>
             <tr v-for="(r, i) in rows" :key="i">
               <td class="row-no">{{ i + 1 }}</td>
-              <td><el-input-number v-model="r.windSpeed" :min="0" :max="60" :precision="2" :controls="false" placeholder="0.00" /></td>
-              <td><el-input-number v-model="r.windDir" :min="0" :max="360" :precision="2" :controls="false" placeholder="0-360" /></td>
-              <td><el-input-number v-model="r.pressure" :min="300" :max="1100" :precision="1" :controls="false" placeholder="1013.2" /></td>
+              <td><el-input-number v-model="r.windSpeed" :min="0" :max="60" :precision="1" :controls="false" placeholder="0.0" /></td>
+              <td><el-input-number v-model="r.windDir" :min="0" :max="360" :precision="0" :controls="false" placeholder="0-360" /></td>
+              <td><el-input-number v-model="r.pressure" :min="30" :max="110" :precision="1" :controls="false" placeholder="101.3" /></td>
               <td><el-input-number v-model="r.temperature" :min="-60" :max="60" :precision="1" :controls="false" placeholder="25.0" /></td>
               <td><el-input-number v-model="r.humidity" :min="0" :max="100" :precision="1" :controls="false" placeholder="60.0" /></td>
             </tr>
@@ -404,7 +509,7 @@ function radiationLabel(lv: number): string {
       <div class="table-scroll">
         <table class="report-table minute-table">
           <thead>
-            <tr><th>#</th><th>风速(m/s)</th><th>风向(°)</th><th>大气压(hPa)</th><th>温度(℃)</th><th>湿度(%RH)</th></tr>
+            <tr><th>#</th><th>风速(m/s)</th><th>风向(°)</th><th>大气压(kPa)</th><th>温度(℃)</th><th>湿度(%RH)</th></tr>
           </thead>
           <tbody>
             <tr v-for="(r, i) in rows.filter(x => Number.isFinite(x.windSpeed) && Number.isFinite(x.windDir))" :key="i">
@@ -420,13 +525,13 @@ function radiationLabel(lv: number): string {
       <table class="report-table">
         <tbody>
           <tr><th>平均温度</th><td>{{ fmt(result.avgTemperature, 1) }} ℃</td><th>平均湿度</th><td>{{ fmt(result.avgHumidity, 1) }} %RH</td></tr>
-          <tr><th>平均气压</th><td>{{ fmt(result.avgPressure, 1) }} hPa</td><th>平均风速</th><td>{{ fmt(result.avgWindSpeed) }} m/s</td></tr>
-          <tr><th>平均风向（矢量平均）</th><td>{{ fmt(result.avgWindDir) }}°（{{ dirTo16(result.avgWindDir) }}）</td><th>风向标准差 σθ（Yamartino）</th><td>{{ fmt(result.windDirStdDev) }}°</td></tr>
-          <tr><th>测量高度</th><td>{{ form.measureHeight }} m</td><th>10m 地面风速</th><td>{{ fmt(result.windSpeed10m) }} m/s</td></tr>
+          <tr><th>平均气压</th><td>{{ fmt(result.avgPressure, 1) }} kPa</td><th>平均风速</th><td>{{ fmt(result.avgWindSpeed, 1) }} m/s</td></tr>
+          <tr><th>平均风向（矢量平均）</th><td>{{ fmt(result.avgWindDir, 1) }}°（{{ dirTo16(result.avgWindDir) }}）</td><th>风向标准差 σθ（Yamartino）<button class="tbl-link" @click="showTable('t5')" title="查看表5">表5 ⓘ</button></th><td>{{ fmt(result.windDirStdDev, 1) }}°</td></tr>
+          <tr><th>测量高度</th><td>{{ form.measureHeight }} m</td><th>10m 地面风速</th><td>{{ fmt(result.windSpeed10m, 1) }} m/s</td></tr>
           <tr><th>日期序号 dn</th><td>{{ result.dayInYear }}（0 起点计数）</td><th>地球公转角 Q0</th><td>{{ fmt(result.earthRotationAngle, 4) }} rad</td></tr>
           <tr><th>太阳倾角 δ</th><td>{{ fmt(result.sunDipAngle) }}°</td><th>太阳高度角 h₀</th><td>{{ fmt(result.sunElevation) }}°（{{ result.isNight ? "夜间" : "白天" }}）</td></tr>
-          <tr><th>太阳辐射等级</th><td>{{ radiationLabel(result.radiationLevel) }}</td><th>风廓线幂指数 n</th><td>{{ result.windProfileExponent }}</td></tr>
-          <tr><th>稳定度预测等级（平均风速）</th><td>{{ result.stabilityPredicted }}</td><th>大气稳定度等级（10m 风速）</th><td class="level-strong">{{ result.stabilityLevel }}</td></tr>
+          <tr><th>太阳辐射等级<button class="tbl-link" @click="showTable('t3')" title="查看表3">表3 ⓘ</button></th><td>{{ radiationLabel(result.radiationLevel) }}</td><th>风廓线幂指数 n<button class="tbl-link" @click="showTable('n')" title="查看风廓线幂指数表">附录D ⓘ</button></th><td>{{ result.windProfileExponent }}</td></tr>
+          <tr><th>稳定度预测等级（平均风速）<button class="tbl-link" @click="showTable('t4')" title="查看表4">表4 ⓘ</button></th><td>{{ result.stabilityPredicted }}</td><th>大气稳定度等级（10m 风速）<button class="tbl-link" @click="showTable('t4')" title="查看表4">表4 ⓘ</button></th><td class="level-strong">{{ result.stabilityLevel }}</td></tr>
         </tbody>
       </table>
 
@@ -439,30 +544,38 @@ function radiationLabel(lv: number): string {
         <tbody>
           <tr>
             <td>大气稳定度适宜度</td>
-            <td>稳定度等级 {{ result.stabilityLevel }}（表7）</td>
+            <td>稳定度等级 {{ result.stabilityLevel }}<button class="tbl-link" @click="showTable('t7')" title="查看表7">表7 ⓘ</button></td>
             <td><span :class="['suit-badge', suitBadge[result.stabilitySuitability]]">{{ result.stabilitySuitability }}</span></td>
             <td class="left">{{ SUITABILITY_MEANING[result.stabilitySuitability] }}</td>
           </tr>
           <tr>
             <td>风向变化适宜度</td>
-            <td>σθ = {{ fmt(result.windDirStdDev) }}°（表5）</td>
+            <td>σθ = {{ fmt(result.windDirStdDev, 1) }}°<button class="tbl-link" @click="showTable('t5')" title="查看表5">表5 ⓘ</button></td>
             <td><span :class="['suit-badge', suitBadge[result.windDirSuitability]]">{{ result.windDirSuitability }}</span></td>
             <td class="left">{{ SUITABILITY_MEANING[result.windDirSuitability] }}</td>
           </tr>
           <tr>
             <td>风速适宜度</td>
-            <td>平均风速 {{ fmt(result.avgWindSpeed) }} m/s（表6）</td>
+            <td>平均风速 {{ fmt(result.avgWindSpeed, 1) }} m/s<button class="tbl-link" @click="showTable('t6')" title="查看表6">表6 ⓘ</button></td>
             <td><span :class="['suit-badge', suitBadge[result.windSpeedSuitability]]">{{ result.windSpeedSuitability }}</span></td>
             <td class="left">{{ SUITABILITY_MEANING[result.windSpeedSuitability] }}</td>
           </tr>
           <tr class="total-row">
             <td>总适宜度（8.5.2）</td>
-            <td>取三项中最差一类</td>
+            <td>取三项中适宜程度最差的一类（对监测最不利者）</td>
             <td><span :class="['suit-badge', suitBadge[result.totalSuitability]]">{{ result.totalSuitability }}</span></td>
             <td class="left">{{ SUITABILITY_MEANING[result.totalSuitability] }}</td>
           </tr>
         </tbody>
       </table>
+      <div class="rule-bar">
+        <span><strong>8.5.3 取消规则</strong>（点击查看原文）：</span>
+        <button class="tbl-link" @click="showTable('r853')">8.5.3 条款 ⓘ</button>
+        <span class="rule-text">任一项达到 d 类，或其中两项达到 c 类 → 应取消监测或更换时日</span>
+        <span :class="['rule-status', result.shouldCancel ? 'rule-bad' : 'rule-good']">
+          {{ result.shouldCancel ? "⚠ 本次触发取消条件" : "✓ 本次未触发取消条件" }}
+        </span>
+      </div>
       <div class="conclusion-box">
         <strong>结论判定：</strong>{{ result.conclusion }}。
         <template v-if="result.shouldCancel"> {{ result.cancelReason }}</template>
@@ -474,6 +587,32 @@ function radiationLabel(lv: number): string {
       <Icon name="chart" :size="44" />
       <p>填写参数后点击「开始计算」，将生成完整评定报表</p>
     </div>
+
+    <!-- ===== 标准查表快查弹窗 ===== -->
+    <el-dialog
+      v-model="tableViewer"
+      :title="activeTable?.title"
+      width="560px"
+      append-to-body
+      destroy-on-close
+    >
+      <p v-if="activeTable?.note" class="dialog-note">{{ activeTable.note }}</p>
+      <table class="ref-table" v-if="activeTable">
+        <thead>
+          <tr>
+            <th v-for="(h, i) in activeTable.head" :key="i">{{ h }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="(row, ri) in activeTable.rows" :key="ri">
+            <td v-for="(cell, ci) in row" :key="ci" :class="{ 'row-head': ci === 0 }">{{ cell }}</td>
+          </tr>
+        </tbody>
+      </table>
+      <template #footer>
+        <span class="dialog-src">来源：HJ/T 55-2000《大气污染物无组织排放监测技术导则》</span>
+      </template>
+    </el-dialog>
 
     <!-- ===== 计算过程说明 ===== -->
     <div class="explain-card">
@@ -557,6 +696,45 @@ function radiationLabel(lv: number): string {
 .base-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px 18px; }
 .field label { display: block; font-size: 13px; color: var(--text-light); margin-bottom: 6px; font-weight: 500; }
 .req { color: #ef4444; margin-left: 2px; }
+.geo-field { grid-column: span 2; }
+.geo-row { display: flex; gap: 8px; align-items: center; }
+.geo-btn-text { margin-left: 4px; }
+@media (max-width: 640px) { .geo-field { grid-column: span 1; } .geo-row { flex-wrap: wrap; } }
+
+/* 表引用链接 */
+.tbl-link {
+  display: inline-flex; align-items: center;
+  margin-left: 6px; padding: 1px 7px;
+  font-size: 11.5px; font-weight: 600;
+  color: var(--primary); background: var(--primary-light);
+  border: 1px solid rgba(37, 99, 235, 0.18); border-radius: 10px;
+  cursor: pointer; transition: all 0.2s var(--ease); vertical-align: middle;
+}
+.tbl-link:hover { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+/* 8.5.3 规则条 */
+.rule-bar {
+  margin-top: 14px; padding: 12px 16px;
+  background: var(--bg-soft); border-radius: var(--radius);
+  font-size: 13px; color: var(--text);
+  display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px;
+}
+.rule-bar .tbl-link { margin-left: 0; }
+.rule-text { color: var(--text-light); }
+.rule-status { margin-left: auto; font-weight: 700; font-size: 12.5px; }
+.rule-bad { color: #dc2626; }
+.rule-good { color: #16a34a; }
+
+/* 快查弹窗 */
+.dialog-note { font-size: 12.5px; color: var(--text-muted); margin: 0 0 12px; line-height: 1.6; }
+.ref-table { width: 100%; border-collapse: collapse; }
+.ref-table th, .ref-table td {
+  border: 1px solid var(--border-light); padding: 7px 10px;
+  font-size: 13px; text-align: center; color: var(--text);
+}
+.ref-table thead th { background: var(--primary-light); color: var(--primary); font-weight: 700; white-space: nowrap; }
+.ref-table .row-head { background: var(--bg-soft); font-weight: 600; color: var(--text-light); }
+.dialog-src { font-size: 12px; color: var(--text-muted); }
 
 .rows-head { display: flex; align-items: baseline; gap: 10px; margin: 20px 0 10px; }
 .rows-head h4 { font-size: 14.5px; font-weight: 700; color: var(--text); margin: 0; }

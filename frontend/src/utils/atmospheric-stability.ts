@@ -346,17 +346,20 @@ export function calcStability(input: StabilityInput): StabilityResult {
   const wdSuit = windDirSuitability(yamartinoStdDev(records.map((r) => r.windDir)));
   const stSuit = stabilitySuitability(level);
 
-  // ---- 15. 总适宜度（8.5.2 取最差一项：a 最差 > b > c > d 最好）----
+  // ---- 15. 总适宜度（8.5.2：以适宜程度最差的一项估计总体）
+  // 适宜程度针对"无组织排放监测"：a 最适宜监测 → d 最不适宜监测，
+  // "最差"即对监测最不利 = 类别字母最大者
   const rank: Record<string, number> = { a: 1, b: 2, c: 3, d: 4 };
-  const worst = [wsSuit, wdSuit, stSuit].sort((x, y) => rank[x] - rank[y])[0];
+  const worst = [wsSuit, wdSuit, stSuit].reduce((x, y) => (rank[y] > rank[x] ? y : x));
 
   // ---- 16. 结论 + 8.5.3 取消判定 ----
+  // 8.5.3：任一项达到 d 类，或其中两项达到 c 类 → 应取消或更换时日
   let shouldCancel = false;
   const cancelParts: string[] = [];
   const cCount = [wsSuit, wdSuit, stSuit].filter((x) => x === "c").length;
-  if (worst === "d") {
+  if (rank[worst] >= 4) {
     shouldCancel = true;
-    cancelParts.push("任一项气象因子适宜度为 d 类");
+    cancelParts.push("任一项气象因子适宜度达到 d 类");
   } else if (cCount >= 2) {
     shouldCancel = true;
     cancelParts.push("其中两项适宜度达到 c 类");
@@ -386,7 +389,7 @@ export function calcStability(input: StabilityInput): StabilityResult {
     conclusion: SUIT_DESC[worst],
     shouldCancel,
     cancelReason: shouldCancel
-      ? `依据 HJ/T 55-2000 8.5.3（${cancelParts.join("；")}），该次无组织排放监测应取消或更换日期。`
+      ? `依据 HJ/T 55-2000 8.5.3：三项气象因子中${cancelParts.join("，且")}，该次无组织排放监测应取消或更换时日。`
       : "",
   };
 }
