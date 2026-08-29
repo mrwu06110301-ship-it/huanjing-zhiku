@@ -15,3 +15,19 @@ export function getFAQs(params: {
 export function getFAQ(id: number): Promise<{ data: FAQOut }> {
   return request.get(`/faqs/${id}`);
 }
+
+/** 新增 FAQ（问题描述 + 解决办法） */
+export function createFAQ(data: {
+  question: string;
+  answer: string;
+  faq_type?: string;
+  category_id?: number | null;
+  tags?: string[];
+}): Promise<{ data: FAQOut }> {
+  return request.post("/faqs", data);
+}
+
+/** 删除 FAQ（本人或管理员） */
+export function deleteFAQ(id: number) {
+  return request.delete(`/faqs/${id}`);
+}

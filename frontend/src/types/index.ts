@@ -112,6 +112,7 @@ export interface FAQOut {
   is_pinned: boolean;
   is_public: boolean;
   view_count: number;
+  author_id?: number;
   author_name: string;
   created_at: string;
 }

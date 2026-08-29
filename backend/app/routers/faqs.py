@@ -32,7 +32,7 @@ def _make_out(f: FAQ, cat_name: str | None, author_name: str) -> FAQOut:
         faq_type=f.faq_type, category_id=f.category_id,
         category_name=cat_name, tags=f.tags or [],
         is_pinned=f.is_pinned, is_public=f.is_public,
-        view_count=f.view_count, author_name=author_name,
+        view_count=f.view_count, author_id=f.author_id, author_name=author_name,
         created_at=f.created_at,
     )
 
