@@ -8,6 +8,10 @@
 import { ref, reactive, computed, watch } from "vue";
 import { ElMessage } from "element-plus";
 import Icon from "@/components/Icon.vue";
+import { useAuthStore } from "@/stores/auth";
+
+const auth = useAuthStore();
+const isAdmin = computed(() => auth.isAdmin());
 import { O2_BASELINES } from "@/utils/o2-baseline";
 import { computeDustSampling, DUST_DEMO, type DustSamplingResult } from "@/utils/flue-dust-sampling";
 
@@ -233,7 +237,7 @@ const showExplain = ref(false);
         </div>
       </div>
 
-      <div class="steps" v-if="result">
+      <div class="steps" v-if="isAdmin && result">
         <div class="steps-title">计算过程</div>
         <div v-for="(s, i) in result.steps" :key="i" class="step-line">{{ s }}</div>
       </div>

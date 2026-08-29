@@ -7,6 +7,10 @@
 import { ref, reactive, computed } from "vue";
 import { ElMessage } from "element-plus";
 import Icon from "@/components/Icon.vue";
+import { useAuthStore } from "@/stores/auth";
+
+const auth = useAuthStore();
+const isAdmin = computed(() => auth.isAdmin());
 import { computeMoisture, satLookup, SAT_TABLE, MOISTURE_DEMO } from "@/utils/rc-moisture";
 
 /** 方式说明（方式选择卡用） */
@@ -164,7 +168,7 @@ const showExplain = ref(false);
         </div>
       </div>
 
-      <div class="steps" v-if="current">
+      <div class="steps" v-if="isAdmin && current">
         <div class="steps-title">计算过程（{{ form.method === 1 ? "方式1 饱和蒸汽压法" : "方式2 露点法" }}）</div>
         <div v-for="(s, i) in current.steps" :key="i" class="step-line">{{ s }}</div>
       </div>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, onMounted, nextTick } from "vue";
+import { ref, onMounted, nextTick, computed } from "vue";
+import { useAuthStore } from "@/stores/auth";
 
 // ==================== 动态加载 Google Fonts ====================
 function loadFonts() {
@@ -10,6 +11,9 @@ function loadFonts() {
   link.href = 'https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700;900&family=JetBrains+Mono:wght@400;500;700&display=swap';
   document.head.appendChild(link);
 }
+
+const auth = useAuthStore();
+const isAdmin = computed(() => auth.isAdmin());
 
 // ==================== Constants ====================
 const CIRC_COEFFS: Record<number, number[]> = {
@@ -354,6 +358,7 @@ function drawRectangular() {
 function showTable() {
   const panel = document.getElementById('flue-table-panel');
   if (!panel || !result.value) return;
+  if (!isAdmin.value) { panel.style.display = 'none'; return; } // 测点数据表仅管理员可见
   panel.style.display = '';
   const wrap = document.getElementById('flue-table-wrap');
   if (!wrap) return;

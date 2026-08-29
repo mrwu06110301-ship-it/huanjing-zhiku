@@ -8,6 +8,10 @@
 import { ref, reactive, computed } from "vue";
 import { ElMessage } from "element-plus";
 import Icon from "@/components/Icon.vue";
+import { useAuthStore } from "@/stores/auth";
+
+const auth = useAuthStore();
+const isAdmin = computed(() => auth.isAdmin());
 import {
   MOL, volumeToMass, workingToStandard,
   noxMass, excessAir, adjustByO2, O2S_PRESETS, UV_DEMO,
@@ -23,10 +27,6 @@ const env = reactive({
   O2dry: null as number | null,  // 氧量干基 %
   o2s: 6 as number | null,       // 基准含氧量 %（下拉/自定义）
 });
-
-const envValid = computed(
-  () => env.ba !== null && env.ba > 0 && env.ps !== null && env.ts !== null && env.Xsw !== null && env.Xsw < 100
-);
 
 // ==================== 基准含氧量下拉 + 自定义 ====================
 const o2sCustom = ref(false); // 自定义模式
@@ -94,7 +94,6 @@ interface Row {
 }
 
 const rows = computed<Row[]>(() => {
-  if (!envValid.value) return [];
   const list: Row[] = [];
   const calc = (key: GasKey | "NOx", label: string, ppm: number | null, M: number) => {
     if (ppm === null) return;
@@ -102,7 +101,8 @@ const rows = computed<Row[]>(() => {
     list.push({
       key, label, ppm,
       massStdDry: mStdDry,
-      massWetStd: mStdDry * (1 - env.Xsw! / 100),
+      // 湿基仅在填了含湿量时计算
+      massWetStd: env.Xsw !== null && env.Xsw < 100 ? mStdDry * (1 - env.Xsw / 100) : null,
     });
   };
   calc("SO2", "SO₂", toPpm("SO2", gases.SO2), MOL.SO2);
@@ -121,7 +121,7 @@ const alphaResult = computed(() => {
 
 interface AdjustRow { label: string; csnDry: number; adjusted: number }
 const adjustRows = computed<AdjustRow[]>(() => {
-  if (env.O2dry === null || env.O2dry >= 21 || o2sInput.value === null) return [];
+  if (env.O2dry === null || env.O2dry >= 21 || o2sInput.value === null || o2sInput.value >= 21) return [];
   return rows.value
     .filter((r) => r.massStdDry !== null)
     .map((r) => ({
@@ -279,10 +279,11 @@ const showExplain = ref(false);
     </div>
 
     <!-- ===== 卡片二：浓度换算结果 ===== -->
-    <div class="card" v-if="rows.length">
+    <div class="card">
       <div class="card-head">
         <h3><Icon name="layers" :size="17" /> 浓度换算结果</h3>
       </div>
+      <template v-if="rows.length">
       <div class="matrix-wrap">
         <table class="matrix">
           <thead>
@@ -320,12 +321,14 @@ const showExplain = ref(false);
         </table>
       </div>
       <p class="matrix-note">标态：0℃、101.325 kPa；湿基 = 干基 × (1−Xsw/100)；NOₓ 以 NO₂ 计（M=46.005），置于表末。</p>
+      </template>
+      <div v-else class="empty-hint"><Icon name="info" :size="14" /> 填写上方仪器直读浓度后自动计算（湿基需填含湿量 Xsw）</div>
     </div>
 
     <!-- ===== 卡片三：折算浓度 ===== -->
-    <div class="card" v-if="adjustRows.length">
+    <div class="card">
       <div class="card-head">
-        <h3><Icon name="trendUp" :size="17" /> 折算浓度（基准含氧量 {{ o2sInput }}%）</h3>
+        <h3><Icon name="trendUp" :size="17" /> 折算浓度<span v-if="adjustRows.length">（基准含氧量 {{ o2sInput }}%）</span></h3>
         <div class="alpha-badge" v-if="alphaResult">α = {{ alphaResult.alpha.toFixed(4) }}
           <span class="q-tip" @click="toggleTip('A8')">?</span>
           <div v-if="tipVisible.A8" class="tip-pop">
@@ -335,6 +338,7 @@ const showExplain = ref(false);
           </div>
         </div>
       </div>
+      <template v-if="adjustRows.length">
       <div class="adj-grid">
         <div v-for="r in adjustRows" :key="r.label" class="vr-card">
           <span class="vr-label">{{ r.label }}</span>
@@ -344,7 +348,7 @@ const showExplain = ref(false);
           </div>
         </div>
       </div>
-      <div class="steps" v-if="alphaResult">
+      <div class="steps" v-if="isAdmin && alphaResult">
         <div class="steps-title">折算公式
           <span class="q-tip" @click="toggleTip('A9')">?</span>
           <div v-if="tipVisible.A9" class="tip-pop">
@@ -355,6 +359,8 @@ const showExplain = ref(false);
         </div>
         <div class="step-line">C折 = Csn干 × (21−O₂s)/(21−O₂干)，O₂s = {{ o2sInput }}%</div>
       </div>
+      </template>
+      <div v-else class="empty-hint"><Icon name="info" :size="14" /> 填写氧量干基 O₂ 与基准含氧量 O₂s 后自动折算</div>
     </div>
 
     <!-- ===== 卡片四：公式说明（默认折叠） ===== -->
@@ -476,6 +482,11 @@ const showExplain = ref(false);
 .vr-base { margin-right: 6px; opacity: 0.75; }
 .vr-card b { font-size: 22px; font-weight: 800; color: var(--primary); line-height: 1.25; }
 
+.empty-hint {
+  margin-top: 4px; padding: 14px; border-radius: 12px;
+  border: 1.5px dashed var(--border-light); color: var(--text-light); font-size: 12.5px;
+  display: flex; align-items: center; gap: 8px;
+}
 .steps { margin-top: 14px; background: var(--bg-soft, #f6f8fa); border-radius: 12px; padding: 12px 16px; }
 .steps-title { font-size: 12.5px; font-weight: 700; color: var(--text-light); margin-bottom: 6px; display: flex; align-items: center; }
 .step-line { font-size: 12.5px; color: var(--text-light); line-height: 1.9; font-family: Consolas, Monaco, monospace; word-break: break-all; }

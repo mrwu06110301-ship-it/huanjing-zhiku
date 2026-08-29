@@ -10,6 +10,10 @@
 import { ref, reactive, computed, watch } from "vue";
 import { ElMessage } from "element-plus";
 import Icon from "@/components/Icon.vue";
+import { useAuthStore } from "@/stores/auth";
+
+const auth = useAuthStore();
+const isAdmin = computed(() => auth.isAdmin());
 import {
   convertFlow, convertVolume, FLOW_LABEL,
   type FlowKind, type FlowSetting, type VolumeConvertResult,
@@ -60,12 +64,6 @@ function calcFlow() {
   flowResult.value = f.from === f.to ? f.Q : base * f.Q;
 }
 watch(flowForm, calcFlow, { deep: true });
-
-function swapFlow() {
-  const t = flowForm.from;
-  flowForm.from = flowForm.to;
-  flowForm.to = t;
-}
 
 // ====================== 卡片二：体积换算（自动计算） ======================
 const volForm = reactive({
@@ -178,7 +176,7 @@ const settingRule = computed(() => {
         </div>
       </div>
 
-      <!-- 下：换算主区（输入 ⇆ 结果） -->
+        <!-- 下：换算主区（输入 ⇆ 结果） -->
       <div class="flow-main">
         <div class="convert-row">
           <div class="io-card">
@@ -192,12 +190,6 @@ const settingRule = computed(() => {
                 </el-option>
               </el-select>
             </div>
-          </div>
-
-          <div class="swap-cell">
-            <el-button circle plain @click="swapFlow" title="交换方向">
-              <Icon name="refresh" :size="14" />
-            </el-button>
           </div>
 
           <div class="io-card result-card">
@@ -286,7 +278,7 @@ const settingRule = computed(() => {
         </div>
       </div>
 
-      <div class="steps" v-if="volResult">
+      <div class="steps" v-if="isAdmin && volResult">
         <div class="steps-title">计算过程</div>
         <div v-for="(s, i) in volResult.steps" :key="i" class="step-line">{{ s }}</div>
       </div>
@@ -401,7 +393,6 @@ const settingRule = computed(() => {
   flex: 1; min-width: 0; font-size: 22px; font-weight: 800; color: var(--primary); line-height: 1.15;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.swap-cell { display: flex; align-items: center; flex: none; }
 .fr-factor { margin-top: 12px; font-size: 12.5px; color: var(--text-light); }
 .fr-note { opacity: 0.8; }
 
@@ -513,7 +504,6 @@ const settingRule = computed(() => {
 @media (max-width: 640px) {
   .card { padding: 16px 14px; }
   .convert-row { flex-direction: column; }
-  .swap-cell { transform: rotate(90deg); padding: 2px 0; }
   .io-line { flex-wrap: wrap; }
   .io-num { flex: 1 1 100%; }
   .io-select { flex: 1 1 100%; width: 100%; }

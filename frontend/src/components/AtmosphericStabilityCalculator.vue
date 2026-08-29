@@ -16,6 +16,10 @@ import {
   SUITABILITY_MEANING,
 } from "@/utils/atmospheric-stability";
 import Icon from "@/components/Icon.vue";
+import { useAuthStore } from "@/stores/auth";
+
+const auth = useAuthStore();
+const isAdmin = computed(() => auth.isAdmin());
 
 // ====================== 表单状态 ======================
 const form = reactive({
@@ -505,6 +509,7 @@ function radiationLabel(lv: number): string {
 
       <!-- 1. 原始输入 -->
       <h4 class="sec-title">一、原始输入</h4>
+      <div class="table-scroll">
       <table class="report-table">
         <tbody>
           <tr>
@@ -521,6 +526,7 @@ function radiationLabel(lv: number): string {
           </tr>
         </tbody>
       </table>
+      </div>
 
       <div class="table-scroll">
         <table class="report-table minute-table">
@@ -536,8 +542,10 @@ function radiationLabel(lv: number): string {
         </table>
       </div>
 
-      <!-- 2. 过程计算 -->
+      <!-- 2. 过程计算（仅管理员可见） -->
+      <template v-if="isAdmin">
       <h4 class="sec-title">二、过程计算</h4>
+      <div class="table-scroll">
       <table class="report-table">
         <tbody>
           <tr><th>平均温度</th><td>{{ fmt(result.avgTemperature, 1) }} ℃</td><th>平均湿度</th><td>{{ fmt(result.avgHumidity, 1) }} %RH</td></tr>
@@ -550,9 +558,12 @@ function radiationLabel(lv: number): string {
           <tr><th>稳定度预测等级（平均风速）<button class="tbl-link" @click="showTable('t4')" title="查看表4">表4 ⓘ</button></th><td>{{ result.stabilityPredicted }}</td><th>大气稳定度等级（10m 风速）<button class="tbl-link" @click="showTable('t4')" title="查看表4">表4 ⓘ</button></th><td class="level-strong">{{ result.stabilityLevel }}</td></tr>
         </tbody>
       </table>
+      </div>
+      </template>
 
       <!-- 3. 结论 -->
       <h4 class="sec-title">三、适宜度评定与结论</h4>
+      <div class="table-scroll">
       <table class="report-table suit-table">
         <thead>
           <tr><th>评定项</th><th>依据</th><th>类别</th><th>含义</th></tr>
@@ -584,6 +595,7 @@ function radiationLabel(lv: number): string {
           </tr>
         </tbody>
       </table>
+      </div>
       <div class="rule-bar">
         <span><strong>8.5.3 取消规则</strong>（点击查看原文）：</span>
         <button class="tbl-link" @click="showTable('r853')">8.5.3 条款 ⓘ</button>
@@ -630,8 +642,8 @@ function radiationLabel(lv: number): string {
       </template>
     </el-dialog>
 
-    <!-- ===== 计算过程说明 ===== -->
-    <div class="explain-card">
+    <!-- ===== 计算过程说明（仅管理员可见） ===== -->
+    <div class="explain-card" v-if="isAdmin">
       <div class="explain-head" @click="showExplanation = !showExplanation">
         <h3><Icon name="question" :size="17" /> 计算过程说明（HJ/T 55-2000）</h3>
         <span class="toggle">{{ showExplanation ? "收起 ▲" : "展开 ▼" }}</span>
@@ -808,7 +820,9 @@ function radiationLabel(lv: number): string {
 .ref-table .row-head { background: var(--bg-soft); font-weight: 600; color: var(--text-light); }
 .dialog-src { font-size: 12px; color: var(--text-muted); }
 
-.table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; touch-action: pan-x; }
+/* 输入框不拦截横向滑动手势，让触摸滑动穿透到滚动容器 */
+.rows-table :deep(.el-input__inner) { touch-action: pan-x; }
 .rows-table, .minute-table { width: 100%; border-collapse: collapse; min-width: 620px; }
 .rows-table th, .rows-table td, .minute-table th, .minute-table td {
   padding: 7px 8px; font-size: 13px; text-align: center; border-bottom: 1px solid var(--border-light);
@@ -853,6 +867,7 @@ function radiationLabel(lv: number): string {
 .level-strong { font-weight: 800; color: var(--primary); font-size: 15px; }
 
 .suit-table thead th { background: var(--bg-soft); color: var(--text-light); font-weight: 600; }
+.suit-table { min-width: 560px; }
 .suit-table .left { text-align: left; }
 .total-row td { background: var(--primary-light); font-weight: 600; }
 .suit-badge {
@@ -910,6 +925,9 @@ function radiationLabel(lv: number): string {
   /* 分钟数据表：横向滚动自然，输入框收紧 */
   .rows-table, .minute-table { min-width: 540px; }
   .rows-table th, .rows-table td { padding: 6px 5px; font-size: 12.5px; }
+  /* 过程计算表：手机端允许横向滚动 */
+  .report-table { min-width: 480px; }
+  .suit-table { min-width: 560px; }
   .btn-row { flex-direction: column; gap: 10px; }
   .btn-row :deep(.el-button) { width: 100%; margin-left: 0; }
   .verdict { padding: 14px 14px; }
