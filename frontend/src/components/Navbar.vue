@@ -19,9 +19,9 @@ const navItems = [
   { path: "/forum", label: "论坛", icon: "forum" },
   { path: "/videos", label: "视频", icon: "video" },
   { path: "/standards", label: "法规", icon: "standard" },
+  { path: "/tools", label: "工具", icon: "tool" },
   { path: "/faq", label: "维保", icon: "faq" },
   { path: "/messages", label: "留言", icon: "message" },
-  { path: "/tools", label: "工具", icon: "tool" },
   { path: "/about", label: "关于", icon: "about" },
 ];
 

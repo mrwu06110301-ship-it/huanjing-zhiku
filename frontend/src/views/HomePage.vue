@@ -119,16 +119,16 @@ const modules = [
     path: "/standards",
   },
   {
-    title: "常见问题",
-    desc: "现场问题 · 设备维护 · 用户答疑",
-    icon: "faq",
-    path: "/faq",
-  },
-  {
     title: "常用工具",
     desc: "采样模型 · 单位换算 · 布点计算",
     icon: "tool",
     path: "/tools",
+  },
+  {
+    title: "常见问题",
+    desc: "现场问题 · 设备维护 · 用户答疑",
+    icon: "faq",
+    path: "/faq",
   },
 ];
 </script>
