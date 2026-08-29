@@ -89,6 +89,9 @@ async def create_faq(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """创建 FAQ — 管理员或具备上传权限的授权用户（与论坛/视频发布一致）"""
+    if current_user.role != "admin" and not current_user.can_upload_video:
+        raise HTTPException(status_code=403, detail="您没有新增问题的权限，请联系管理员授权")
     faq = FAQ(**data.model_dump(), author_id=current_user.id)
     db.add(faq)
     await db.flush()

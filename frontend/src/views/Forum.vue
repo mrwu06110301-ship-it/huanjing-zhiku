@@ -601,7 +601,7 @@ onMounted(async () => {
 
 .article-card {
   background: var(--white);
-  padding: 18px 90px 18px 24px;
+  padding: 18px 24px;
   border-bottom: 1px solid var(--border-light);
   cursor: pointer;
   transition: all 0.2s;
@@ -642,6 +642,7 @@ onMounted(async () => {
 .article-body {
   display: flex;
   gap: 16px;
+  align-items: flex-start; /* 有封面时封面贴右、无封面时文字占满 */
 }
 
 .article-info {
@@ -711,6 +712,7 @@ onMounted(async () => {
   width: 130px;
   height: 96px;
   flex-shrink: 0;
+  margin-left: auto; /* 预览图始终贴卡片右缘，消除右侧空白 */
   border-radius: 8px;
   overflow: hidden;
   background: var(--bg);
@@ -763,17 +765,31 @@ onMounted(async () => {
   }
 
   .category-list {
-    flex-direction: row;
-    flex-wrap: wrap;
-    gap: 6px;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
   }
 
+  /* 移动端分类用全局 pill 风格，与其他模块统一 */
   .category-item {
-    padding: 7px 14px;
+    padding: 8px 6px;
     font-size: 13px;
-    border-radius: 8px;
-    background: var(--bg);
-    border: 1px solid var(--border-light);
+    border-radius: 20px;
+    background: var(--white);
+    border: 1.5px solid var(--border);
+    color: var(--text-light);
+    font-weight: 500;
+    justify-content: center;
+    text-align: center;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .category-item.active {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: #fff;
+    font-weight: 600;
   }
   .cat-icon { display: none; }
 

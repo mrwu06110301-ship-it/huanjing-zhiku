@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from "vue";
 import { getFAQs, createFAQ, deleteFAQ } from "@/api/faq";
-import { getCategories } from "@/api/category";
+import { getCategories, createCategory } from "@/api/category";
 import type { FAQOut, CategoryOut } from "@/types";
+import { checkUploadPermission } from "@/api/video";
 import { useAuthStore } from "@/stores/auth";
 import { useShare } from "@/composables/useShare";
 import { ElMessage, ElMessageBox } from "element-plus";
@@ -15,6 +16,8 @@ const categories = ref<CategoryOut[]>([]);
 const activeType = ref("");
 const searchQuery = ref("");
 const loading = ref(false);
+/** 是否具备新增权限（管理员或被授权上传权限的账号，与论坛/视频一致） */
+const canUpload = ref(false);
 
 const filtered = computed(() => {
   if (!searchQuery.value.trim()) return faqs.value;
@@ -49,6 +52,13 @@ onMounted(async () => {
   const catRes = await getCategories("faq");
   categories.value = catRes.data;
   loadFAQs();
+  // 检查新增权限（管理员或已授权上传的账号）
+  if (auth.isLoggedIn()) {
+    try {
+      const res = await checkUploadPermission();
+      canUpload.value = res.data.can_upload;
+    } catch { /* ignore */ }
+  }
 });
 
 function switchType(type: string) {
@@ -78,6 +88,56 @@ function openCreate() {
   dialogVisible.value = true;
 }
 
+// ==================== 分类选项管理（有新增权限即可新增分类） ====================
+const manageVisible = ref(false);
+const newCatName = ref("");
+const addingCat = ref(false);
+
+function openManage() {
+  newCatName.value = "";
+  manageVisible.value = true;
+}
+
+/** 新增分类（自动生成 slug） */
+async function addCategory() {
+  const name = newCatName.value.trim();
+  if (!name) { ElMessage.warning("请输入分类名称"); return; }
+  if (categories.value.some(c => c.name === name)) { ElMessage.warning("该分类已存在"); return; }
+  addingCat.value = true;
+  try {
+    const slug = `faq-${Date.now()}`;
+    await createCategory({ module: "faq", name, slug });
+    ElMessage.success("分类已新增");
+    newCatName.value = "";
+    const catRes = await getCategories("faq");
+    categories.value = catRes.data;
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.detail || "新增分类失败（需管理员权限）");
+  } finally {
+    addingCat.value = false;
+  }
+}
+
+/** 删除分类（软删除，若已被 FAQ 引用会被后端停用，同时清空引用） */
+function removeCategory(cat: CategoryOut) {
+  ElMessageBox.confirm(
+    `确定删除分类「${cat.name}」？使用该分类的问题将变为未分类。`,
+    "删除分类",
+    { confirmButtonText: "删除", cancelButtonText: "取消", type: "warning" }
+  ).then(async () => {
+    try {
+      const { deleteCategory } = await import("@/api/category");
+      await deleteCategory(cat.id);
+      ElMessage.success("分类已删除");
+      if (faqForm.value.category_id === cat.id) faqForm.value.category_id = null;
+      const catRes = await getCategories("faq");
+      categories.value = catRes.data;
+    } catch (e: any) {
+      ElMessage.error(e?.response?.data?.detail || "删除分类失败（需管理员权限）");
+    }
+  }).catch(() => {});
+}
+
 async function submitFAQ() {
   if (!faqForm.value.question.trim()) {
     ElMessage.warning("请填写问题描述");
@@ -91,11 +151,11 @@ async function submitFAQ() {
       faq_type: faqForm.value.faq_type,
       category_id: faqForm.value.category_id,
     });
-    ElMessage.success("提交成功，感谢分享！");
+    ElMessage.success("新增成功");
     dialogVisible.value = false;
     loadFAQs();
   } catch (e: any) {
-    ElMessage.error(e?.response?.data?.detail || "提交失败，请先登录");
+    ElMessage.error(e?.response?.data?.detail || "新增失败，请联系管理员授权");
   } finally {
     submitting.value = false;
   }
@@ -122,8 +182,8 @@ function handleDelete(id: number) {
         <p class="page-header-sub">现场问题、设备维护、用户答疑</p>
       </div>
       <div class="header-right">
-        <el-button type="primary" size="small" class="add-btn" @click="openCreate">
-          <Icon name="plus" :size="14" style="margin-right:5px" /> 我要提问
+        <el-button v-if="canUpload" type="primary" size="small" class="add-btn" @click="openCreate">
+          <Icon name="plus" :size="14" style="margin-right:5px" /> 新增
         </el-button>
         <el-button plain size="small" @click="share('常见问题', '现场问题、设备维护、用户答疑')">
           <Icon name="share" :size="14" style="margin-right:6px" /> 分享
@@ -132,11 +192,11 @@ function handleDelete(id: number) {
     </div>
 
     <div class="controls">
-      <div class="category-tabs">
+      <div class="cat-pills category-tabs">
         <span
           v-for="tab in typeTabs"
           :key="tab.value"
-          :class="['tab', { active: activeType === tab.value }]"
+          :class="['cat-pill', { active: activeType === tab.value }]"
           @click="switchType(tab.value)"
         >{{ tab.label }}</span>
       </div>
@@ -166,11 +226,11 @@ function handleDelete(id: number) {
           </div>
         </el-collapse-item>
       </el-collapse>
-      <el-empty v-if="!loading && filtered.length === 0" description="暂无问题，点击右上角「我要提问」录入" />
+      <el-empty v-if="!loading && filtered.length === 0" description="暂无问题" />
     </div>
 
     <!-- 新增 FAQ 对话框 -->
-    <el-dialog v-model="dialogVisible" title="录入问题" width="560px" destroy-on-close>
+    <el-dialog v-model="dialogVisible" title="新增问题" width="560px" destroy-on-close>
       <el-form label-position="top">
         <el-form-item label="问题描述 *">
           <el-input
@@ -192,7 +252,13 @@ function handleDelete(id: number) {
               <el-option v-for="t in faqTypeOptions" :key="t.value" :value="t.value" :label="t.label" />
             </el-select>
           </el-form-item>
-          <el-form-item label="分类（管理员分类管理维护）" class="grow">
+          <el-form-item class="grow">
+            <template #label>
+              分类
+              <el-link type="primary" :underline="false" style="font-size:12px;margin-left:6px" @click="openManage">
+                <Icon name="filter" :size="12" style="vertical-align:-1px" /> 选项管理
+              </el-link>
+            </template>
             <el-select v-model="faqForm.category_id" clearable placeholder="可选" style="width:100%">
               <el-option v-for="c in categories" :key="c.id" :value="c.id" :label="c.name" />
             </el-select>
@@ -204,6 +270,27 @@ function handleDelete(id: number) {
         <el-button type="primary" :loading="submitting" @click="submitFAQ">提交</el-button>
       </template>
     </el-dialog>
+
+    <!-- 分类选项管理对话框 -->
+    <el-dialog v-model="manageVisible" title="分类选项管理" width="440px" destroy-on-close>
+      <div class="manage-add">
+        <el-input
+          v-model="newCatName"
+          placeholder="输入新分类名称，如：采样探头"
+          maxlength="20"
+          @keyup.enter="addCategory"
+        />
+        <el-button type="primary" :loading="addingCat" @click="addCategory">新增</el-button>
+      </div>
+      <div class="manage-list">
+        <div v-if="categories.length === 0" class="manage-empty">暂无分类</div>
+        <div v-for="c in categories" :key="c.id" class="manage-item">
+          <span class="manage-name">{{ c.name }}</span>
+          <el-button text type="danger" size="small" @click="removeCategory(c)">删除</el-button>
+        </div>
+      </div>
+      <div class="manage-tip">分类与管理员「分类管理」共用同一数据源，删除后该分类下的问题将变为未分类。</div>
+    </el-dialog>
   </div>
 </template>
 
@@ -213,14 +300,8 @@ function handleDelete(id: number) {
 .header-right { display: flex; gap: 10px; align-items: center; }
 
 .controls { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; flex-wrap: wrap; }
-.category-tabs { display: flex; gap: 8px; flex-wrap: wrap; }
-.tab {
-  padding: 8px 20px; border-radius: 20px; cursor: pointer; font-size: 14px;
-  background: var(--white); border: 1px solid var(--border); transition: all 0.2s var(--ease);
-  font-weight: 500; color: var(--text-light);
-}
-.tab:hover { border-color: var(--primary); color: var(--primary); }
-.tab.active { background: var(--gradient-primary); color: #fff; border-color: transparent; font-weight: 600; box-shadow: 0 2px 8px var(--primary-glow); }
+/* cat-pill 统一样式已全局定义于 App.vue */
+.category-tabs { flex: 1; }
 
 .search-wrap {
   position: relative; display: flex; align-items: center; margin-left: auto;
@@ -261,6 +342,18 @@ function handleDelete(id: number) {
 
 .form-row { display: flex; gap: 14px; }
 .form-row .grow { flex: 1; }
+
+/* 分类选项管理 */
+.manage-add { display: flex; gap: 10px; margin-bottom: 14px; }
+.manage-list { max-height: 260px; overflow-y: auto; }
+.manage-item {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 9px 12px; border-radius: 8px; border: 1px solid var(--border-light);
+  margin-bottom: 8px; background: var(--white);
+}
+.manage-name { font-size: 14px; color: var(--text); }
+.manage-empty { text-align: center; color: var(--text-muted); font-size: 13px; padding: 18px 0; }
+.manage-tip { font-size: 12px; color: var(--text-muted); margin-top: 10px; line-height: 1.6; }
 
 @media (max-width: 768px) {
   .page-header { padding: 24px 0 16px; }

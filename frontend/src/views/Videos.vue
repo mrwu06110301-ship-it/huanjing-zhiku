@@ -174,24 +174,21 @@ function tagColor(v: any) {
     <div class="all-section">
       <div class="all-header">
         <h3 class="section-title"><Icon name="grid" :size="17" /> 全部视频 ({{ filteredVideos.length }})</h3>
-        <div v-if="videoCategories.length > 0" class="category-filter">
-          <button
+        <div v-if="videoCategories.length > 0" class="cat-pills category-filter">
+          <span
             :class="['cat-pill', { active: selectedCategoryId === null }]"
             @click="selectCategory(null)"
-          >全部</button>
-          <button
+          >全部</span>
+          <span
             v-for="cat in videoCategories"
             :key="cat.id"
             :class="['cat-pill', { active: selectedCategoryId === cat.id }]"
-            :style="{
-              '--cat-color': cat.color || '#00b8d9',
-              borderColor: selectedCategoryId === cat.id ? (cat.color || '#00b8d9') : 'var(--border)'
-            }"
+            :style="{ '--cat-color': cat.color || '#2563eb' }"
             @click="selectCategory(cat.id)"
           >
             <span v-if="cat.color" class="cat-dot" :style="{ backgroundColor: cat.color }"></span>
             {{ cat.name }}
-          </button>
+          </span>
         </div>
       </div>
       <div v-if="loading" class="loading">加载中...</div>
@@ -341,25 +338,8 @@ function tagColor(v: any) {
   display: flex; align-items: center; gap: 14px;
   margin-bottom: 20px; flex-wrap: wrap;
 }
-.category-filter {
-  display: flex; flex-wrap: wrap; gap: 8px; flex: 1;
-}
-.cat-pill {
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 7px 16px; border-radius: 20px;
-  border: 1.5px solid var(--border); background: var(--white);
-  font-size: 13px; color: var(--text-light); cursor: pointer;
-  transition: all 0.2s var(--ease); white-space: nowrap;
-}
-.cat-pill:hover { border-color: var(--primary); color: var(--primary); }
-.cat-pill.active {
-  background: var(--cat-color, var(--primary));
-  color: #fff; border-color: var(--cat-color, var(--primary));
-  font-weight: 600; box-shadow: 0 2px 8px rgba(0, 184, 217, 0.2);
-}
-.cat-dot {
-  width: 8px; height: 8px; border-radius: 50%; display: inline-block;
-}
+/* cat-pill 统一样式已全局定义于 App.vue */
+.category-filter { flex: 1; }
 
 /* 视频网格 */
 .video-grid {

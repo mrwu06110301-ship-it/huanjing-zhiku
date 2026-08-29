@@ -272,4 +272,60 @@ a:hover {
   font-size: 14px;
   color: var(--text-light);
 }
+
+/* ======== 全局统一标签选择（分类筛选 pill）========
+ * 各模块（视频/标准/FAQ/论坛等）的标签筛选统一使用本样式，
+ * 用法：<div class="cat-pills"><span class="cat-pill active">全部</span>...</div>
+ * 选中色可用 --cat-color 自定义（默认主题蓝）
+ */
+.cat-pills {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.cat-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 16px;
+  border-radius: 20px;
+  border: 1.5px solid var(--border);
+  background: var(--white);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-light);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  transition: all 0.2s var(--ease);
+}
+
+.cat-pill:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.cat-pill.active {
+  background: var(--cat-color, var(--primary));
+  border-color: var(--cat-color, var(--primary));
+  color: #fff;
+  font-weight: 600;
+  box-shadow: 0 2px 8px var(--primary-glow);
+}
+
+.cat-pill .cat-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--cat-color, var(--primary));
+  flex-shrink: 0;
+}
+
+@media (max-width: 768px) {
+  .cat-pills { gap: 6px; }
+  .cat-pill { padding: 6px 13px; font-size: 12.5px; }
+}
+
 </style>

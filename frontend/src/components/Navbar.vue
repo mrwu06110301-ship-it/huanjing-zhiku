@@ -167,16 +167,18 @@ function handleBlur() {
           <Icon name="search" :size="16" class="mobile-search-icon" />
           <input v-model="searchQuery" placeholder="搜索..." class="mobile-search-input" @keyup.enter="doSearch" />
         </div>
-        <router-link
-          v-for="item in navItems"
-          :key="item.path"
-          :to="item.path"
-          class="mobile-nav-link"
-          @click="mobileMenuOpen = false"
-        >
-          <Icon :name="item.icon" :size="18" />
-          <span>{{ item.label }}</span>
-        </router-link>
+        <div class="mobile-nav-grid">
+          <router-link
+            v-for="item in navItems"
+            :key="item.path"
+            :to="item.path"
+            class="mobile-nav-pill"
+            @click="mobileMenuOpen = false"
+          >
+            <Icon :name="item.icon" :size="20" />
+            <span>{{ item.label }}</span>
+          </router-link>
+        </div>
 
         <!-- 移动端登录/注册 -->
         <div class="mobile-auth">
@@ -522,21 +524,41 @@ function handleBlur() {
   color: rgba(255, 255, 255, 0.35);
 }
 
-.mobile-nav-link {
-  display: flex;
-  align-items: center;
+/* 并排宫格导航（替代纵向长列表，缩短展开高度） */
+.mobile-nav-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
   gap: 10px;
-  color: rgba(255, 255, 255, 0.75);
+  margin-bottom: 8px;
+}
+
+.mobile-nav-pill {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 12px 4px 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.78);
   text-decoration: none;
-  padding: 12px 8px;
-  font-size: 15px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  font-size: 12.5px;
   transition: all 0.2s;
 }
 
-.mobile-nav-link:hover {
+.mobile-nav-pill:hover {
   color: #60a5fa;
-  padding-left: 14px;
+  background: rgba(96, 165, 250, 0.12);
+  border-color: rgba(96, 165, 250, 0.3);
+}
+
+.mobile-nav-pill.router-link-active {
+  color: #60a5fa;
+  background: rgba(96, 165, 250, 0.14);
+  border-color: rgba(96, 165, 250, 0.4);
+  font-weight: 600;
 }
 
 /* 移动端登录/注册 */

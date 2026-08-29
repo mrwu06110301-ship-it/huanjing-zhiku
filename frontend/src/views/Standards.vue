@@ -103,12 +103,12 @@ function openPdf(s: StandardOut) {
       </el-button>
     </div>
 
-    <div class="category-tabs">
-      <span :class="['tab', { active: activeCat === null }]" @click="switchCat(null)">全部</span>
+    <div class="cat-pills category-tabs">
+      <span :class="['cat-pill', { active: activeCat === null }]" @click="switchCat(null)">全部</span>
       <span
         v-for="c in categories"
         :key="c.id"
-        :class="['tab', { active: activeCat === c.id }]"
+        :class="['cat-pill', { active: activeCat === c.id }]"
         @click="switchCat(c.id)"
       >{{ c.name }}</span>
       <div class="search-wrap">
@@ -158,13 +158,8 @@ function openPdf(s: StandardOut) {
 .page { max-width: 1200px; margin: 0 auto; }
 .page-header { padding: 40px 0 24px; }
 
-.category-tabs { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; align-items: center; }
-.tab {
-  padding: 8px 20px; border-radius: 20px; cursor: pointer; font-size: 14px;
-  background: var(--white); border: 1px solid var(--border); transition: all 0.2s var(--ease);
-}
-.tab:hover { border-color: var(--primary); color: var(--primary); }
-.tab.active { background: var(--gradient-primary); color: #fff; border-color: transparent; font-weight: 600; }
+/* cat-pill 统一样式已全局定义于 App.vue */
+.category-tabs { margin-bottom: 20px; }
 
 .search-wrap {
   position: relative; margin-left: auto; display: flex; align-items: center;
@@ -235,8 +230,6 @@ function openPdf(s: StandardOut) {
   .search-wrap { margin-left: 0; width: 100%; }
   .local-search { width: 100%; }
   .local-search:focus { width: 100%; }
-  .category-tabs { gap: 6px; }
-  .tab { padding: 6px 14px; font-size: 13px; }
   .std-pdf-badge { opacity: 1; }
 }
 </style>
