@@ -4,6 +4,7 @@ import { useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
 import { getMe } from "@/api/user";
 import Icon from "@/components/Icon.vue";
+import BrandLogo from "@/components/BrandLogo.vue";
 
 const router = useRouter();
 const auth = useAuthStore();
@@ -67,10 +68,10 @@ function handleBlur() {
 <template>
   <header class="navbar" :class="{ scrolled }">
     <div class="navbar-inner">
-      <!-- 品牌 -->
+      <!-- 品牌：书本+叶片 logo + 站点名 -->
       <router-link to="/" class="navbar-brand">
         <div class="brand-logo">
-          <Icon name="beaker" :size="20" :stroke="2" />
+          <BrandLogo />
         </div>
         <span class="brand-text">产品小吴知识库</span>
       </router-link>
@@ -246,17 +247,12 @@ function handleBlur() {
 .brand-logo {
   width: 36px;
   height: 36px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--gradient-primary);
   border-radius: 10px;
-  box-shadow: 0 4px 12px var(--primary-glow);
-  color: #fff;
+  background: rgba(37, 99, 235, 0.12);
+  border: 1px solid rgba(96, 165, 250, 0.25);
+  padding: 3px;
+  box-sizing: border-box;
   transition: transform 0.3s var(--ease);
-  /* 图标垂直居中修正：抵消 IconPark svg 默认基线偏移 */
-  line-height: 0;
-  padding-bottom: 0;
 }
 
 .navbar-brand:hover .brand-logo {
@@ -268,8 +264,6 @@ function handleBlur() {
   font-weight: 700;
   letter-spacing: 2px;
   color: #fff;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
 }
 
 /* 导航 */
