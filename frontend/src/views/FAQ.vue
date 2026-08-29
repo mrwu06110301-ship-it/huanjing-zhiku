@@ -17,6 +17,8 @@ const categories = ref<CategoryOut[]>([]);
 const activeCategory = ref<number | null>(null);
 const searchQuery = ref("");
 const loading = ref(false);
+/** 手风琴模式当前展开项（同时只开一个） */
+const activeNames = ref<string | number | undefined>(undefined);
 /** 是否具备新增权限（管理员或被授权上传权限的账号，与论坛/视频一致） */
 const canUpload = ref(false);
 
@@ -195,8 +197,8 @@ function handleDelete(id: number) {
     </div>
 
     <div v-loading="loading" class="faq-list">
-      <el-collapse>
-        <el-collapse-item v-for="f in filtered" :key="f.id">
+      <el-collapse v-model="activeNames" accordion>
+        <el-collapse-item v-for="f in filtered" :key="f.id" :name="f.id">
           <template #title>
             <span class="faq-question">{{ f.question }}</span>
             <span v-if="f.category_name" class="faq-cat-badge">{{ f.category_name }}</span>
