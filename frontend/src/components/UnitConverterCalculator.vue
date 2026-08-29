@@ -113,16 +113,22 @@ const showFormula = ref(false);
 
     <!-- ===== Tab1 常用气体 ===== -->
     <div v-if="activeTab === 'common'" class="card">
-      <!-- 气体选择：二选一 -->
-      <div class="mode-row">
-        <el-radio-group v-model="commonForm.gasMode">
-          <el-radio-button value="preset">下拉选择气体</el-radio-button>
-          <el-radio-button value="custom">输入其他分子式</el-radio-button>
-        </el-radio-group>
-        <el-radio-group v-model="commonForm.temp">
-          <el-radio-button value="25C">25℃ 参比</el-radio-button>
-          <el-radio-button value="0C">0℃ 标况</el-radio-button>
-        </el-radio-group>
+      <!-- 点选面板：气体来源 + 换算基准 -->
+      <div class="seg-panel">
+        <div class="seg-cell">
+          <span class="seg-label">气体来源</span>
+          <div class="seg-group">
+            <button :class="['seg-btn', { active: commonForm.gasMode === 'preset' }]" @click="commonForm.gasMode = 'preset'">列表选择</button>
+            <button :class="['seg-btn', { active: commonForm.gasMode === 'custom' }]" @click="commonForm.gasMode = 'custom'">输入分子式</button>
+          </div>
+        </div>
+        <div class="seg-cell">
+          <span class="seg-label">换算基准</span>
+          <div class="seg-group">
+            <button :class="['seg-btn', { active: commonForm.temp === '25C' }]" @click="commonForm.temp = '25C'">25℃ 参比</button>
+            <button :class="['seg-btn', { active: commonForm.temp === '0C' }]" @click="commonForm.temp = '0C'">0℃ 标况</button>
+          </div>
+        </div>
       </div>
 
       <div class="gas-picker">
@@ -194,22 +200,26 @@ const showFormula = ref(false);
 
     <!-- ===== Tab2 VOCs ===== -->
     <div v-else class="card">
-      <div class="mode-row">
-        <div class="field grow" style="max-width:320px">
-          <label>VOCs 气体</label>
-          <el-select v-model="vocForm.gasIdx" style="width: 100%">
-            <el-option v-for="(g, i) in VOC_GASES" :key="g.name" :value="i" :label="`${g.name}（${g.formula}）`">
-              <span>{{ g.name }}</span>
-              <span class="opt-hint">
-                {{ g.formula }}<template v-if="g.carbonCount"> · nC={{ g.carbonCount }}</template><template v-if="g.molarMass"> · M={{ g.molarMass }}</template>
-              </span>
-            </el-option>
-          </el-select>
+      <!-- 点选面板：气体选择 + 换算基准 -->
+      <div class="seg-panel">
+        <div class="seg-cell">
+          <span class="seg-label">VOCs 气体</span>
+          <div class="seg-group">
+            <button
+              v-for="(g, i) in VOC_GASES"
+              :key="g.name"
+              :class="['seg-btn', { active: vocForm.gasIdx === i }]"
+              @click="vocForm.gasIdx = i"
+            >{{ g.name }}</button>
+          </div>
         </div>
-        <el-radio-group v-model="vocForm.temp">
-          <el-radio-button value="25C">25℃ 参比</el-radio-button>
-          <el-radio-button value="0C">0℃ 标况</el-radio-button>
-        </el-radio-group>
+        <div class="seg-cell">
+          <span class="seg-label">换算基准</span>
+          <div class="seg-group">
+            <button :class="['seg-btn', { active: vocForm.temp === '25C' }]" @click="vocForm.temp = '25C'">25℃ 参比</button>
+            <button :class="['seg-btn', { active: vocForm.temp === '0C' }]" @click="vocForm.temp = '0C'">0℃ 标况</button>
+          </div>
+        </div>
       </div>
 
       <el-alert v-if="currentVocGas.name === '总烃'" type="warning" :closable="false" show-icon class="thc-tip">
@@ -308,6 +318,24 @@ const showFormula = ref(false);
 .au-sub { font-size: 12px; font-weight: 400; color: var(--text-light); }
 .opt-hint { float: right; font-size: 11px; color: var(--text-light); margin-left: 10px; font-family: Consolas, monospace; }
 
+/* ===== 点选面板（气体来源 / 气体 / 换算基准） ===== */
+.seg-panel { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; }
+.seg-cell { display: flex; flex-direction: column; gap: 6px; }
+.seg-label { font-size: 12.5px; color: var(--text-light); font-weight: 600; }
+.seg-group { display: flex; flex-wrap: wrap; gap: 8px; }
+.seg-btn {
+  padding: 7px 14px; border-radius: 10px; border: 1.5px solid var(--border-light);
+  background: var(--bg-soft, #f6f8fa); color: var(--text-light);
+  font-size: 13px; font-weight: 600; cursor: pointer;
+  transition: all 0.2s var(--ease); line-height: 1.4;
+}
+.seg-btn:hover { border-color: var(--primary); color: var(--primary); }
+.seg-btn.active {
+  background: var(--gradient-primary, linear-gradient(135deg, #2563eb, #06b6d4));
+  color: #fff; border-color: transparent;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.25);
+}
+
 .m-bar {
   display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
   background: rgba(37, 99, 235, 0.06); border-radius: 12px;
@@ -395,14 +423,15 @@ const showFormula = ref(false);
 
 @media (max-width: 640px) {
   .card { padding: 16px 14px; }
-  .mode-row { flex-direction: column; align-items: stretch; }
   .split-layout { grid-template-columns: 1fr; gap: 14px; }
   .split-divider {
     height: 1px; width: 100%;
     background: linear-gradient(to right, transparent, var(--border-light) 12%, var(--border-light) 88%, transparent);
   }
   .rr-val { font-size: 15px; }
-  .mode-row :deep(.el-radio-group) { width: 100%; display: flex; }
-  .mode-row :deep(.el-radio-button) { flex: 1; }
+  /* 点选面板：基准两项各占一半，气体选项自动换行 */
+  .seg-cell:has(.seg-group .seg-btn:nth-child(3)) .seg-group { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+  .seg-cell:not(:has(.seg-group .seg-btn:nth-child(3))) .seg-group { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .seg-btn { padding: 8px 6px; text-align: center; font-size: 12.5px; }
 }
 </style>
