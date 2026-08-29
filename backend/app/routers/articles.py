@@ -14,6 +14,36 @@ from app.dependencies.auth import get_current_user, require_admin
 router = APIRouter(prefix="/api/articles", tags=["文章"])
 
 
+@router.get("/mine")
+async def list_my_articles(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """我的文章：当前用户提交的全部文章（含待审核/已拒绝），按时间倒序"""
+    result = await db.execute(
+        select(Article).where(Article.author_id == current_user.id)
+        .order_by(Article.created_at.desc())
+    )
+    articles = result.scalars().all()
+
+    items = []
+    for a in articles:
+        cat_name = None
+        if a.category_id:
+            cr = await db.execute(select(Category.name).where(Category.id == a.category_id))
+            cat_name = cr.scalar()
+        items.append(ArticleListOut(
+            id=a.id, title=a.title, summary=a.summary, cover_image=a.cover_image,
+            module=a.module, category_id=a.category_id, category_name=cat_name,
+            tags=a.tags or [], status=a.status, is_pinned=a.is_pinned,
+            view_count=a.view_count, like_count=a.like_count,
+            author_name=current_user.nickname or current_user.username,
+            author_avatar=current_user.avatar or "",
+            created_at=a.created_at,
+        ))
+    return {"items": items, "total": len(items)}
+
+
 @router.get("")
 async def list_articles(
     page: int = Query(1, ge=1),

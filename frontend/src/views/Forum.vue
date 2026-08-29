@@ -2,7 +2,7 @@
 import { ref, computed, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
-import { getArticles, deleteArticle, approveArticle, rejectArticle } from "@/api/article";
+import { getArticles, getMyArticles, deleteArticle, approveArticle, rejectArticle } from "@/api/article";
 import { getCategories } from "@/api/category";
 import type { ArticleListOut, CategoryOut } from "@/types";
 import { ElMessage, ElMessageBox } from "element-plus";
@@ -23,6 +23,11 @@ const pageSize = 10;
 
 const showPending = ref(false);
 const pendingArticles = ref<ArticleListOut[]>([]);
+
+/** 我的文章 */
+const showMine = ref(false);
+const myArticles = ref<ArticleListOut[]>([]);
+const myLoading = ref(false);
 
 const is_admin = computed(() => auth.isAdmin());
 
@@ -55,6 +60,47 @@ async function loadPendingArticles() {
     const res = await getArticles({ module: "forum", status: "pending", page: 1, page_size: 100 } as any);
     pendingArticles.value = res.data.items || [];
   } catch { /* ignore */ }
+}
+
+/** 加载我的文章（含全部审核状态） */
+async function loadMyArticles() {
+  if (!auth.isLoggedIn()) return;
+  myLoading.value = true;
+  try {
+    const res = await getMyArticles();
+    myArticles.value = res.data.items || [];
+  } catch { /* ignore */ }
+  finally { myLoading.value = false; }
+}
+
+/** 切换到我的文章视图 */
+function toggleMine() {
+  showMine.value = !showMine.value;
+  if (showMine.value) {
+    showPending.value = false;
+    loadMyArticles();
+  }
+}
+
+/** 状态徽标文案 */
+function statusLabel(s: string): string {
+  return s === "approved" ? "已发布" : s === "pending" ? "待审核" : "已拒绝";
+}
+
+function handleMyDelete(id: number) {
+  ElMessageBox.confirm("确定删除此文章？删除后不可恢复。", "删除确认", {
+    confirmButtonText: "删除",
+    cancelButtonText: "取消",
+    type: "warning",
+  }).then(async () => {
+    try {
+      await deleteArticle(id);
+      ElMessage.success("删除成功");
+      loadMyArticles();
+      loadArticles();
+      if (is_admin.value) loadPendingArticles();
+    } catch { ElMessage.error("删除失败"); }
+  }).catch(() => {});
 }
 
 function switchCategory(catId: number | null) {
@@ -167,6 +213,13 @@ onMounted(async () => {
         </div>
       </div>
 
+      <!-- 我的文章入口（已登录用户） -->
+      <div v-if="auth.isLoggedIn()" class="sidebar-section">
+        <div :class="['mine-toggle', { active: showMine }]" @click="toggleMine">
+          <Icon name="user" :size="15" /> 我的文章
+        </div>
+      </div>
+
       <!-- 管理员/已登录：发布按钮 -->
       <div v-if="is_admin || auth.isLoggedIn()" class="sidebar-section">
         <button class="create-btn" @click="handleCreate">
@@ -206,7 +259,54 @@ onMounted(async () => {
         </span>
       </div>
 
-      <!-- 文章列表 -->
+      <!-- 文章列表（我的文章视图） -->
+      <template v-if="showMine">
+        <div v-loading="myLoading" class="article-list">
+          <div
+            v-for="article in myArticles"
+            :key="article.id"
+            class="article-card"
+            @click="router.push(`/article/${article.id}`)"
+          >
+            <div :class="['status-tag', article.status]">{{ statusLabel(article.status) }}</div>
+
+            <div class="article-body">
+              <div class="article-info">
+                <h3 class="article-title">{{ article.title }}</h3>
+                <p class="article-summary" v-if="article.summary">{{ article.summary }}</p>
+                <div class="article-meta">
+                  <span class="meta-category">{{ article.category_name || "论坛" }}</span>
+                  <span class="meta-dot">·</span>
+                  <span><Icon name="clock" :size="12" /> {{ formatDate(article.created_at) }}</span>
+                  <span class="meta-dot">·</span>
+                  <span><Icon name="eye" :size="12" /> {{ article.view_count }}</span>
+                </div>
+              </div>
+              <div class="article-cover" v-if="article.cover_image">
+                <img :src="article.cover_image" :alt="article.title" />
+              </div>
+            </div>
+
+            <!-- 本人操作 -->
+            <div class="article-actions" @click.stop>
+              <el-button size="small" text type="primary" @click="handleEdit(article.id)">
+                <Icon name="edit" :size="14" /> 编辑
+              </el-button>
+              <el-button size="small" text type="danger" @click="handleMyDelete(article.id)">
+                <Icon name="delete" :size="14" /> 删除
+              </el-button>
+            </div>
+          </div>
+
+          <el-empty
+            v-if="!myLoading && myArticles.length === 0"
+            description="你还没有发布过文章"
+          />
+        </div>
+      </template>
+
+      <!-- 文章列表（普通视图） -->
+      <template v-else>
       <div v-loading="loading" class="article-list">
         <div
           v-for="article in (localFiltered || articles)"
@@ -273,6 +373,7 @@ onMounted(async () => {
           @current-change="loadArticles"
         />
       </div>
+      </template>
     </main>
   </div>
 </template>
@@ -380,6 +481,41 @@ onMounted(async () => {
   color: var(--accent);
 }
 
+.mine-toggle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border, #e5e7eb);
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-light);
+  cursor: pointer;
+  transition: all 0.2s var(--ease);
+  background: var(--white, #fff);
+}
+.mine-toggle:hover { color: var(--primary); border-color: var(--primary); }
+.mine-toggle.active {
+  background: var(--gradient-primary, linear-gradient(135deg, #2563eb, #06b6d4));
+  color: #fff;
+  border-color: transparent;
+}
+
+.status-tag {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 20px;
+  z-index: 2;
+}
+.status-tag.approved { background: rgba(22, 163, 74, 0.12); color: #166534; }
+.status-tag.pending { background: rgba(217, 119, 6, 0.12); color: #92400e; }
+.status-tag.rejected { background: rgba(239, 68, 68, 0.12); color: #b91c1c; }
+
 .create-btn {
   width: 100%;
   display: flex;
@@ -465,7 +601,7 @@ onMounted(async () => {
 
 .article-card {
   background: var(--white);
-  padding: 18px 24px;
+  padding: 18px 90px 18px 24px;
   border-bottom: 1px solid var(--border-light);
   cursor: pointer;
   transition: all 0.2s;

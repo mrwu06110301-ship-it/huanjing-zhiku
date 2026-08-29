@@ -13,6 +13,10 @@ export function getArticles(params: {
   return request.get("/articles", { params });
 }
 
+export function getMyArticles(): Promise<{ data: { items: ArticleListOut[]; total: number } }> {
+  return request.get("/articles/mine");
+}
+
 export function getArticle(id: number): Promise<{ data: ArticleOut }> {
   return request.get(`/articles/${id}`);
 }
