@@ -157,7 +157,7 @@ async def update_video(
     for key, val in data.model_dump(exclude_unset=True).items():
         setattr(video, key, val)
     await db.flush()
-    cat_name, author_name, cat_color = await _get_cat_author(video, db)
+    cat_name, author_name, cat_color, author_avatar = await _get_cat_author(video, db)
     return _make_video_out(video, cat_name, author_name, cat_color, author_avatar)
 
 
