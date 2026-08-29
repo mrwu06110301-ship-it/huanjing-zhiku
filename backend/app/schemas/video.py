@@ -49,6 +49,7 @@ class VideoOut(BaseModel):
     is_featured: bool = False
     view_count: int = 0
     author_name: str = ""
+    author_avatar: str = ""
     created_at: datetime | None = None
 
     model_config = {"from_attributes": True}

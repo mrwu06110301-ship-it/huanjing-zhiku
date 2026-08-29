@@ -41,6 +41,7 @@ export interface ArticleOut {
   like_count: number;
   author_id: number;
   author_name: string;
+  author_avatar: string;
   created_at: string;
   updated_at: string;
 }
@@ -59,6 +60,7 @@ export interface ArticleListOut {
   view_count: number;
   like_count: number;
   author_name: string;
+  author_avatar: string;
   created_at: string;
 }
 
@@ -78,6 +80,7 @@ export interface VideoOut {
   is_featured: boolean;
   view_count: number;
   author_name: string;
+  author_avatar: string;
   created_at: string;
 }
 

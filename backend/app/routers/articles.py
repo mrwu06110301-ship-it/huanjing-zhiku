@@ -58,15 +58,20 @@ async def list_articles(
             cr = await db.execute(select(Category.name).where(Category.id == a.category_id))
             cat_name = cr.scalar()
         author_name = ""
+        author_avatar = ""
         if a.author_id:
-            ar = await db.execute(select(User.nickname).where(User.id == a.author_id))
-            author_name = ar.scalar() or ""
+            ar = await db.execute(select(User.nickname, User.avatar).where(User.id == a.author_id))
+            arow = ar.first()
+            if arow:
+                author_name = arow[0] or ""
+                author_avatar = arow[1] or ""
 
         items.append(ArticleListOut(
             id=a.id, title=a.title, summary=a.summary, cover_image=a.cover_image,
             module=a.module, category_id=a.category_id, category_name=cat_name,
             tags=a.tags or [], status=a.status, is_pinned=a.is_pinned,
             view_count=a.view_count, like_count=a.like_count, author_name=author_name,
+            author_avatar=author_avatar,
             created_at=a.created_at,
         ))
 
@@ -101,9 +106,13 @@ async def get_article(article_id: int, db: AsyncSession = Depends(get_db)):
         cr = await db.execute(select(Category.name).where(Category.id == row.category_id))
         cat_name = cr.scalar()
     author_name = ""
+    author_avatar = ""
     if row.author_id:
-        ar = await db.execute(select(User.nickname).where(User.id == row.author_id))
-        author_name = ar.scalar() or ""
+        ar = await db.execute(select(User.nickname, User.avatar).where(User.id == row.author_id))
+        arow = ar.first()
+        if arow:
+            author_name = arow[0] or ""
+            author_avatar = arow[1] or ""
 
     return ArticleOut(
         id=row.id, title=row.title, content=row.content,
@@ -112,6 +121,7 @@ async def get_article(article_id: int, db: AsyncSession = Depends(get_db)):
         tags=row.tags or [], status=row.status, is_pinned=row.is_pinned,
         is_public=row.is_public, view_count=(row.view_count or 0) + 1,
         like_count=row.like_count, author_id=row.author_id, author_name=author_name,
+        author_avatar=author_avatar,
         created_at=row.created_at, updated_at=row.updated_at,
     )
 
@@ -157,6 +167,7 @@ async def create_article(
         is_public=row.is_public, view_count=row.view_count or 0,
         like_count=row.like_count or 0, author_id=row.author_id,
         author_name=current_user.nickname or current_user.username,
+        author_avatar=current_user.avatar or "",
         created_at=row.created_at, updated_at=row.updated_at,
     )
 
@@ -196,9 +207,13 @@ async def update_article(
         cr = await db.execute(select(Category.name).where(Category.id == row.category_id))
         cat_name = cr.scalar()
     author_name = ""
+    author_avatar = ""
     if row.author_id:
-        ar = await db.execute(select(User.nickname).where(User.id == row.author_id))
-        author_name = ar.scalar() or ""
+        ar = await db.execute(select(User.nickname, User.avatar).where(User.id == row.author_id))
+        arow = ar.first()
+        if arow:
+            author_name = arow[0] or ""
+            author_avatar = arow[1] or ""
 
     return ArticleOut(
         id=row.id, title=row.title, content=row.content,
@@ -207,6 +222,7 @@ async def update_article(
         tags=row.tags or [], status=row.status, is_pinned=row.is_pinned,
         is_public=row.is_public, view_count=row.view_count or 0,
         like_count=row.like_count or 0, author_id=row.author_id, author_name=author_name,
+        author_avatar=author_avatar,
         created_at=row.created_at, updated_at=row.updated_at,
     )
 

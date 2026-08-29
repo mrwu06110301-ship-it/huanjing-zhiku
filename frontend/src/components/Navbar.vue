@@ -114,7 +114,8 @@ function handleBlur() {
         <template v-if="auth.isLoggedIn()">
           <el-dropdown>
             <span class="user-info">
-              <div class="user-avatar">
+              <img v-if="auth.user?.avatar" :src="auth.user.avatar" alt="头像" class="user-avatar-img" />
+              <div v-else class="user-avatar">
                 <Icon name="user" :size="16" />
               </div>
               <span class="user-name">{{ auth.user?.nickname || auth.user?.username || "用户" }}</span>
@@ -423,6 +424,15 @@ function handleBlur() {
   border: 1px solid rgba(37, 99, 235, 0.4);
   border-radius: 50%;
   color: #60a5fa;
+}
+
+.user-avatar-img {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid rgba(37, 99, 235, 0.4);
+  flex-shrink: 0;
 }
 
 .btn {

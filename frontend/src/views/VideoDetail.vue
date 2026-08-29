@@ -107,7 +107,11 @@ const embedSrc = computed(() => {
         <div class="video-meta">
           <span class="meta-tag" :style="{ background: tagColor(video) }">{{ tagText(video) }}</span>
           <span><Icon name="eye" :size="14" /> {{ video.view_count || 0 }}次播放</span>
-          <span><Icon name="user" :size="14" /> {{ video.author_name }}</span>
+          <span class="meta-author">
+            <img v-if="video.author_avatar" :src="video.author_avatar" alt="" class="meta-avatar" />
+            <Icon v-else name="user" :size="14" />
+            {{ video.author_name }}
+          </span>
           <span><Icon name="calendar" :size="14" /> {{ formatDate(video.created_at) }}</span>
           <span v-if="video.duration"><Icon name="clock" :size="14" /> {{ video.duration }}</span>
         </div>
@@ -167,6 +171,8 @@ const embedSrc = computed(() => {
 .video-title { font-size: 24px; font-weight: 800; color: var(--text); margin-bottom: 12px; }
 .video-meta { display: flex; flex-wrap: wrap; gap: 14px; font-size: 13px; color: var(--text-light); align-items: center; margin-bottom: 14px; }
 .video-meta span { display: flex; align-items: center; gap: 4px; }
+.meta-avatar { width: 18px; height: 18px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+.meta-author { display: flex; align-items: center; gap: 4px; }
 .meta-tag { padding: 3px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; color: #fff; }
 .video-desc { font-size: 15px; line-height: 1.8; color: var(--text); margin-bottom: 16px; }
 .admin-actions { padding-top: 16px; border-top: 1px solid var(--card-border); }

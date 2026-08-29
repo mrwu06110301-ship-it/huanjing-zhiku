@@ -96,7 +96,8 @@ function formatTime(dateStr: string) {
         <h1 class="detail-title">{{ article.title }}</h1>
         <div class="detail-author">
           <div class="author-info">
-            <div class="author-avatar">{{ (article.author_name || "匿")[0] }}</div>
+            <img v-if="article.author_avatar" :src="article.author_avatar" alt="" class="author-avatar-img" />
+            <div v-else class="author-avatar">{{ (article.author_name || "匿")[0] }}</div>
             <div class="author-detail">
               <span class="author-name">{{ article.author_name }}</span>
               <span class="author-time">{{ formatDate(article.created_at) }} {{ formatTime(article.created_at) }}</span>
@@ -170,6 +171,10 @@ function formatTime(dateStr: string) {
   background: linear-gradient(135deg, var(--primary), var(--accent));
   color: #fff; display: flex; align-items: center; justify-content: center;
   font-size: 17px; font-weight: 700; flex-shrink: 0;
+}
+.author-avatar-img {
+  width: 42px; height: 42px; border-radius: 50%;
+  object-fit: cover; flex-shrink: 0;
 }
 .author-detail { display: flex; flex-direction: column; gap: 2px; }
 .author-name { font-size: 15px; font-weight: 600; color: var(--text); }

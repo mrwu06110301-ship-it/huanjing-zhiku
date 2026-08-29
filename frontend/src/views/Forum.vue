@@ -225,7 +225,11 @@ onMounted(async () => {
               <div class="article-meta">
                 <span class="meta-category">{{ article.category_name || "论坛" }}</span>
                 <span class="meta-dot">·</span>
-                <span><Icon name="user" :size="12" /> {{ article.author_name }}</span>
+                <span class="meta-author">
+                  <img v-if="article.author_avatar" :src="article.author_avatar" alt="" class="meta-avatar" />
+                  <Icon v-else name="user" :size="12" />
+                  {{ article.author_name }}
+                </span>
                 <span class="meta-dot">·</span>
                 <span><Icon name="clock" :size="12" /> {{ formatDate(article.created_at) }}</span>
               </div>
@@ -553,6 +557,14 @@ onMounted(async () => {
 .meta-category {
   color: var(--primary);
   font-weight: 600;
+}
+
+.meta-avatar {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
 }
 
 .meta-dot {

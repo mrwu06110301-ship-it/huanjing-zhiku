@@ -14,7 +14,7 @@ from app.dependencies.auth import get_current_user, require_admin
 router = APIRouter(prefix="/api/videos", tags=["学习视频"])
 
 
-def _make_video_out(v: Video, cat_name: str | None, author_name: str, cat_color: str = "") -> VideoOut:
+def _make_video_out(v: Video, cat_name: str | None, author_name: str, cat_color: str = "", author_avatar: str = "") -> VideoOut:
     return VideoOut(
         id=v.id, title=v.title, description=v.description,
         cover_image=v.cover_image, video_url=v.video_url,
@@ -24,11 +24,11 @@ def _make_video_out(v: Video, cat_name: str | None, author_name: str, cat_color:
         tags=v.tags or [], duration=v.duration,
         is_public=v.is_public, is_featured=v.is_featured or False,
         view_count=v.view_count,
-        author_name=author_name, created_at=v.created_at,
+        author_name=author_name, author_avatar=author_avatar, created_at=v.created_at,
     )
 
 
-async def _get_cat_author(v: Video, db: AsyncSession) -> tuple[str | None, str, str]:
+async def _get_cat_author(v: Video, db: AsyncSession) -> tuple[str | None, str, str, str]:
     cat_name = None
     cat_color = ""
     if v.category_id:
@@ -38,12 +38,14 @@ async def _get_cat_author(v: Video, db: AsyncSession) -> tuple[str | None, str, 
             cat_name = row[0]
             cat_color = row[1] or ""
     author_name = ""
+    author_avatar = ""
     if v.author_id:
-        ar = await db.execute(select(User.nickname, User.username).where(User.id == v.author_id))
+        ar = await db.execute(select(User.nickname, User.username, User.avatar).where(User.id == v.author_id))
         row = ar.first()
         if row:
             author_name = row[0] or row[1]
-    return cat_name, author_name, cat_color
+            author_avatar = row[2] or ""
+    return cat_name, author_name, cat_color, author_avatar
 
 
 @router.get("")
@@ -74,8 +76,8 @@ async def list_videos(
 
     items = []
     for v in videos:
-        cat_name, author_name, cat_color = await _get_cat_author(v, db)
-        items.append(_make_video_out(v, cat_name, author_name, cat_color))
+        cat_name, author_name, cat_color, author_avatar = await _get_cat_author(v, db)
+        items.append(_make_video_out(v, cat_name, author_name, cat_color, author_avatar))
 
     return {"items": items, "total": total, "page": page, "page_size": page_size}
 
@@ -90,8 +92,8 @@ async def get_featured_videos(db: AsyncSession = Depends(get_db)):
     videos = result.scalars().all()
     items = []
     for v in videos:
-        cat_name, author_name, cat_color = await _get_cat_author(v, db)
-        items.append(_make_video_out(v, cat_name, author_name, cat_color))
+        cat_name, author_name, cat_color, author_avatar = await _get_cat_author(v, db)
+        items.append(_make_video_out(v, cat_name, author_name, cat_color, author_avatar))
     return items
 
 
@@ -105,8 +107,8 @@ async def get_recommended_videos(db: AsyncSession = Depends(get_db)):
     videos = result.scalars().all()
     items = []
     for v in videos:
-        cat_name, author_name, cat_color = await _get_cat_author(v, db)
-        items.append(_make_video_out(v, cat_name, author_name, cat_color))
+        cat_name, author_name, cat_color, author_avatar = await _get_cat_author(v, db)
+        items.append(_make_video_out(v, cat_name, author_name, cat_color, author_avatar))
     return items
 
 
@@ -120,8 +122,8 @@ async def get_video(video_id: int, db: AsyncSession = Depends(get_db)):
     video.view_count = (video.view_count or 0) + 1
     await db.flush()
 
-    cat_name, author_name, cat_color = await _get_cat_author(video, db)
-    return _make_video_out(video, cat_name, author_name, cat_color)
+    cat_name, author_name, cat_color, author_avatar = await _get_cat_author(video, db)
+    return _make_video_out(video, cat_name, author_name, cat_color, author_avatar)
 
 
 @router.post("", response_model=VideoOut, status_code=201)
@@ -137,7 +139,7 @@ async def create_video(
     db.add(video)
     await db.flush()
     await db.refresh(video)
-    return _make_video_out(video, None, current_user.nickname or current_user.username)
+    return _make_video_out(video, None, current_user.nickname or current_user.username, "", current_user.avatar or "")
 
 
 @router.put("/{video_id}", response_model=VideoOut)
@@ -156,7 +158,7 @@ async def update_video(
         setattr(video, key, val)
     await db.flush()
     cat_name, author_name, cat_color = await _get_cat_author(video, db)
-    return _make_video_out(video, cat_name, author_name, cat_color)
+    return _make_video_out(video, cat_name, author_name, cat_color, author_avatar)
 
 
 @router.delete("/{video_id}")
@@ -187,8 +189,8 @@ async def toggle_featured(
         raise HTTPException(status_code=404, detail="视频不存在")
     video.is_featured = not video.is_featured
     await db.flush()
-    cat_name, author_name, cat_color = await _get_cat_author(video, db)
-    return _make_video_out(video, cat_name, author_name, cat_color)
+    cat_name, author_name, cat_color, author_avatar = await _get_cat_author(video, db)
+    return _make_video_out(video, cat_name, author_name, cat_color, author_avatar)
 
 
 # ========== 上传权限管理 ==========

@@ -45,6 +45,7 @@ class ArticleOut(BaseModel):
     like_count: int = 0
     author_id: int
     author_name: str = ""
+    author_avatar: str = ""
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -66,6 +67,7 @@ class ArticleListOut(BaseModel):
     view_count: int = 0
     like_count: int = 0
     author_name: str = ""
+    author_avatar: str = ""
     created_at: datetime | None = None
 
     model_config = {"from_attributes": True}

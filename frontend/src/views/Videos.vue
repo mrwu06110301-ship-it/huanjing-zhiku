@@ -206,7 +206,11 @@ function tagColor(v: any) {
           <div class="card-info">
             <h4 class="card-title">{{ v.title }}</h4>
             <div class="card-meta">
-              <span><Icon name="user" :size="12" /> {{ v.author_name || '未知' }}</span>
+              <span class="meta-author">
+                <img v-if="v.author_avatar" :src="v.author_avatar" alt="" class="meta-avatar" />
+                <Icon v-else name="user" :size="12" />
+                {{ v.author_name || '未知' }}
+              </span>
               <span class="meta-dot">·</span>
               <span><Icon name="eye" :size="12" /> {{ v.view_count || 0 }}次播放</span>
             </div>
@@ -392,6 +396,8 @@ function tagColor(v: any) {
   line-height: 1.5;
 }
 .card-meta { font-size: 12px; color: var(--text-muted); display: flex; gap: 4px; align-items: center; }
+.meta-avatar { width: 16px; height: 16px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+.meta-author { display: flex; align-items: center; gap: 4px; }
 .card-meta span { display: flex; align-items: center; gap: 2px; }
 .meta-dot { color: var(--border); }
 
