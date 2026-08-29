@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, computed, watch } from "vue";
-import { getStandards, uploadStandardsBatch, deleteStandard } from "@/api/standard";
+import { getStandards, uploadStandardsBatch, deleteStandard, recordStandardView } from "@/api/standard";
 import { getCategories } from "@/api/category";
 import { checkUploadPermission } from "@/api/video";
 import type { StandardOut, CategoryOut } from "@/types";
@@ -175,6 +175,8 @@ function switchCat(id: number | null) {
 /** 统一走 kkFileView 在线预览（服务器已开启缓存持久化，二次预览秒开） */
 function openPdf(s: StandardOut) {
   if (!s.file_url) return;
+  recordStandardView(s.id); // 异步计数，不阻塞预览
+  s.view_count = (s.view_count || 0) + 1; // 本地即时更新
   const absUrl = `${window.location.origin}${s.file_url}`;
   const previewUrl = `${window.location.origin}/preview/onlinePreview?url=${encodeURIComponent(btoa(absUrl))}`;
   window.open(previewUrl, "_blank", "noopener");

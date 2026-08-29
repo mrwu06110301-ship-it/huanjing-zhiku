@@ -17,6 +17,11 @@ export function getStandard(id: number): Promise<{ data: StandardOut }> {
   return request.get(`/standards/${id}`);
 }
 
+/** 预览计数上报（fire-and-forget，不阻塞打开预览） */
+export function recordStandardView(id: number): void {
+  request.post(`/standards/${id}/view`).catch(() => { /* 计数失败静默 */ });
+}
+
 export interface BatchUploadResult {
   created: StandardOut[];
   failed: { file: string; reason: string }[];

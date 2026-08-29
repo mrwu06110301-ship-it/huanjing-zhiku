@@ -100,6 +100,21 @@ async def get_standard(standard_id: int, db: AsyncSession = Depends(get_db)):
     return _make_out(std, cat_name, author_name)
 
 
+@router.post("/{standard_id}/view")
+async def record_standard_view(
+    standard_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """预览计数上报（kkFileView 直接打开，前端 fire-and-forget 调用）"""
+    result = await db.execute(select(Standard).where(Standard.id == standard_id))
+    std = result.scalars().first()
+    if not std:
+        raise HTTPException(status_code=404, detail="标准不存在")
+    std.view_count = (std.view_count or 0) + 1
+    await db.flush()
+    return {"view_count": std.view_count}
+
+
 @router.post("", response_model=StandardOut, status_code=201)
 async def create_standard(
     data: StandardCreate,
