@@ -224,7 +224,7 @@ const showExplain = ref(false);
         <table class="matrix">
           <thead>
             <tr>
-              <th class="gas-th">污染物</th>
+              <th class="gas-th">气体</th>
               <th :class="{ 'hot-col': isHotWet }">
                 湿基<small>（{{ isHotWet ? "仪器示值" : "不适用" }}，{{ unitLabel }}）</small>
               </th>
@@ -237,10 +237,10 @@ const showExplain = ref(false);
             </tr>
           </thead>
           <tbody>
-            <tr v-for="r in rows" :key="r.key" :class="{ noxrow: r.key === 'NOx' }">
+            <tr v-for="r in rows" :key="r.key">
               <td class="gas-name">{{ r.label }}</td>
               <!-- 湿基：热湿法=仪器示值（输入/NOₓ自动）；冷干法显示 — -->
-              <td v-if="isHotWet" :class="{ 'input-cell': true }">
+              <td v-if="isHotWet" class="input-cell">
                 <el-input-number
                   v-if="r.key !== 'NOx'"
                   v-model="gases[r.key]"
@@ -350,9 +350,9 @@ const showExplain = ref(false);
 .head-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 
 /* 比对表内嵌输入框 */
-.input-cell { text-align: left !important; }
+.input-cell { text-align: center !important; }
 .cell-input { width: 100%; max-width: 180px; }
-.cell-input :deep(.el-input__inner) { text-align: right; font-family: Consolas, Monaco, monospace; }
+.cell-input :deep(.el-input__inner) { text-align: center; font-family: Consolas, Monaco, monospace; }
 /* NOₓ 数值（自动计算只读） */
 .nox-val {
   color: var(--primary); font-weight: 700; font-size: 14.5px;
@@ -366,19 +366,17 @@ const showExplain = ref(false);
 .matrix { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13.5px; }
 .matrix th {
   background: rgba(37, 99, 235, 0.07); color: var(--text); font-weight: 600;
-  padding: 10px 12px; text-align: right; white-space: nowrap;
+  padding: 10px 12px; text-align: center; white-space: nowrap;
   border-bottom: 2px solid rgba(37, 99, 235, 0.25);
   position: relative;
 }
-.matrix th:first-child { text-align: left; border-top-left-radius: 10px; }
+.matrix th:first-child { border-top-left-radius: 10px; }
 .matrix th:last-child { border-top-right-radius: 10px; }
-.matrix td { padding: 10px 12px; text-align: right; border-bottom: 1px solid var(--border-light); color: var(--text); font-family: Consolas, Monaco, monospace; }
-.matrix td.gas-name { text-align: left; font-family: inherit; font-weight: 700; }
+.matrix td { padding: 10px 12px; text-align: center; border-bottom: 1px solid var(--border-light); color: var(--text); font-family: Consolas, Monaco, monospace; }
+.matrix td.gas-name { font-family: inherit; font-weight: 700; }
 .matrix th small { font-weight: 400; color: var(--text-light); }
 .matrix .hot-col { background: rgba(37, 99, 235, 0.05); }
 .matrix .hot-col b { color: var(--primary); font-size: 15px; }
-.matrix .noxrow td { border-top: 2px dashed rgba(37, 99, 235, 0.35); }
-.matrix .noxrow td.gas-name { color: var(--primary); }
 .matrix-note { margin: 10px 0 0; font-size: 12px; color: var(--text-light); }
 
 .explain-head { display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none; }
