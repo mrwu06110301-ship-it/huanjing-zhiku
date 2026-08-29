@@ -78,7 +78,7 @@ async function checkRunning() {
 async function onTrigger() {
   try {
     await ElMessageBox.confirm(
-      "将增量更新 AI 知识库（新增/变更内容重新索引，未变更的 PDF 自动跳过，通常几分钟内完成）。确定执行？",
+      "将增量更新 AI 知识库（覆盖论坛文章、法规标准、视频、工具、维保 FAQ、留言、关于作者全部内容源；新增/变更内容重新索引，未变更的 PDF 自动跳过，通常几分钟内完成）。确定执行？",
       "手动更新知识库",
       { confirmButtonText: "立即更新", cancelButtonText: "取消", type: "info" }
     );
@@ -183,7 +183,9 @@ onUnmounted(() => {
               </div>
             </div>
             <div class="schedule-note">
-              增量机制：文章/视频/工具逐条比对哈希，标准 PDF 按文件指纹（修改时间+大小）跳过未变更文件，仅重建变化部分索引。
+              <b>增量机制</b>：论坛文章 / 视频 / 工具 / 常见问题(FAQ) / 留言 / 关于作者逐条比对内容哈希，变更才重写切片；
+              法规标准按文件指纹（修改时间+大小）跳过未变更 PDF，新增/变更的标准自动解析全文入库；
+              已下架或删除的内容同步清除索引，构建期间加锁防止并发重复执行。
             </div>
           </div>
         </div>

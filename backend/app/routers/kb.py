@@ -117,7 +117,7 @@ async def kb_history(_: object = Depends(require_admin)):
                       status, chunks_changed, total_chunks, message
                FROM kb_build_runs ORDER BY id DESC LIMIT 50"""
         ).fetchall()
-        return {"data": [dict(r) for r in rows]}
+        return [dict(r) for r in rows]
     finally:
         conn.close()
 
