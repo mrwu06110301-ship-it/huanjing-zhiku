@@ -167,7 +167,10 @@ async function saveAbout() {
 }
 
 .author-content :deep(img) {
-  max-width: 100%;
+  max-width: 100% !important;
+  width: auto !important;
+  height: auto !important;   /* 等比例缩放，覆盖编辑器内联固定宽高 */
+  object-fit: contain;
   border-radius: 10px;
   margin: 16px auto;
   display: block;

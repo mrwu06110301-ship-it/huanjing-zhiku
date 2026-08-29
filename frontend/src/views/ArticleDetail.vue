@@ -229,7 +229,13 @@ function formatTime(dateStr: string) {
 .detail-content :deep(pre code) { background: none; color: inherit; padding: 0; }
 .detail-content :deep(ul), .detail-content :deep(ol) { padding-left: 20px; margin: 8px 0; }
 .detail-content :deep(li) { margin: 4px 0; }
-.detail-content :deep(img) { max-width: 100%; border-radius: 8px; margin: 12px 0; }
+.detail-content :deep(img) {
+  max-width: 100% !important;  /* 覆盖编辑器写入的内联宽度 */
+  width: auto !important;
+  height: auto !important;     /* 等比例：高度跟随宽度按原图比例缩放 */
+  object-fit: contain;
+  border-radius: 8px; margin: 12px 0;
+}
 .detail-content :deep(a) { color: var(--primary); text-decoration: none; }
 .detail-content :deep(table) { width: 100%; border-collapse: collapse; margin: 12px 0; }
 .detail-content :deep(th), .detail-content :deep(td) { border: 1px solid var(--card-border); padding: 8px 12px; text-align: left; font-size: 14px; }
@@ -256,5 +262,6 @@ function formatTime(dateStr: string) {
   .detail-title { font-size: 20px; }
   .detail-content { padding: 20px 16px; font-size: 15px; }
   .detail-author { flex-direction: column; align-items: flex-start; gap: 8px; }
+  /* 手机端编辑器遗留固定宽高同样被上方 !important 规则覆盖 */
 }
 </style>
