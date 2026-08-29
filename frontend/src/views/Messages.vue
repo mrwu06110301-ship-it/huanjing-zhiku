@@ -126,12 +126,16 @@ function isSystemReply(msg: MessageOut): boolean {
 <template>
   <div class="messages-page">
     <!-- 页面标题 -->
-    <div class="page-header">
-      <div class="page-title-icon">
-        <Icon name="message" :size="28" />
+    <div class="page-header page-header-row">
+      <div class="header-left">
+        <div class="page-header-main">
+          <div class="page-title-icon">
+            <Icon name="message" :size="28" />
+          </div>
+          <h1>留言墙</h1>
+        </div>
+        <p class="page-header-sub">畅所欲言，分享见解，共建知识社区</p>
       </div>
-      <h1>留言墙</h1>
-      <p>畅所欲言，分享见解，共建知识社区</p>
     </div>
 
     <!-- 留言表单 -->
@@ -263,9 +267,7 @@ function isSystemReply(msg: MessageOut): boolean {
 <style scoped>
 .messages-page { max-width: 800px; margin: 0 auto; }
 
-.page-header { text-align: center; padding: 48px 0 32px; }
-.page-header h1 { font-size: 28px; font-weight: 700; color: var(--text); margin-bottom: 8px; }
-.page-header p { color: var(--text-light); font-size: 15px; }
+.page-header { padding: 48px 0 32px; }
 
 /* 表单 */
 .msg-form-card {

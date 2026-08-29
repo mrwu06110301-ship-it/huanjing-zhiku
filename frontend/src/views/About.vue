@@ -55,12 +55,16 @@ async function saveAbout() {
 <template>
   <div class="about-page">
     <!-- 页面标题 -->
-    <div class="page-header">
-      <div class="page-title-icon">
-        <Icon name="about" :size="28" />
+    <div class="page-header page-header-row">
+      <div class="header-left">
+        <div class="page-header-main">
+          <div class="page-title-icon">
+            <Icon name="about" :size="28" />
+          </div>
+          <h1>关于作者</h1>
+        </div>
+        <p class="page-header-sub">了解创作者，共建知识生态</p>
       </div>
-      <h1>关于作者</h1>
-      <p>了解创作者，共建知识生态</p>
     </div>
 
     <!-- 编辑模式 -->
@@ -105,18 +109,7 @@ async function saveAbout() {
 }
 
 .page-header {
-  text-align: center;
   padding: 48px 0 32px;
-}
-.page-header h1 {
-  font-size: 28px;
-  font-weight: 700;
-  color: var(--text);
-  margin-bottom: 8px;
-}
-.page-header p {
-  color: var(--text-light);
-  font-size: 15px;
 }
 
 .about-card {

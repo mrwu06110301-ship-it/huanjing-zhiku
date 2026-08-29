@@ -108,22 +108,26 @@ function tagColor(v: any) {
 <template>
   <div class="videos-page">
     <!-- 页面标题 -->
-    <div class="page-header">
-      <div class="page-title-icon">
-        <Icon name="video" :size="26" />
+    <div class="page-header page-header-row">
+      <div class="header-left">
+        <div class="page-header-main">
+          <div class="page-title-icon">
+            <Icon name="video" :size="26" />
+          </div>
+          <h1>视频中心</h1>
+        </div>
+        <p class="page-header-sub">科普知识、实操演示与技术探讨</p>
       </div>
-      <h1>视频中心</h1>
-      <p>科普知识、实操演示与技术探讨</p>
-    </div>
-    <div class="header-actions">
-      <div class="search-wrap">
-        <Icon name="search" :size="15" class="search-ic" />
-        <input v-model="searchQuery" placeholder="搜索视频..." class="search-input" />
+      <div class="header-actions">
+        <div class="search-wrap">
+          <Icon name="search" :size="15" class="search-ic" />
+          <input v-model="searchQuery" placeholder="搜索视频..." class="search-input" />
+        </div>
+        <button v-if="canUpload" class="btn-upload" @click="goUpload">
+          <Icon name="upload" :size="15" />
+          <span>上传视频</span>
+        </button>
       </div>
-      <button v-if="canUpload" class="btn-upload" @click="goUpload">
-        <Icon name="upload" :size="15" />
-        <span>上传视频</span>
-      </button>
     </div>
 
     <!-- 主区域：左轮播 + 右推荐 -->
@@ -217,10 +221,8 @@ function tagColor(v: any) {
 .videos-page { max-width: 1200px; margin: 0 auto; }
 
 /* 页面标题 */
-.page-header { text-align: center; padding: 40px 0 24px; }
-.page-header h1 { font-size: 28px; font-weight: 700; margin-bottom: 8px; color: var(--text); }
-.page-header p { color: var(--text-light); font-size: 15px; }
-.header-actions { display: flex; align-items: center; justify-content: center; gap: 12px; margin-bottom: 24px; }
+.page-header { padding: 40px 0 24px; }
+.header-actions { display: flex; align-items: center; gap: 12px; }
 
 /* 搜索 */
 .search-wrap {
@@ -394,8 +396,8 @@ function tagColor(v: any) {
 .meta-dot { color: var(--border); }
 
 @media (max-width: 768px) {
-  .page-header { padding: 24px 0 16px; }
-  .header-actions { width: 100%; flex-wrap: wrap; margin-bottom: 16px; }
+  .page-header { padding: 24px 0 16px; flex-wrap: wrap; }
+  .header-actions { flex-wrap: wrap; }
   .top-row { flex-direction: column; height: auto; }
   .carousel-section { height: 240px; }
   .recommend-section { height: auto; }

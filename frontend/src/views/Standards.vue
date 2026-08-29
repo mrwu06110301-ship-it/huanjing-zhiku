@@ -88,12 +88,16 @@ function openPdf(s: StandardOut) {
 
 <template>
   <div class="page">
-    <div class="page-header">
-      <div class="page-title-icon">
-        <Icon name="standard" :size="26" />
+    <div class="page-header page-header-row">
+      <div class="header-left">
+        <div class="page-header-main">
+          <div class="page-title-icon">
+            <Icon name="standard" :size="26" />
+          </div>
+          <h1>方法标准</h1>
+        </div>
+        <p class="page-header-sub">环境标准 · 职业卫生标准 · EPA标准（共 {{ total }} 项）</p>
       </div>
-      <h1>方法标准</h1>
-      <p>环境标准 · 职业卫生标准 · EPA标准（共 {{ total }} 项）</p>
       <el-button plain size="small" class="share-btn" @click="share('方法标准', '环境标准 · 职业卫生标准 · EPA标准')">
         <Icon name="share" :size="14" style="margin-right:6px" /> 分享
       </el-button>
@@ -152,10 +156,7 @@ function openPdf(s: StandardOut) {
 
 <style scoped>
 .page { max-width: 1200px; margin: 0 auto; }
-.page-header { text-align: center; padding: 40px 0 24px; }
-.page-header h1 { font-size: 28px; font-weight: 700; margin-bottom: 8px; }
-.page-header p { color: var(--text-light); font-size: 15px; }
-.page-header .share-btn { margin-top: 14px; }
+.page-header { padding: 40px 0 24px; }
 
 .category-tabs { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; align-items: center; }
 .tab {

@@ -178,17 +178,21 @@ onMounted(async () => {
     <!-- 右侧内容区 -->
     <main class="forum-main">
       <!-- 顶部标题栏 -->
-      <div class="forum-header">
-        <div class="page-title-icon">
-          <Icon name="forum" :size="26" />
+      <div class="forum-header page-header-row">
+        <div class="header-left">
+          <div class="page-header-main">
+            <div class="page-title-icon">
+              <Icon name="forum" :size="26" />
+            </div>
+            <h1>技术论坛</h1>
+          </div>
+          <p class="page-header-sub">共 {{ total }} 篇技术干货</p>
         </div>
-        <h1>技术论坛</h1>
-        <p class="article-count">共 {{ total }} 篇技术干货</p>
-      </div>
-      <div class="header-actions">
-        <div class="search-wrap">
-          <Icon name="search" :size="15" class="search-ic" />
-          <input v-model="searchQuery" placeholder="搜索文章..." class="local-search-input" @input="filterLocal" />
+        <div class="header-right">
+          <div class="search-wrap">
+            <Icon name="search" :size="15" class="search-ic" />
+            <input v-model="searchQuery" placeholder="搜索文章..." class="local-search-input" @input="filterLocal" />
+          </div>
         </div>
       </div>
 
@@ -401,29 +405,8 @@ onMounted(async () => {
 }
 
 .forum-header {
-  text-align: center;
-  margin-bottom: 16px;
+  margin-bottom: 4px;
   padding-top: 12px;
-}
-
-.forum-header h1 {
-  font-size: 28px;
-  font-weight: 700;
-  color: var(--text);
-  margin-bottom: 8px;
-}
-
-.article-count {
-  font-size: 15px;
-  color: var(--text-light);
-}
-
-.header-actions {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  margin-bottom: 20px;
 }
 
 .search-wrap {
@@ -650,8 +633,8 @@ onMounted(async () => {
     padding-top: 0;
   }
 
-  .header-actions {
-    margin-bottom: 14px;
+  .header-right {
+    display: none;
   }
 
   .article-cover {

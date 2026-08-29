@@ -57,12 +57,16 @@ function goTool(slug: string) {
 
 <template>
   <div class="page">
-    <div class="page-header">
-      <div class="page-title-icon">
-        <Icon name="tool" :size="26" />
+    <div class="page-header page-header-row">
+      <div class="header-left">
+        <div class="page-header-main">
+          <div class="page-title-icon">
+            <Icon name="tool" :size="26" />
+          </div>
+          <h1>常用工具</h1>
+        </div>
+        <p class="page-header-sub">大气监测采样模型与计算工具</p>
       </div>
-      <h1>常用工具</h1>
-      <p>大气监测采样模型与计算工具</p>
     </div>
 
     <div class="category-tabs" v-if="categories.length">
@@ -100,9 +104,7 @@ function goTool(slug: string) {
 
 <style scoped>
 .page { max-width: 1200px; margin: 0 auto; }
-.page-header { text-align: center; padding: 40px 0 24px; }
-.page-header h1 { font-size: 28px; font-weight: 700; margin-bottom: 8px; }
-.page-header p { color: var(--text-light); font-size: 15px; }
+.page-header { padding: 40px 0 24px; }
 
 .category-tabs { display: flex; gap: 8px; margin-bottom: 24px; flex-wrap: wrap; }
 .tab {

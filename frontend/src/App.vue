@@ -247,6 +247,29 @@ a:hover {
   border-radius: var(--radius);
   background: var(--primary-light);
   color: var(--primary);
-  margin-bottom: 12px;
+  margin-bottom: 0;
+  flex-shrink: 0;
+}
+
+/* 左对齐页头：图标+标题同行，副标题在下，操作按钮靠右 */
+.page-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 40px 0 20px;
+}
+.page-header-main { display: flex; align-items: center; gap: 14px; }
+.page-header-main h1 {
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0;
+  line-height: 1.3;
+}
+.page-header-sub {
+  margin: 6px 0 0 58px;
+  font-size: 14px;
+  color: var(--text-light);
 }
 </style>
