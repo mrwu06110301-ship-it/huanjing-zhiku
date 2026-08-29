@@ -22,6 +22,7 @@ class UserOut(BaseModel):
     email: str | None = None
     nickname: str
     avatar: str = ""
+    phone: str = ""
     role: str = "user"
     can_upload_video: bool = False
     is_active: bool = True
@@ -34,6 +35,12 @@ class UserUpdate(BaseModel):
     nickname: str | None = None
     avatar: str | None = None
     email: str | None = None
+    phone: str | None = None
+
+
+class PasswordChange(BaseModel):
+    old_password: str
+    new_password: str
 
 
 class Token(BaseModel):

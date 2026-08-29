@@ -14,6 +14,7 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(100), unique=True, index=True, nullable=False)
     nickname: Mapped[str] = mapped_column(String(50), default="")
     avatar: Mapped[str] = mapped_column(String(255), default="")
+    phone: Mapped[str] = mapped_column(String(20), default="")
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
     # 角色: admin / editor / user
     role: Mapped[str] = mapped_column(String(20), default="user")
