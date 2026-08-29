@@ -195,8 +195,7 @@ async function saveAbout() {
 
 .author-content :deep(img) {
   max-width: 100% !important;
-  width: auto !important;
-  height: auto !important;   /* 等比例缩放，覆盖编辑器内联固定宽高 */
+  height: auto !important;     /* 高度随宽度等比缩放；宽度保留编辑器内联值，与编辑态一致 */
   object-fit: contain;
   border-radius: 10px;
   margin: 16px auto;

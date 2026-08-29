@@ -264,9 +264,8 @@ function formatTime(dateStr: string) {
 .detail-content :deep(ul), .detail-content :deep(ol) { padding-left: 20px; margin: 8px 0; }
 .detail-content :deep(li) { margin: 4px 0; }
 .detail-content :deep(img) {
-  max-width: 100% !important;  /* 覆盖编辑器写入的内联宽度 */
-  width: auto !important;
-  height: auto !important;     /* 等比例：高度跟随宽度按原图比例缩放 */
+  max-width: 100% !important;  /* 手机端兜底：超出容器时缩到容器宽 */
+  height: auto !important;     /* 等比：高度跟随宽度缩放，宽度保留编辑器内联值 */
   object-fit: contain;
   border-radius: 8px; margin: 12px 0;
   cursor: zoom-in;             /* 提示可点击放大预览 */

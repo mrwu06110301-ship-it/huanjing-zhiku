@@ -12,7 +12,7 @@ import { useAuthStore } from "@/stores/auth";
 
 const auth = useAuthStore();
 const isAdmin = computed(() => auth.isAdmin());
-import { O2_BASELINES } from "@/utils/o2-baseline";
+import O2sPicker from "@/components/O2sPicker.vue";
 import { computeDustSampling, DUST_DEMO, type DustSamplingResult } from "@/utils/flue-dust-sampling";
 
 const form = reactive({
@@ -33,9 +33,6 @@ const form = reactive({
 });
 
 const result = ref<DustSamplingResult | null>(null);
-/** 基准含氧量：行业下拉 + 自定义 */
-const o2sCustom = ref(false);
-const o2sOptions = O2_BASELINES.map((b) => ({ value: b.o2s, label: `${b.label} — ${b.o2s}%` }));
 
 const o2Invalid = computed(() => form.O2 !== null && form.O2 >= 21);
 const o2BaseInvalid = computed(() => form.O2Base !== null && form.O2Base >= 21);
@@ -167,19 +164,7 @@ const showExplain = ref(false);
           </div>
           <div class="field">
             <label>基准含氧量（%）<span class="req">*</span></label>
-            <el-select v-if="!o2sCustom" v-model="form.O2Base" filterable placeholder="选择行业" style="width:100%">
-              <el-option v-for="o in o2sOptions" :key="o.value" :value="o.value" :label="o.label" />
-            </el-select>
-            <el-input-number
-              v-else
-              v-model="form.O2Base" :min="0" :max="21" :precision="1" :controls="false"
-              placeholder="自定义基准含氧量" style="width:100%"
-            />
-            <div class="o2s-switch">
-              <el-button link type="primary" size="small" @click="o2sCustom = !o2sCustom">
-                {{ o2sCustom ? "← 返回行业下拉选择" : "自定义输入 →" }}
-              </el-button>
-            </div>
+            <O2sPicker v-model="form.O2Base" />
             <div v-if="o2BaseInvalid" class="field-err">基准含氧量需小于 21%</div>
           </div>
           <div class="field">
@@ -296,7 +281,6 @@ const showExplain = ref(false);
 .field label { display: block; font-size: 13px; color: var(--text-light); margin-bottom: 6px; font-weight: 500; }
 .req { color: #ef4444; margin-left: 2px; }
 .field-err { font-size: 11.5px; color: #ef4444; margin-top: 4px; }
-.o2s-switch { margin-top: 4px; }
 
 .ds-outputs { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
 .vr-card {

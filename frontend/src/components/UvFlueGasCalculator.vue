@@ -8,13 +8,14 @@
 import { ref, reactive, computed } from "vue";
 import { ElMessage } from "element-plus";
 import Icon from "@/components/Icon.vue";
+import O2sPicker from "@/components/O2sPicker.vue";
 import { useAuthStore } from "@/stores/auth";
 
 const auth = useAuthStore();
 const isAdmin = computed(() => auth.isAdmin());
 import {
   MOL, volumeToMass, workingToStandard,
-  noxMass, excessAir, adjustByO2, O2S_PRESETS, UV_DEMO,
+  noxMass, excessAir, adjustByO2, UV_DEMO,
   type GasKey,
 } from "@/utils/uv-flue-gas";
 
@@ -28,23 +29,8 @@ const env = reactive({
   o2s: 6 as number | null,       // 基准含氧量 %（下拉/自定义）
 });
 
-// ==================== 基准含氧量下拉 + 自定义 ====================
-const o2sCustom = ref(false); // 自定义模式
+// ==================== 基准含氧量（O2sPicker 数值+行业组合） ====================
 const o2sInput = ref<number | null>(6);
-const o2sOptions = computed(() =>
-  O2S_PRESETS.map((p) => ({ value: p.o2s, label: `${p.label}（${p.o2s}%，${stdOf(p.o2s)}）` }))
-);
-function stdOf(o2s: number): string {
-  const b = O2S_PRESETS.find((x) => x.o2s === o2s);
-  return b ? b.label : "";
-}
-// O2S_PRESETS 已含 label，直接用
-const o2sSelectOptions = computed(() =>
-  O2S_PRESETS.map((p) => ({ value: p.o2s, label: `${p.label} — ${p.o2s}%` }))
-);
-function onO2sChange(v: number | null) {
-  o2sInput.value = v;
-}
 
 // ==================== 仪器直读浓度（单位可切换 μmol/mol ↔ mg/m³） ====================
 type ConcUnit = "ppm" | "mg";
@@ -91,6 +77,23 @@ const a4Formula = computed(() =>
     : "C(NOₓ) = C(NO) × 46.005/30.006 + C(NO₂)"
 );
 
+/** NOₓ ?气泡数值代入过程（有输入时显示） */
+const a4Steps = computed(() => {
+  const noV = toPpm("NO", gases.NO);
+  const no2V = toPpm("NO2", gases.NO2);
+  if (noxHasInput.value) {
+    return `已手动填写 NOₓ = ${fromPpm("NO2", noxPpm.value)?.toFixed(2)} ${unitLabel.value}，覆盖自动求和。`;
+  }
+  if (noV === null && no2V === null) return "";
+  const a = noV ?? 0, b = no2V ?? 0;
+  if (concUnit.value === "ppm") {
+    return `代入：C(NOₓ) = ${a.toFixed(2)} + ${b.toFixed(2)} = ${noxPpm.value!.toFixed(2)} μmol/mol`;
+  }
+  const noM = fromPpm("NO", noV) ?? 0;
+  const no2M = fromPpm("NO2", no2V) ?? 0;
+  return `代入：C(NOₓ) = ${noM.toFixed(2)} × 46.005/30.006 + ${no2M.toFixed(2)} = ${(noM * 46.005 / 30.006 + no2M).toFixed(2)} mg/m³`;
+});
+
 // ==================== 采样方法：冷干法（读数=干基）/ 热湿法（读数=湿基） ====================
 type SampleMethod = "cold-dry" | "hot-wet";
 const sampleMethod = ref<SampleMethod>("cold-dry");
@@ -114,18 +117,24 @@ const rows = computed<Row[]>(() => {
   const list: Row[] = [];
   const calc = (key: GasKey | "NOx", label: string, ppm: number | null, M: number) => {
     if (ppm === null) return;
-    let mStdDry = volumeToMass(ppm, M);
-    // 热湿法：仪器读数为湿基，先换算干基 C干 = C湿/(1−Xsw/100)
+    const readMass = volumeToMass(ppm, M); // 仪器读数质量浓度（干基或湿基，视方法而定）
     if (isHotWet.value) {
+      // 热湿法：读数=湿基，干基 = 湿基/(1−Xsw/100)，湿基列显示原始读数
       if (env.Xsw === null || env.Xsw >= 100) return; // 缺含湿量不计算
-      mStdDry = mStdDry / (1 - env.Xsw / 100);
+      const mStdDry = readMass / (1 - env.Xsw / 100);
+      list.push({
+        key, label, ppm,
+        massStdDry: mStdDry,
+        massWetStd: readMass, // = 仪器原始读数
+      });
+    } else {
+      // 冷干法：读数=干基，直接显示；湿基不适用，显示 —
+      list.push({
+        key, label, ppm,
+        massStdDry: readMass,
+        massWetStd: null, // 冷干法不显示湿基
+      });
     }
-    list.push({
-      key, label, ppm,
-      massStdDry: mStdDry,
-      // 湿基 = 干基 × (1−Xsw/100)：冷干法为换算值；热湿法还原为仪器原始读数
-      massWetStd: env.Xsw !== null && env.Xsw < 100 ? mStdDry * (1 - env.Xsw / 100) : null,
-    });
   };
   calc("SO2", "SO₂", toPpm("SO2", gases.SO2), MOL.SO2);
   calc("NO", "NO", toPpm("NO", gases.NO), MOL.NO);
@@ -156,7 +165,6 @@ const adjustRows = computed<AdjustRow[]>(() => {
 function loadDemo() {
   Object.assign(env, { ba: UV_DEMO.ba, ps: UV_DEMO.ps, ts: UV_DEMO.ts, Xsw: UV_DEMO.Xsw, O2dry: UV_DEMO.O2dry, o2s: UV_DEMO.o2s });
   o2sInput.value = UV_DEMO.o2s;
-  o2sCustom.value = false;
   Object.assign(gases, { SO2: UV_DEMO.so2_ppm, NO: UV_DEMO.no_ppm, NO2: UV_DEMO.no2_ppm });
   noxInput.value = null;
   concUnit.value = "ppm";
@@ -274,28 +282,7 @@ const showExplain = ref(false);
         </div>
         <div class="field">
           <label>基准含氧量 O₂s（%）<span class="req">*</span></label>
-          <el-select
-            v-if="!o2sCustom"
-            v-model="o2sInput"
-            filterable
-            placeholder="选择行业"
-            style="width:100%"
-            @change="onO2sChange"
-          >
-            <el-option v-for="o in o2sSelectOptions" :key="o.value" :value="o.value" :label="o.label" />
-          </el-select>
-          <el-input-number
-            v-else
-            v-model="o2sInput"
-            :min="0" :max="21" :precision="1" :controls="false"
-            placeholder="自定义基准含氧量"
-            style="width:100%"
-          />
-          <div class="o2s-switch">
-            <el-button link type="primary" size="small" @click="o2sCustom = !o2sCustom">
-              {{ o2sCustom ? "← 返回行业下拉选择" : "自定义输入 →" }}
-            </el-button>
-          </div>
+          <O2sPicker v-model="o2sInput" />
           <div v-if="o2sInput !== null && o2sInput >= 21" class="field-err">基准含氧量需小于 21%</div>
         </div>
       </div>
@@ -324,10 +311,12 @@ const showExplain = ref(false);
           <label>
             NOₓ（{{ unitLabel }}）
             <span class="q-tip" @click="toggleTip('A4')">?</span>
+            <div v-if="tipVisible.A4" class="tip-pop">
+              <div class="tip-title">{{ formulaTips.A4.title }}</div>
+              <div class="tip-formula">{{ formulaTips.A4.formula }}</div>
+              <div v-if="a4Steps" class="tip-desc">{{ a4Steps }}</div>
+            </div>
           </label>
-          <div v-if="tipVisible.A4" class="tip-pop nox-tip">
-            <div class="tip-formula">{{ a4Formula }}</div>
-          </div>
           <el-input-number v-model="noxInput" :min="0" :precision="1" :controls="false" :placeholder="noxPpm !== null ? noxPpm.toFixed(1) : '自动'" style="width:100%" />
           <div class="nox-hint" v-if="noxHasInput">已手动填写，覆盖 NO+NO₂ 之和</div>
           <div class="nox-hint" v-else-if="noxPpm !== null">NO+NO₂ = {{ fromPpm("NO2", noxPpm)?.toFixed(1) }} {{ unitLabel }}</div>
@@ -361,7 +350,7 @@ const showExplain = ref(false);
                 </div>
               </th>
               <th>
-                标态湿基 <small>mg/m³</small>
+                {{ isHotWet ? "湿基（仪器读数）" : "标态湿基" }} <small>mg/m³</small>
                 <span class="q-tip" @click="toggleTip('A2')">?</span>
                 <div v-if="tipVisible.A2" class="tip-pop">
                   <div class="tip-title">{{ formulaTips.A2.title }}</div>
@@ -382,14 +371,16 @@ const showExplain = ref(false);
         </table>
       </div>
       <p class="matrix-note">
-        标态：0℃、101.325 kPa；{{ isHotWet ? "热湿法：干基 = 湿基读数 /(1−Xsw/100)（M 按 NO₂=46.005）；湿基列即仪器原始读数" : "湿基 = 干基 × (1−Xsw/100)" }}；NOₓ 以 NO₂ 计，置于表末。
+        标态：0℃、101.325 kPa；{{ isHotWet
+          ? "热湿法：湿基列 = 仪器原始读数；干基 = 湿基读数 /(1−Xsw/100)"
+          : "冷干法：标态干基 = 仪器直读浓度换算；湿基列不适用（—）" }}；NOₓ 以 NO₂ 计，置于表末。
       </p>
       </template>
       <div v-else class="empty-hint">
         <Icon name="info" :size="14" />
         {{ isHotWet
           ? "热湿法：填写仪器湿基读数 + 含湿量 Xsw 后自动换算干基计算"
-          : "填写上方仪器直读浓度后自动计算（湿基需填含湿量 Xsw）" }}
+          : "填写上方仪器直读浓度后自动计算" }}
       </div>
     </div>
 
