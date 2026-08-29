@@ -123,10 +123,6 @@ function tagColor(v: any) {
         <p class="page-header-sub">科普知识、实操演示与技术探讨</p>
       </div>
       <div class="header-actions">
-        <div class="search-wrap">
-          <Icon name="search" :size="15" class="search-ic" />
-          <input v-model="searchQuery" placeholder="搜索视频..." class="search-input" @input="onSearchInput" />
-        </div>
         <button v-if="canUpload" class="btn-upload" @click="goUpload">
           <Icon name="upload" :size="15" />
           <span>上传视频</span>
@@ -178,6 +174,11 @@ function tagColor(v: any) {
     <div class="all-section">
       <div class="all-header">
         <h3 class="section-title"><Icon name="grid" :size="17" /> 全部视频 ({{ filteredVideos.length }})</h3>
+        <!-- 搜索紧邻结果列表 -->
+        <div class="search-wrap">
+          <Icon name="search" :size="15" class="search-ic" />
+          <input v-model="searchQuery" placeholder="搜索视频..." class="search-input" @input="onSearchInput" />
+        </div>
         <div v-if="videoCategories.length > 0" class="cat-pills category-filter">
           <span
             :class="['cat-pill', { active: selectedCategoryId === null }]"
@@ -342,8 +343,11 @@ function tagColor(v: any) {
   display: flex; align-items: center; gap: 14px;
   margin-bottom: 20px; flex-wrap: wrap;
 }
+.all-header .section-title { flex-shrink: 0; }
+/* 搜索框紧邻"全部视频"标题右侧 */
+.all-header .search-wrap { margin-left: auto; }
 /* cat-pill 统一样式已全局定义于 App.vue */
-.category-filter { flex: 1; }
+.category-filter { flex: 1 1 100%; order: 2; } /* 分类标签换行独占第二行 */
 
 /* 视频网格 */
 .video-grid {
@@ -398,7 +402,9 @@ function tagColor(v: any) {
   .videos-page { padding: 0 12px; }
   .video-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
   .slide-title { font-size: 18px; }
-  .search-input { width: 140px; }
-  .search-input:focus { width: 160px; }
+  /* 手机端搜索框占满标题行剩余宽度 */
+  .all-header .search-wrap { margin-left: auto; width: auto; flex: 1; max-width: 200px; }
+  .search-input { width: 100%; min-width: 0; }
+  .search-input:focus { width: 100%; }
 }
 </style>
