@@ -84,6 +84,16 @@ const noxHasInput = computed(() => noxInput.value !== null);
 
 const unitLabel = computed(() => (concUnit.value === "ppm" ? "μmol/mol" : "mg/m³"));
 
+// ==================== 采样方法：冷干法（读数=干基）/ 热湿法（读数=湿基） ====================
+type SampleMethod = "cold-dry" | "hot-wet";
+const sampleMethod = ref<SampleMethod>("cold-dry");
+const isHotWet = computed(() => sampleMethod.value === "hot-wet");
+/** 热湿法读数为湿基，必须填含湿量才能换算干基 */
+const dryReady = computed(() => {
+  if (!isHotWet.value) return true;
+  return env.Xsw !== null && env.Xsw < 100;
+});
+
 // ==================== 换算链 ====================
 interface Row {
   key: GasKey | "NOx";
@@ -97,11 +107,16 @@ const rows = computed<Row[]>(() => {
   const list: Row[] = [];
   const calc = (key: GasKey | "NOx", label: string, ppm: number | null, M: number) => {
     if (ppm === null) return;
-    const mStdDry = volumeToMass(ppm, M);
+    let mStdDry = volumeToMass(ppm, M);
+    // 热湿法：仪器读数为湿基，先换算干基 C干 = C湿/(1−Xsw/100)
+    if (isHotWet.value) {
+      if (env.Xsw === null || env.Xsw >= 100) return; // 缺含湿量不计算
+      mStdDry = mStdDry / (1 - env.Xsw / 100);
+    }
     list.push({
       key, label, ppm,
       massStdDry: mStdDry,
-      // 湿基仅在填了含湿量时计算
+      // 湿基 = 干基 × (1−Xsw/100)：冷干法为换算值；热湿法还原为仪器原始读数
       massWetStd: env.Xsw !== null && env.Xsw < 100 ? mStdDry * (1 - env.Xsw / 100) : null,
     });
   };
@@ -150,6 +165,11 @@ function fmt(v: number | null): string {
 
 // ==================== 公式气泡（? 提示） ====================
 const formulaTips: Record<string, { title: string; formula: string; desc: string }> = {
+  SM: {
+    title: "采样方法：冷干法 vs 热湿法",
+    formula: "热湿法换干基：C干 = C湿 / (1 − Xsw/100)",
+    desc: "冷干法（完全抽取+冷凝除湿）：仪器读数为干基浓度，无需含湿量换算；热湿法（全程伴热）：仪器读数为湿基浓度，必须填写含湿量 Xsw 换算为干基后再进行标态/折算计算。",
+  },
   A3: {
     title: "体积浓度 → 标态质量浓度",
     formula: "C = M/22.4 × Cv",
@@ -157,8 +177,8 @@ const formulaTips: Record<string, { title: string; formula: string; desc: string
   },
   A2: {
     title: "干基 ↔ 湿基",
-    formula: "C干 = C湿 / (1 − Xsw/100)",
-    desc: "Xsw 含湿量 %；体积浓度与质量浓度算法相同",
+    formula: "C干 = C湿 / (1 − Xsw/100)；C湿 = C干 × (1 − Xsw/100)",
+    desc: "Xsw 含湿量 %。冷干法仪器读数为干基浓度，无需含湿量换算；热湿法仪器读数为湿基浓度，需先除以 (1−Xsw/100) 换算为干基再参与后续计算。",
   },
   A4: {
     title: "NOx 浓度（以 NO₂ 计）",
@@ -196,8 +216,23 @@ const showExplain = ref(false);
       </div>
 
       <el-alert type="info" :closable="false" show-icon class="rule-tip">
-        依据 HJ 75 / HJ 1045 附录 A 公式链：仪器直读浓度 → 标态质量浓度 → 干湿基 → 基准含氧量折算。NOₓ 由 NO+NO₂ 自动计算（以 NO₂ 计），也可直接填写 NOₓ 值。公式处的 <span class="q-demo">?</span> 可点击查看具体计算公式。
+        依据 HJ 75 / HJ 1045 附录 A 公式链：仪器直读浓度 → 标态质量浓度 → 干湿基 → 基准含氧量折算。支持<b>冷干法（干基读数）</b>与<b>热湿法（湿基读数，需含湿量换算）</b>；NOₓ 由 NO+NO₂ 自动计算（以 NO₂ 计），也可直接填写 NOₓ 值。公式处的 <span class="q-demo">?</span> 可点击查看具体计算公式。
       </el-alert>
+
+      <div class="grp-title">
+        采样方法
+        <span class="q-tip" @click="toggleTip('SM')">?</span>
+        <div v-if="tipVisible.SM" class="tip-pop tip-pop-right">
+          <div class="tip-title">{{ formulaTips.SM.title }}</div>
+          <div class="tip-formula">{{ formulaTips.SM.formula }}</div>
+          <div class="tip-desc">{{ formulaTips.SM.desc }}</div>
+        </div>
+        <el-radio-group v-model="sampleMethod" size="small" class="unit-switch">
+          <el-radio-button value="cold-dry">冷干法</el-radio-button>
+          <el-radio-button value="hot-wet">热湿法</el-radio-button>
+        </el-radio-group>
+      </div>
+      <div v-if="isHotWet" class="method-banner">热湿法：仪器读数为<b>湿基浓度</b>，需填写含湿量 Xsw 换算为干基后计算。</div>
 
       <div class="grp-title">现场过程参数</div>
       <div class="env-grid">
@@ -213,9 +248,18 @@ const showExplain = ref(false);
           <label>烟气温度 ts（℃）<span class="req">*</span></label>
           <el-input-number v-model="env.ts" :min="0" :max="600" :precision="1" :controls="false" placeholder="93.4" style="width:100%" />
         </div>
-        <div class="field">
-          <label>含湿量 Xsw（%）<span class="req">*</span></label>
-          <el-input-number v-model="env.Xsw" :min="0" :max="100" :precision="2" :controls="false" placeholder="7.8" style="width:100%" />
+        <div class="field" :class="{ 'field-warn': isHotWet && (env.Xsw === null || env.Xsw >= 100) }">
+          <label>
+            含湿量 Xsw（%）<span v-if="isHotWet" class="req">*</span>
+            <span class="q-tip" @click="toggleTip('A2')">?</span>
+            <div v-if="tipVisible.A2" class="tip-pop">
+              <div class="tip-title">{{ formulaTips.A2.title }}</div>
+              <div class="tip-formula">{{ formulaTips.A2.formula }}</div>
+              <div class="tip-desc">{{ formulaTips.A2.desc }}</div>
+            </div>
+          </label>
+          <el-input-number v-model="env.Xsw" :min="0" :max="100" :precision="2" :controls="false" :placeholder="isHotWet ? '热湿法必填' : '7.8'" style="width:100%" />
+          <div v-if="isHotWet && (env.Xsw === null || env.Xsw >= 100)" class="field-err">热湿法需填写含湿量（&lt;100%）以换算干基</div>
         </div>
         <div class="field">
           <label>氧量干基 O₂（%）<span class="req">*</span></label>
@@ -290,6 +334,10 @@ const showExplain = ref(false);
     <div class="card">
       <div class="card-head">
         <h3><Icon name="layers" :size="17" /> 浓度换算结果</h3>
+        <span v-if="isHotWet" class="method-chip" :class="{ ok: dryReady }">
+          {{ dryReady ? "热湿法 · 湿基读数已按 Xsw 换算干基" : "热湿法 · 待填含湿量 Xsw" }}
+        </span>
+        <span v-else class="method-chip ok">冷干法 · 干基读数直接计算</span>
       </div>
       <template v-if="rows.length">
       <div class="matrix-wrap">
@@ -328,9 +376,16 @@ const showExplain = ref(false);
           </tbody>
         </table>
       </div>
-      <p class="matrix-note">标态：0℃、101.325 kPa；湿基 = 干基 × (1−Xsw/100)；NOₓ 以 NO₂ 计（M=46.005），置于表末。</p>
+      <p class="matrix-note">
+        标态：0℃、101.325 kPa；{{ isHotWet ? "热湿法：干基 = 湿基读数 /(1−Xsw/100)（M 按 NO₂=46.005）；湿基列即仪器原始读数" : "湿基 = 干基 × (1−Xsw/100)" }}；NOₓ 以 NO₂ 计，置于表末。
+      </p>
       </template>
-      <div v-else class="empty-hint"><Icon name="info" :size="14" /> 填写上方仪器直读浓度后自动计算（湿基需填含湿量 Xsw）</div>
+      <div v-else class="empty-hint">
+        <Icon name="info" :size="14" />
+        {{ isHotWet
+          ? "热湿法：填写仪器湿基读数 + 含湿量 Xsw 后自动换算干基计算"
+          : "填写上方仪器直读浓度后自动计算（湿基需填含湿量 Xsw）" }}
+      </div>
     </div>
 
     <!-- ===== 卡片三：折算浓度 ===== -->
@@ -378,6 +433,8 @@ const showExplain = ref(false);
         <span class="toggle">{{ showExplain ? "收起 ▲" : "展开 ▼" }}</span>
       </div>
       <div v-show="showExplain" class="explain-body">
+        <h4>采样方法（冷干法 / 热湿法）</h4>
+        <div class="formula">冷干法：读数即干基，直接计算；热湿法：C干 = C湿 / (1 − Xsw/100) 后再计算</div>
         <h4>工况浓度 ↔ 标况浓度</h4>
         <div class="formula">Csn = Cs × 101325/(Ba+Ps) × (273+ts)/273</div>
         <h4>干基 ↔ 湿基</h4>
@@ -424,6 +481,20 @@ const showExplain = ref(false);
 }
 .grp-title:first-of-type { margin-top: 0; }
 .unit-switch { flex-shrink: 0; }
+.tip-pop-right { left: auto; right: 0; transform: none; }
+
+.method-banner {
+  display: flex; align-items: center; gap: 6px;
+  background: rgba(6, 182, 212, 0.08); border: 1px dashed rgba(6, 182, 212, 0.4);
+  border-radius: 8px; padding: 8px 12px; margin-bottom: 10px;
+  font-size: 12.5px; color: #0e7490; line-height: 1.6;
+}
+.field-warn label { color: #d97706; }
+.method-chip {
+  font-size: 12px; font-weight: 500; padding: 4px 12px; border-radius: 20px;
+  background: rgba(217, 119, 6, 0.1); color: #b45309;
+}
+.method-chip.ok { background: rgba(37, 99, 235, 0.08); color: var(--primary); }
 
 .env-grid, .gas-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px 16px; }
 .field label { display: block; font-size: 13px; color: var(--text-light); margin-bottom: 6px; font-weight: 500; }
