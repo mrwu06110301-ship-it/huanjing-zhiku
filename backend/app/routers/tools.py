@@ -6,7 +6,7 @@ from sqlalchemy import select, func
 
 from app.database import get_db
 from app.models.tool import Tool
-from app.schemas.tool import ToolOut
+from app.schemas.tool import ToolOut, ToolUpdate
 from app.dependencies.auth import require_admin
 
 router = APIRouter(prefix="/api/tools", tags=["常用工具"])
@@ -25,6 +25,13 @@ async def list_tools(
         query = query.where(Tool.category == category)
     query = query.order_by(Tool.sort_order, Tool.id)
     result = await db.execute(query)
+    return result.scalars().all()
+
+
+@router.get("/admin/all", response_model=list[ToolOut])
+async def list_tools_admin(db: AsyncSession = Depends(get_db), _: dict = Depends(require_admin)):
+    """管理端列表：含未公开工具"""
+    result = await db.execute(select(Tool).order_by(Tool.sort_order, Tool.id))
     return result.scalars().all()
 
 
@@ -60,6 +67,31 @@ async def create_tool(
     tool = Tool(name=name, slug=slug, description=description,
                 icon=icon, tool_type=tool_type, category=category)
     db.add(tool)
+    await db.flush()
+    await db.refresh(tool)
+    return tool
+
+
+@router.put("/{tool_id}", response_model=ToolOut)
+async def update_tool(
+    tool_id: int,
+    data: ToolUpdate,
+    db: AsyncSession = Depends(get_db),
+    _: dict = Depends(require_admin),
+):
+    """更新工具信息（名称/描述/图标/分类/排序/公开状态等）"""
+    result = await db.execute(select(Tool).where(Tool.id == tool_id))
+    tool = result.scalars().first()
+    if not tool:
+        raise HTTPException(status_code=404, detail="工具不存在")
+    updates = data.model_dump(exclude_unset=True)
+    # slug 唯一性校验
+    if "slug" in updates and updates["slug"] and updates["slug"] != tool.slug:
+        exists = await db.execute(select(Tool).where(Tool.slug == updates["slug"], Tool.id != tool_id))
+        if exists.scalars().first():
+            raise HTTPException(status_code=400, detail="标识已被占用")
+    for k, v in updates.items():
+        setattr(tool, k, v)
     await db.flush()
     await db.refresh(tool)
     return tool

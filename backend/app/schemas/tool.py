@@ -19,3 +19,15 @@ class ToolOut(BaseModel):
     created_at: datetime | None = None
 
     model_config = {"from_attributes": True}
+
+
+class ToolUpdate(BaseModel):
+    """工具信息更新（全部字段可选，仅传需要改的）"""
+    name: str | None = None
+    slug: str | None = None
+    description: str | None = None
+    icon: str | None = None
+    tool_type: str | None = None
+    category: str | None = None
+    is_public: bool | None = None
+    sort_order: int | None = None

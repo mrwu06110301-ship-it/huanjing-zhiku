@@ -133,6 +133,9 @@ function handleBlur() {
                 <el-dropdown-item v-if="auth.isAdmin()" @click="router.push('/admin/users')">
                   <Icon name="users" :size="15" style="margin-right:6px" /> 用户管理
                 </el-dropdown-item>
+                <el-dropdown-item v-if="auth.isAdmin()" @click="router.push('/admin/tools')">
+                  <Icon name="tool" :size="15" style="margin-right:6px" /> 工具管理
+                </el-dropdown-item>
                 <el-dropdown-item v-if="auth.isAdmin()" @click="router.push('/admin/kb')">
                   <Icon name="robot" :size="15" style="margin-right:6px" /> AI 知识库
                 </el-dropdown-item>
