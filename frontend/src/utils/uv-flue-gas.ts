@@ -18,6 +18,7 @@
  *  - M：SO2=64.06、NO=30.006、NO2=46.005
  *  - 压力单位 Pa（Ba+Ps 绝对压），与 A1 的 101325 对应
  */
+import { O2_BASELINES } from "./o2-baseline";
 
 // 摩尔质量 g/mol
 export const MOL = {
@@ -114,14 +115,8 @@ export function adjustByO2(csnDry: number, O2dry: number, O2s: number): { adjust
   };
 }
 
-/** 常用行业基准值（GB 13223 燃煤锅炉等） */
-export const O2S_PRESETS = [
-  { label: "燃煤锅炉", o2s: 6 },
-  { label: "燃气锅炉", o2s: 3.5 },
-  { label: "燃油锅炉", o2s: 3 },
-  { label: "垃圾焚烧", o2s: 11 },
-  { label: "钢铁烧结", o2s: 16 },
-];
+/** 常用行业基准值（简化标签，完整版见 o2-baseline.ts） */
+export const O2S_PRESETS = O2_BASELINES.map((b) => ({ label: b.label, o2s: b.o2s }));
 
 export const UV_DEMO = {
   // 仪器直读：标态干基 μmol/mol（多数紫外烟气分析仪直读形式）

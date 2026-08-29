@@ -1,16 +1,16 @@
 <script setup lang="ts">
 /**
- * UvFlueGasCalculator.vue — 紫外烟气模型（v2 重写）
- * 依据 HJ 75/1045 附录 A 公式链（A1 工况标况 / A2 干湿基 / A3 体积质量 / A4A5 NOx / A7A8A9 折算）
- * 四种气体 SO2/NO/NO2/NOx（NOx 计算得出），μmol/mol ↔ mg/m³ 双向换算
- * 输入即自动计算；公式说明默认折叠
+ * UvFlueGasCalculator.vue — 紫外烟气模型
+ * 依据 HJ 75/1045 附录 A 公式链（工况标况 / 干湿基 / 体积质量 / NOx / 折算）
+ * SO2/NO/NO2/NOx（NOx 计算得出），μmol/mol ↔ mg/m³ 双向换算
+ * 输入即自动计算；公式编号以 ? 图标提示，点击查看公式
  */
 import { ref, reactive, computed } from "vue";
 import { ElMessage } from "element-plus";
 import Icon from "@/components/Icon.vue";
 import {
-  MOL, volumeToMass, massToVolume, workingToStandard, wetToDryBase,
-  noxMass, noxVolume, excessAir, adjustByO2, O2S_PRESETS, UV_DEMO,
+  MOL, volumeToMass, workingToStandard,
+  noxMass, excessAir, adjustByO2, O2S_PRESETS, UV_DEMO,
   type GasKey,
 } from "@/utils/uv-flue-gas";
 
@@ -21,70 +21,99 @@ const env = reactive({
   ts: null as number | null,     // 烟温 ℃
   Xsw: null as number | null,    // 含湿量 %
   O2dry: null as number | null,  // 氧量干基 %
-  o2s: 6 as number | null,       // 基准含氧量 %
+  o2s: 6 as number | null,       // 基准含氧量 %（下拉/自定义）
 });
 
 const envValid = computed(
   () => env.ba !== null && env.ba > 0 && env.ps !== null && env.ts !== null && env.Xsw !== null && env.Xsw < 100
 );
 
-// ==================== 仪器直读浓度（体积 μmol/mol） ====================
+// ==================== 基准含氧量下拉 + 自定义 ====================
+const o2sCustom = ref(false); // 自定义模式
+const o2sInput = ref<number | null>(6);
+const o2sOptions = computed(() =>
+  O2S_PRESETS.map((p) => ({ value: p.o2s, label: `${p.label}（${p.o2s}%，${stdOf(p.o2s)}）` }))
+);
+function stdOf(o2s: number): string {
+  const b = O2S_PRESETS.find((x) => x.o2s === o2s);
+  return b ? b.label : "";
+}
+// O2S_PRESETS 已含 label，直接用
+const o2sSelectOptions = computed(() =>
+  O2S_PRESETS.map((p) => ({ value: p.o2s, label: `${p.label} — ${p.o2s}%` }))
+);
+function onO2sChange(v: number | null) {
+  o2sInput.value = v;
+}
+
+// ==================== 仪器直读浓度（单位可切换 μmol/mol ↔ mg/m³） ====================
+type ConcUnit = "ppm" | "mg";
+const concUnit = ref<ConcUnit>("ppm");
 const gases = reactive({
   SO2: null as number | null,
   NO: null as number | null,
   NO2: null as number | null,
 });
-const noxPpm = computed(() =>
-  gases.NO === null && gases.NO2 === null ? null : (gases.NO ?? 0) + (gases.NO2 ?? 0)
-);
 
-// ==================== 换算链：ppm → mg/m³(标干) → 各状态 ====================
+/** 输入值 → 统一转为体积浓度 μmol/mol 参与计算 */
+function toPpm(key: GasKey, v: number | null): number | null {
+  if (v === null) return null;
+  if (concUnit.value === "ppm") return v;
+  const M = key === "SO2" ? MOL.SO2 : key === "NO" ? MOL.NO : MOL.NO2;
+  return (v * 22.4) / M; // mg/m³ → μmol/mol
+}
+/** μmol/mol → 当前单位显示 */
+function fromPpm(key: GasKey, ppm: number | null): number | null {
+  if (ppm === null) return null;
+  if (concUnit.value === "ppm") return ppm;
+  const M = key === "SO2" ? MOL.SO2 : key === "NO" ? MOL.NO : MOL.NO2;
+  return (M / 22.4) * ppm;
+}
+/** NOx 输入（用户可手动填 NOx，若填了则覆盖 NO+NO2 之和） */
+const noxInput = ref<number | null>(null);
+
+const noxPpm = computed<number | null>(() => {
+  // 用户优先手填 NOx
+  const manual = toPpm("NO2", noxInput.value); // NOx 以 NO2 计，M 用 NO2
+  if (manual !== null) return manual;
+  const a = toPpm("NO", gases.NO);
+  const b = toPpm("NO2", gases.NO2);
+  return a === null && b === null ? null : (a ?? 0) + (b ?? 0);
+});
+const noxHasInput = computed(() => noxInput.value !== null);
+
+const unitLabel = computed(() => (concUnit.value === "ppm" ? "μmol/mol" : "mg/m³"));
+
+// ==================== 换算链 ====================
 interface Row {
   key: GasKey | "NOx";
   label: string;
-  ppm: number | null;      // 体积浓度 μmol/mol（直读或计算）
-  massStdDry: number | null; // 标态干基 mg/m³（A3）
-  massWetStd: number | null; // 标态湿基 mg/m³（A2 逆）
-  massWorkDry: number | null; // 工况干基 mg/m³（A1 逆）
-  massWorkWet: number | null; // 工况湿基 mg/m³
+  ppm: number | null;
+  massStdDry: number | null;
+  massWetStd: number | null;
 }
 
 const rows = computed<Row[]>(() => {
   if (!envValid.value) return [];
   const list: Row[] = [];
-  const entries: { key: GasKey; label: string; ppm: number | null; M: number }[] = [
-    { key: "SO2", label: "SO₂", ppm: gases.SO2, M: MOL.SO2 },
-    { key: "NO", label: "NO", ppm: gases.NO, M: MOL.NO },
-    { key: "NO2", label: "NO₂", ppm: gases.NO2, M: MOL.NO2 },
-  ];
-
-  // NOx 由 NO+NO2 计算得出（A5 体积合并 → A3 质量）
-  if (noxPpm.value !== null) {
-    const mStdDry = volumeToMass(noxPpm.value, MOL.NO2); // 以 NO2 计
+  const calc = (key: GasKey | "NOx", label: string, ppm: number | null, M: number) => {
+    if (ppm === null) return;
+    const mStdDry = volumeToMass(ppm, M);
     list.push({
-      key: "NOx", label: "NOₓ（以 NO₂ 计）", ppm: noxPpm.value,
+      key, label, ppm,
       massStdDry: mStdDry,
       massWetStd: mStdDry * (1 - env.Xsw! / 100),
-      massWorkDry: mStdDry / workingToStandard(1, env.ba!, env.ps!, env.ts!).factor,
-      massWorkWet: (mStdDry * (1 - env.Xsw! / 100)) / workingToStandard(1, env.ba!, env.ps!, env.ts!).factor,
     });
-  }
-
-  for (const e of entries) {
-    if (e.ppm === null) continue;
-    const mStdDry = volumeToMass(e.ppm, e.M);
-    list.push({
-      key: e.key, label: e.label, ppm: e.ppm,
-      massStdDry: mStdDry,
-      massWetStd: mStdDry * (1 - env.Xsw! / 100),
-      massWorkDry: mStdDry / workingToStandard(1, env.ba!, env.ps!, env.ts!).factor,
-      massWorkWet: (mStdDry * (1 - env.Xsw! / 100)) / workingToStandard(1, env.ba!, env.ps!, env.ts!).factor,
-    });
-  }
+  };
+  calc("SO2", "SO₂", toPpm("SO2", gases.SO2), MOL.SO2);
+  calc("NO", "NO", toPpm("NO", gases.NO), MOL.NO);
+  calc("NO2", "NO₂", toPpm("NO2", gases.NO2), MOL.NO2);
+  // NOx 放最后（以 NO2 计）
+  calc("NOx", "NOₓ（以 NO₂ 计）", noxPpm.value, MOL.NO2);
   return list;
 });
 
-// ==================== 折算（A8 + A9） ====================
+// ==================== 折算 ====================
 const alphaResult = computed(() => {
   if (env.O2dry === null || env.O2dry >= 21) return null;
   return excessAir(env.O2dry);
@@ -92,19 +121,23 @@ const alphaResult = computed(() => {
 
 interface AdjustRow { label: string; csnDry: number; adjusted: number }
 const adjustRows = computed<AdjustRow[]>(() => {
-  if (env.O2dry === null || env.O2dry >= 21 || env.o2s === null) return [];
+  if (env.O2dry === null || env.O2dry >= 21 || o2sInput.value === null) return [];
   return rows.value
     .filter((r) => r.massStdDry !== null)
     .map((r) => ({
       label: r.label,
       csnDry: r.massStdDry!,
-      adjusted: adjustByO2(r.massStdDry!, env.O2dry!, env.o2s!).adjusted,
+      adjusted: adjustByO2(r.massStdDry!, env.O2dry!, o2sInput.value!).adjusted,
     }));
 });
 
 function loadDemo() {
   Object.assign(env, { ba: UV_DEMO.ba, ps: UV_DEMO.ps, ts: UV_DEMO.ts, Xsw: UV_DEMO.Xsw, O2dry: UV_DEMO.O2dry, o2s: UV_DEMO.o2s });
+  o2sInput.value = UV_DEMO.o2s;
+  o2sCustom.value = false;
   Object.assign(gases, { SO2: UV_DEMO.so2_ppm, NO: UV_DEMO.no_ppm, NO2: UV_DEMO.no2_ppm });
+  noxInput.value = null;
+  concUnit.value = "ppm";
   ElMessage.success("已填入示例数据");
 }
 
@@ -113,6 +146,39 @@ function fmt(v: number | null): string {
   if (!Number.isFinite(v)) return "—";
   if (Math.abs(v) >= 1000) return v.toLocaleString("zh-CN", { maximumFractionDigits: 1 });
   return String(Number(v.toFixed(2)));
+}
+
+// ==================== 公式气泡（? 提示） ====================
+const formulaTips: Record<string, { title: string; formula: string; desc: string }> = {
+  A3: {
+    title: "体积浓度 → 标态质量浓度",
+    formula: "C = M/22.4 × Cv",
+    desc: "M 摩尔质量（SO₂=64.06、NO=30.006、NO₂=46.005 g/mol）；22.4 标态摩尔体积 L/mol；Cv 体积浓度 μmol/mol",
+  },
+  A2: {
+    title: "干基 ↔ 湿基",
+    formula: "C干 = C湿 / (1 − Xsw/100)",
+    desc: "Xsw 含湿量 %；体积浓度与质量浓度算法相同",
+  },
+  A4: {
+    title: "NOx 浓度（以 NO₂ 计）",
+    formula: "质量：CNOx = CNO × M(NO₂)/M(NO) + CNO₂；体积：CNOx = CNOv + CNO₂v",
+    desc: "NO 摩尔质量 30.006、NO₂ 46.005；NOx 体积浓度为 NO 与 NO₂ 直接相加",
+  },
+  A8: {
+    title: "实测过剩空气系数",
+    formula: "α = 21 / (21 − O₂干)",
+    desc: "O₂干 为干烟气中氧含量 %",
+  },
+  A9: {
+    title: "基准含氧量折算",
+    formula: "C折 = Csn干 × (21 − O₂s) / (21 − O₂干)",
+    desc: "O₂s 为行业基准含氧量（按排放标准取值）；Csn干 为标态干基质量浓度",
+  },
+};
+const tipVisible = reactive<Record<string, boolean>>({});
+function toggleTip(k: string) {
+  tipVisible[k] = !tipVisible[k];
 }
 
 const showExplain = ref(false);
@@ -130,7 +196,7 @@ const showExplain = ref(false);
       </div>
 
       <el-alert type="info" :closable="false" show-icon class="rule-tip">
-        依据 HJ 75 / HJ 1045 附录 A 公式链：仪器直读体积浓度（μmol/mol）→ <b>A3</b> 标态质量浓度 → <b>A2</b> 干湿基 → <b>A1</b> 工况标况 → <b>A8+A9</b> 基准含氧量折算。NOₓ 由 NO+NO₂ 自动计算（以 NO₂ 计）。
+        依据 HJ 75 / HJ 1045 附录 A 公式链：仪器直读浓度 → 标态质量浓度 → 干湿基 → 基准含氧量折算。NOₓ 由 NO+NO₂ 自动计算（以 NO₂ 计），也可直接填写 NOₓ 值。公式处的 <span class="q-demo">?</span> 可点击查看具体计算公式。
       </el-alert>
 
       <div class="grp-title">现场过程参数</div>
@@ -152,40 +218,67 @@ const showExplain = ref(false);
           <el-input-number v-model="env.Xsw" :min="0" :max="100" :precision="2" :controls="false" placeholder="7.8" style="width:100%" />
         </div>
         <div class="field">
-          <label>氧量干基 O2（%）<span class="req">*</span></label>
+          <label>氧量干基 O₂（%）<span class="req">*</span></label>
           <el-input-number v-model="env.O2dry" :min="0" :max="21" :precision="2" :controls="false" placeholder="13.5" style="width:100%" />
         </div>
         <div class="field">
-          <label>基准含氧量 O2s（%）</label>
-          <el-input-number v-model="env.o2s" :min="0" :max="21" :precision="1" :controls="false" placeholder="6" style="width:100%" />
-          <div class="preset-row">
-            <el-tag v-for="p in O2S_PRESETS" :key="p.label" size="small" effect="plain" class="preset-tag" @click="env.o2s = p.o2s">{{ p.label }} {{ p.o2s }}</el-tag>
+          <label>基准含氧量 O₂s（%）<span class="req">*</span></label>
+          <el-select
+            v-if="!o2sCustom"
+            v-model="o2sInput"
+            filterable
+            placeholder="选择行业"
+            style="width:100%"
+            @change="onO2sChange"
+          >
+            <el-option v-for="o in o2sSelectOptions" :key="o.value" :value="o.value" :label="o.label" />
+          </el-select>
+          <el-input-number
+            v-else
+            v-model="o2sInput"
+            :min="0" :max="21" :precision="1" :controls="false"
+            placeholder="自定义基准含氧量"
+            style="width:100%"
+          />
+          <div class="o2s-switch">
+            <el-button link type="primary" size="small" @click="o2sCustom = !o2sCustom">
+              {{ o2sCustom ? "← 返回行业下拉选择" : "自定义输入 →" }}
+            </el-button>
           </div>
+          <div v-if="o2sInput !== null && o2sInput >= 21" class="field-err">基准含氧量需小于 21%</div>
         </div>
       </div>
 
-      <div class="grp-title">仪器直读体积浓度（μmol/mol）</div>
+      <div class="grp-title">
+        仪器直读浓度
+        <el-radio-group v-model="concUnit" size="small" class="unit-switch">
+          <el-radio-button value="ppm">μmol/mol</el-radio-button>
+          <el-radio-button value="mg">mg/m³</el-radio-button>
+        </el-radio-group>
+      </div>
       <div class="gas-grid">
         <div class="field">
-          <label>SO₂（μmol/mol）</label>
+          <label>SO₂（{{ unitLabel }}）</label>
           <el-input-number v-model="gases.SO2" :min="0" :precision="1" :controls="false" placeholder="86" style="width:100%" />
         </div>
         <div class="field">
-          <label>NO（μmol/mol）</label>
+          <label>NO（{{ unitLabel }}）</label>
           <el-input-number v-model="gases.NO" :min="0" :precision="1" :controls="false" placeholder="92" style="width:100%" />
         </div>
         <div class="field">
-          <label>NO₂（μmol/mol）</label>
+          <label>NO₂（{{ unitLabel }}）</label>
           <el-input-number v-model="gases.NO2" :min="0" :precision="1" :controls="false" placeholder="6" style="width:100%" />
         </div>
         <div class="field nox-show">
-          <label>NOₓ（自动计算，以 NO₂ 计）</label>
-          <div class="nox-val">{{ noxPpm !== null ? noxPpm.toFixed(1) : "—" }} μmol/mol</div>
+          <label>NOₓ（以 NO₂ 计，自动计算，可直接填写覆盖）</label>
+          <el-input-number v-model="noxInput" :min="0" :precision="1" :controls="false" :placeholder="noxPpm !== null ? noxPpm.toFixed(1) : '自动'" style="width:100%" />
+          <div class="nox-hint" v-if="noxHasInput">已手动填写，覆盖 NO+NO₂ 之和</div>
+          <div class="nox-hint" v-else-if="noxPpm !== null">NO+NO₂ = {{ fromPpm("NO2", noxPpm)?.toFixed(1) }} {{ unitLabel }}</div>
         </div>
       </div>
     </div>
 
-    <!-- ===== 卡片二：浓度换算矩阵 ===== -->
+    <!-- ===== 卡片二：浓度换算结果 ===== -->
     <div class="card" v-if="rows.length">
       <div class="card-head">
         <h3><Icon name="layers" :size="17" /> 浓度换算结果</h3>
@@ -196,36 +289,55 @@ const showExplain = ref(false);
             <tr>
               <th>污染物</th>
               <th>体积浓度<br><small>μmol/mol</small></th>
-              <th class="hot-col">标态干基<br><small>mg/m³（A3）</small></th>
-              <th>标态湿基<br><small>mg/m³（A2）</small></th>
-              <th>工况干基<br><small>mg/m³（A1）</small></th>
-              <th>工况湿基<br><small>mg/m³</small></th>
+              <th class="hot-col">
+                标态干基 <small>mg/m³</small>
+                <span class="q-tip" @click="toggleTip('A3')">?</span>
+                <div v-if="tipVisible.A3" class="tip-pop">
+                  <div class="tip-title">{{ formulaTips.A3.title }}</div>
+                  <div class="tip-formula">{{ formulaTips.A3.formula }}</div>
+                  <div class="tip-desc">{{ formulaTips.A3.desc }}</div>
+                </div>
+              </th>
+              <th>
+                标态湿基 <small>mg/m³</small>
+                <span class="q-tip" @click="toggleTip('A2')">?</span>
+                <div v-if="tipVisible.A2" class="tip-pop">
+                  <div class="tip-title">{{ formulaTips.A2.title }}</div>
+                  <div class="tip-formula">{{ formulaTips.A2.formula }}</div>
+                  <div class="tip-desc">{{ formulaTips.A2.desc }}</div>
+                </div>
+              </th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="r in rows" :key="r.key">
+            <tr v-for="r in rows" :key="r.key" :class="{ noxrow: r.key === 'NOx' }">
               <td class="gas-name">{{ r.label }}</td>
-              <td>{{ fmt(r.ppm) }}</td>
+              <td>{{ fmt(fromPpm(r.key === "NOx" ? "NO2" : r.key, r.ppm)) }}</td>
               <td class="hot-col"><b>{{ fmt(r.massStdDry) }}</b></td>
               <td>{{ fmt(r.massWetStd) }}</td>
-              <td>{{ fmt(r.massWorkDry) }}</td>
-              <td>{{ fmt(r.massWorkWet) }}</td>
             </tr>
           </tbody>
         </table>
       </div>
-      <p class="matrix-note">标态：0℃、101.325 kPa；工况：实际烟温 ts、绝对压 Ba+Ps；NOₓ 质量浓度均以 NO₂ 计（M=46.005）。</p>
+      <p class="matrix-note">标态：0℃、101.325 kPa；湿基 = 干基 × (1−Xsw/100)；NOₓ 以 NO₂ 计（M=46.005），置于表末。</p>
     </div>
 
     <!-- ===== 卡片三：折算浓度 ===== -->
     <div class="card" v-if="adjustRows.length">
       <div class="card-head">
-        <h3><Icon name="trendUp" :size="17" /> 折算浓度（基准氧含量折算，A8+A9）</h3>
-        <div class="alpha-badge" v-if="alphaResult">α = {{ alphaResult.alpha.toFixed(4) }}</div>
+        <h3><Icon name="trendUp" :size="17" /> 折算浓度（基准含氧量 {{ o2sInput }}%）</h3>
+        <div class="alpha-badge" v-if="alphaResult">α = {{ alphaResult.alpha.toFixed(4) }}
+          <span class="q-tip" @click="toggleTip('A8')">?</span>
+          <div v-if="tipVisible.A8" class="tip-pop">
+            <div class="tip-title">{{ formulaTips.A8.title }}</div>
+            <div class="tip-formula">{{ formulaTips.A8.formula }}</div>
+            <div class="tip-desc">{{ formulaTips.A8.desc }}</div>
+          </div>
+        </div>
       </div>
       <div class="adj-grid">
         <div v-for="r in adjustRows" :key="r.label" class="vr-card">
-          <span class="vr-label">{{ r.label }} 折算浓度</span>
+          <span class="vr-label">{{ r.label }}</span>
           <div class="vr-val">
             <span class="vr-base">{{ fmt(r.csnDry) }} →</span>
             <b>{{ fmt(r.adjusted) }}</b> mg/m³
@@ -233,9 +345,15 @@ const showExplain = ref(false);
         </div>
       </div>
       <div class="steps" v-if="alphaResult">
-        <div class="steps-title">折算公式（A9）</div>
-        <div class="step-line">{{ alphaResult.steps[0] }}</div>
-        <div class="step-line">C折 = Csn干 × (21−O2s)/(21−O2干)，O2s = {{ env.o2s }}%</div>
+        <div class="steps-title">折算公式
+          <span class="q-tip" @click="toggleTip('A9')">?</span>
+          <div v-if="tipVisible.A9" class="tip-pop">
+            <div class="tip-title">{{ formulaTips.A9.title }}</div>
+            <div class="tip-formula">{{ formulaTips.A9.formula }}</div>
+            <div class="tip-desc">{{ formulaTips.A9.desc }}</div>
+          </div>
+        </div>
+        <div class="step-line">C折 = Csn干 × (21−O₂s)/(21−O₂干)，O₂s = {{ o2sInput }}%</div>
       </div>
     </div>
 
@@ -246,21 +364,21 @@ const showExplain = ref(false);
         <span class="toggle">{{ showExplain ? "收起 ▲" : "展开 ▼" }}</span>
       </div>
       <div v-show="showExplain" class="explain-body">
-        <h4>A1 工况浓度 ↔ 标况浓度（干湿基状态相同）</h4>
+        <h4>工况浓度 ↔ 标况浓度</h4>
         <div class="formula">Csn = Cs × 101325/(Ba+Ps) × (273+ts)/273</div>
-        <h4>A2 干基 ↔ 湿基</h4>
+        <h4>干基 ↔ 湿基</h4>
         <div class="formula">C干 = C湿 / (1 − Xsw/100)　（体积浓度与质量浓度算法相同）</div>
-        <h4>A3 体积浓度 ↔ 标态质量浓度</h4>
-        <div class="formula">CQ = M/22.4 × Cv　（M：SO₂=64.06、NO=30.006、NO₂=46.005 g/mol）</div>
-        <h4>A4/A5 NOx（以 NO₂ 计）</h4>
+        <h4>体积浓度 ↔ 标态质量浓度</h4>
+        <div class="formula">C = M/22.4 × Cv　（M：SO₂=64.06、NO=30.006、NO₂=46.005 g/mol）</div>
+        <h4>NOx（以 NO₂ 计）</h4>
         <div class="formula">质量：CNOx = CNO × M(NO₂)/M(NO) + CNO₂</div>
-        <div class="formula">体积：CNOx = (CNOv + CNO₂v) × M(NO₂)/22.4</div>
-        <h4>A8 过剩空气系数 / A9 折算（基准含氧量）</h4>
-        <div class="formula">α = 21%/(21% − CO2干)</div>
-        <div class="formula">C折 = Csn干 × (21 − O2s)/(21 − O2干)　（若标准给 αs：C折 = Csn干 × α/αs）</div>
+        <div class="formula">体积：CNOx = CNOv + CNO₂v</div>
+        <h4>过剩空气系数 / 基准含氧量折算</h4>
+        <div class="formula">α = 21%/(21% − O₂干)</div>
+        <div class="formula">C折 = Csn干 × (21 − O₂s)/(21 − O₂干)　（若标准给 αs：C折 = Csn干 × α/αs）</div>
         <ul>
-          <li>仪器直读一般为标态干基体积浓度（μmol/mol）；本工具从直读值出发一次算出四种状态质量浓度</li>
-          <li>基准含氧量按行业排放标准：燃煤锅炉 6%、燃气锅炉 3.5%、燃油 3%、垃圾焚烧 11%、钢铁烧结 16%</li>
+          <li>仪器直读单位可切换 μmol/mol ↔ mg/m³，内部统一按体积浓度参与计算</li>
+          <li>基准含氧量按行业排放标准下拉选择，也支持自定义输入</li>
           <li>A1 中 Ba 为环境大气压（Pa）、Ps 为烟气静压（Pa，表压可负）；Ba+Ps = 烟道绝对压</li>
         </ul>
       </div>
@@ -278,24 +396,51 @@ const showExplain = ref(false);
 .card-head h3 { font-size: 16px; font-weight: 700; color: var(--text); display: flex; align-items: center; gap: 8px; margin: 0; }
 .rule-tip { margin-bottom: 18px; }
 .rule-tip :deep(.el-alert__description) { font-size: 13px; line-height: 1.7; }
+.q-demo {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 15px; height: 15px; border-radius: 50%; font-size: 10.5px; font-weight: 700;
+  color: var(--primary); border: 1px solid var(--primary); vertical-align: middle; cursor: pointer;
+}
 
 .grp-title {
   font-size: 12.5px; font-weight: 700; color: var(--primary);
   padding: 6px 10px; background: rgba(37, 99, 235, 0.06); border-radius: 8px;
   margin: 14px 0 10px;
+  display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;
 }
 .grp-title:first-of-type { margin-top: 0; }
+.unit-switch { flex-shrink: 0; }
 
 .env-grid, .gas-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px 16px; }
 .field label { display: block; font-size: 13px; color: var(--text-light); margin-bottom: 6px; font-weight: 500; }
 .req { color: #ef4444; margin-left: 2px; }
-.preset-row { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 6px; }
-.preset-tag { cursor: pointer; }
-.nox-show .nox-val {
-  font-size: 20px; font-weight: 800; color: var(--primary);
-  background: rgba(37, 99, 235, 0.07); border: 1px dashed rgba(37, 99, 235, 0.4);
-  border-radius: 12px; padding: 5px 14px; line-height: 1.5; white-space: nowrap;
+.field-err { font-size: 11.5px; color: #ef4444; margin-top: 4px; }
+.o2s-switch { margin-top: 4px; }
+.nox-show .nox-hint { font-size: 11.5px; color: var(--primary); margin-top: 4px; }
+
+/* ? 公式气泡 */
+.q-tip {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 16px; height: 16px; border-radius: 50%;
+  font-size: 11px; font-weight: 700; color: var(--primary);
+  border: 1px solid rgba(37, 99, 235, 0.5); margin-left: 5px;
+  cursor: pointer; user-select: none; vertical-align: middle; position: relative;
 }
+.q-tip:hover { background: rgba(37, 99, 235, 0.1); }
+.tip-pop {
+  position: absolute; z-index: 20; top: calc(100% + 8px); left: 50%; transform: translateX(-50%);
+  width: max-content; max-width: 320px;
+  background: var(--white, #fff); border: 1px solid var(--border-light);
+  border-radius: 12px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.13);
+  padding: 12px 14px; text-align: left;
+}
+.tip-title { font-size: 12.5px; font-weight: 700; color: var(--text); margin-bottom: 6px; }
+.tip-formula {
+  font-family: Consolas, Monaco, monospace; font-size: 12.5px; color: var(--primary);
+  background: rgba(37, 99, 235, 0.06); border-radius: 8px; padding: 6px 10px; margin-bottom: 6px;
+  white-space: pre-wrap; word-break: break-all;
+}
+.tip-desc { font-size: 12px; color: var(--text-light); line-height: 1.6; }
 
 .matrix-wrap { overflow-x: auto; }
 .matrix { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13.5px; }
@@ -303,6 +448,7 @@ const showExplain = ref(false);
   background: rgba(37, 99, 235, 0.07); color: var(--text); font-weight: 600;
   padding: 10px 12px; text-align: right; white-space: nowrap;
   border-bottom: 2px solid rgba(37, 99, 235, 0.25);
+  position: relative;
 }
 .matrix th:first-child { text-align: left; border-top-left-radius: 10px; }
 .matrix th:last-child { border-top-right-radius: 10px; }
@@ -311,11 +457,14 @@ const showExplain = ref(false);
 .matrix th small { font-weight: 400; color: var(--text-light); }
 .matrix .hot-col { background: rgba(37, 99, 235, 0.05); }
 .matrix .hot-col b { color: var(--primary); font-size: 15px; }
+.matrix .noxrow td { border-top: 2px dashed rgba(37, 99, 235, 0.35); }
+.matrix .noxrow td.gas-name { color: var(--primary); }
 .matrix-note { margin: 10px 0 0; font-size: 12px; color: var(--text-light); }
 
 .alpha-badge {
   font-size: 14px; font-weight: 800; color: var(--primary);
   background: rgba(37, 99, 235, 0.08); border-radius: 10px; padding: 6px 14px;
+  display: flex; align-items: center;
 }
 .adj-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
 .vr-card {
@@ -328,7 +477,7 @@ const showExplain = ref(false);
 .vr-card b { font-size: 22px; font-weight: 800; color: var(--primary); line-height: 1.25; }
 
 .steps { margin-top: 14px; background: var(--bg-soft, #f6f8fa); border-radius: 12px; padding: 12px 16px; }
-.steps-title { font-size: 12.5px; font-weight: 700; color: var(--text-light); margin-bottom: 6px; }
+.steps-title { font-size: 12.5px; font-weight: 700; color: var(--text-light); margin-bottom: 6px; display: flex; align-items: center; }
 .step-line { font-size: 12.5px; color: var(--text-light); line-height: 1.9; font-family: Consolas, Monaco, monospace; word-break: break-all; }
 
 .explain-head { display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none; }
@@ -363,5 +512,6 @@ const showExplain = ref(false);
   .env-grid, .gas-grid { grid-template-columns: 1fr 1fr; }
   .adj-grid { grid-template-columns: 1fr 1fr; }
   .vr-card b { font-size: 18px; }
+  .tip-pop { max-width: 240px; }
 }
 </style>

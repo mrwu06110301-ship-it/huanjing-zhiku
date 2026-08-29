@@ -8,6 +8,7 @@
 import { ref, reactive, computed, watch } from "vue";
 import { ElMessage } from "element-plus";
 import Icon from "@/components/Icon.vue";
+import { O2_BASELINES } from "@/utils/o2-baseline";
 import { computeDustSampling, DUST_DEMO, type DustSamplingResult } from "@/utils/flue-dust-sampling";
 
 const form = reactive({
@@ -28,7 +29,9 @@ const form = reactive({
 });
 
 const result = ref<DustSamplingResult | null>(null);
-const o2BasePresets = [3, 6, 9, 10]; // 常见行业基准含氧量：燃气3、燃油6、燃煤9、垃圾焚烧10（参考）
+/** 基准含氧量：行业下拉 + 自定义 */
+const o2sCustom = ref(false);
+const o2sOptions = O2_BASELINES.map((b) => ({ value: b.o2s, label: `${b.label} — ${b.o2s}%` }));
 
 const o2Invalid = computed(() => form.O2 !== null && form.O2 >= 21);
 const o2BaseInvalid = computed(() => form.O2Base !== null && form.O2Base >= 21);
@@ -160,9 +163,18 @@ const showExplain = ref(false);
           </div>
           <div class="field">
             <label>基准含氧量（%）<span class="req">*</span></label>
-            <el-input-number v-model="form.O2Base" :min="0" :max="21" :precision="1" :controls="false" placeholder="燃煤锅炉 9" style="width:100%" />
-            <div class="preset-row">
-              <el-tag v-for="p in o2BasePresets" :key="p" size="small" effect="plain" class="preset-tag" @click="form.O2Base = p">{{ p }}%</el-tag>
+            <el-select v-if="!o2sCustom" v-model="form.O2Base" filterable placeholder="选择行业" style="width:100%">
+              <el-option v-for="o in o2sOptions" :key="o.value" :value="o.value" :label="o.label" />
+            </el-select>
+            <el-input-number
+              v-else
+              v-model="form.O2Base" :min="0" :max="21" :precision="1" :controls="false"
+              placeholder="自定义基准含氧量" style="width:100%"
+            />
+            <div class="o2s-switch">
+              <el-button link type="primary" size="small" @click="o2sCustom = !o2sCustom">
+                {{ o2sCustom ? "← 返回行业下拉选择" : "自定义输入 →" }}
+              </el-button>
             </div>
             <div v-if="o2BaseInvalid" class="field-err">基准含氧量需小于 21%</div>
           </div>
@@ -249,7 +261,7 @@ const showExplain = ref(false);
         <ul>
           <li><b>Hd</b> 平均动压 Pa；<b>Ps</b> 平均静压 kPa（表压，烟气常为负值）；<b>Ba</b> 大气压 kPa；<b>t</b> 烟温 ℃</li>
           <li><b>Xsw</b> 烟气含湿量 %；<b>Kp</b> 皮托管系数（S 型取 0.84）；<b>d</b> 采样嘴直径 mm</li>
-          <li><b>基准含氧量</b>：燃煤锅炉 9%、燃油 6%、燃气 3%、垃圾焚烧 10%（按行业排放标准取值）</li>
+          <li><b>基准含氧量</b>：按行业排放标准下拉选择（火电燃煤 6%、锅炉燃煤 9%、燃油/燃气 3/3.5%、水泥窑 10%、垃圾焚烧 11%、钢铁烧结 16% 等），也支持自定义</li>
           <li><b>负荷系数</b>（出力系数）：锅炉按运行年限查表，一般验收监测取 1</li>
           <li>参照 GB/T 16157《固定污染源排气中颗粒物测定与气态污染物采样方法》</li>
         </ul>
@@ -280,8 +292,7 @@ const showExplain = ref(false);
 .field label { display: block; font-size: 13px; color: var(--text-light); margin-bottom: 6px; font-weight: 500; }
 .req { color: #ef4444; margin-left: 2px; }
 .field-err { font-size: 11.5px; color: #ef4444; margin-top: 4px; }
-.preset-row { display: flex; gap: 6px; margin-top: 6px; }
-.preset-tag { cursor: pointer; }
+.o2s-switch { margin-top: 4px; }
 
 .ds-outputs { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
 .vr-card {
