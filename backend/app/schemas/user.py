@@ -22,7 +22,7 @@ class UserOut(BaseModel):
     email: str | None = None
     nickname: str
     avatar: str = ""
-    phone: str = ""
+    phone: str | None = None
     role: str = "user"
     can_upload_video: bool = False
     is_active: bool = True
