@@ -15,11 +15,8 @@ import {
   type GasKey,
 } from "@/utils/uv-flue-gas";
 
-// ==================== 现场参数（过程输入；Ba/Ps 以 kPa 输入，×100 转 Pa 参与计算） ====================
+// ==================== 现场参数（过程输入） ====================
 const env = reactive({
-  ba: 101.325 as number | null,   // 环境大气压 kPa
-  ps: 0 as number | null,         // 烟气静压 kPa（表压）
-  ts: null as number | null,      // 烟温 Ts ℃
   Xsw: null as number | null,     // 含湿量 %
   O2dry: null as number | null,   // 氧量干基 %
   o2s: 6 as number | null,        // 基准含氧量 %（下拉/自定义）
@@ -126,11 +123,7 @@ const adjustRatio = computed(() => {
 });
 
 function loadDemo() {
-  // UV_DEMO 的 ba/ps 为 Pa，界面以 kPa 输入，÷100 转换
-  Object.assign(env, {
-    ba: UV_DEMO.ba / 100, ps: UV_DEMO.ps / 100,
-    ts: UV_DEMO.ts, Xsw: UV_DEMO.Xsw, O2dry: UV_DEMO.O2dry, o2s: UV_DEMO.o2s,
-  });
+  Object.assign(env, { Xsw: UV_DEMO.Xsw, O2dry: UV_DEMO.O2dry, o2s: UV_DEMO.o2s });
   o2sInput.value = UV_DEMO.o2s;
   Object.assign(gases, { SO2: UV_DEMO.so2_ppm, NO: UV_DEMO.no_ppm, NO2: UV_DEMO.no2_ppm });
   concUnit.value = "ppm";
@@ -173,18 +166,6 @@ const showExplain = ref(false);
 
       <div class="grp-title">现场过程参数</div>
       <div class="env-grid">
-        <div class="field">
-          <label>环境大气压 Ba（kPa）<span class="req">*</span></label>
-          <el-input-number v-model="env.ba" :min="30" :max="120" :precision="1" :controls="false" placeholder="101.3" style="width:100%" />
-        </div>
-        <div class="field">
-          <label>烟气静压 Ps（kPa）<span class="req">*</span></label>
-          <el-input-number v-model="env.ps" :min="-50" :max="50" :precision="1" :controls="false" placeholder="0（正压）/ −0.8" style="width:100%" />
-        </div>
-        <div class="field">
-          <label>烟气温度 Ts（℃）<span class="req">*</span></label>
-          <el-input-number v-model="env.ts" :min="0" :max="600" :precision="1" :controls="false" placeholder="93.4" style="width:100%" />
-        </div>
         <div class="field" :class="{ 'field-warn': isHotWet && (env.Xsw === null || env.Xsw >= 100) }">
           <label>
             含湿量 Xsw（%）<span v-if="isHotWet" class="req">*</span>
@@ -303,7 +284,7 @@ const showExplain = ref(false);
         <ul>
           <li>仪器示值单位可切换 μmol/mol ↔ mg/m³，全表结果随单位自动切换</li>
           <li>基准含氧量按行业排放标准下拉选择，也支持自定义输入</li>
-          <li>Ba 为环境大气压、Ps 为烟气静压（kPa，表压可负）；(Ba+Ps)×100 = 烟道绝对压 Pa</li>
+          <li>本工具为浓度换算与折算计算，不含工况/标况体积换算（Ba/Ps/Ts 不参与）</li>
         </ul>
       </div>
     </div>
