@@ -29,6 +29,8 @@ const uploadVisible = ref(false);
 const uploadCategoryId = ref<number | null>(null);
 const uploadFiles = ref<File[]>([]);
 const uploading = ref(false);
+/** 逐文件上传进度：当前第 N/M 个 + 文件名 + 单文件传输百分比 */
+const uploadProgress = ref<{ current: number; total: number; name: string; percent: number } | null>(null);
 
 function onFileChange(e: Event) {
   const input = e.target as HTMLInputElement;
@@ -67,26 +69,40 @@ async function submitUpload() {
   if (!uploadCategoryId.value) { ElMessage.warning("请选择分类"); return; }
   if (uploadFiles.value.length === 0) { ElMessage.warning("请选择要上传的文件"); return; }
   uploading.value = true;
-  try {
-    const res = await uploadStandardsBatch(uploadFiles.value, uploadCategoryId.value);
-    const { success_count, fail_count, failed } = res.data;
-    if (fail_count === 0) {
-      ElMessage.success(`成功上传 ${success_count} 个标准`);
-    } else {
-      const reasons = failed.map((f) => `${f.file}：${f.reason}`).join("；");
-      ElMessage.warning(`成功 ${success_count} 个，失败 ${fail_count} 个（${reasons}）`);
+  const total = uploadFiles.value.length;
+  const failedList: { file: string; reason: string }[] = [];
+  let success = 0;
+  // 逐个文件上传：真实进度（第 N/M 个 + 单文件传输百分比），单文件失败不阻断
+  for (let i = 0; i < uploadFiles.value.length; i++) {
+    const f = uploadFiles.value[i];
+    uploadProgress.value = { current: i + 1, total, name: f.name, percent: 0 };
+    try {
+      await uploadStandardsBatch([f], uploadCategoryId.value, (p) => {
+        if (uploadProgress.value) uploadProgress.value.percent = p;
+      });
+      success++;
+    } catch (e: any) {
+      failedList.push({ file: f.name, reason: e?.response?.data?.detail || "上传失败" });
     }
+  }
+  uploading.value = false;
+  uploadProgress.value = null;
+  // 刷新列表（切到刚上传的分类方便查看）
+  if (activeCat.value && activeCat.value !== uploadCategoryId.value) {
+    switchCat(uploadCategoryId.value);
+  } else {
+    page.value = 1;
+    loadStandards();
+  }
+  if (failedList.length === 0) {
+    uploadFiles.value = [];
     uploadVisible.value = false;
-    if (activeCat.value && activeCat.value !== uploadCategoryId.value) {
-      switchCat(uploadCategoryId.value); // 切到刚上传的分类方便查看
-    } else {
-      page.value = 1;
-      loadStandards();
-    }
-  } catch (e: any) {
-    ElMessage.error(e?.response?.data?.detail || "上传失败，请重试");
-  } finally {
-    uploading.value = false;
+    ElMessage.success(`成功上传 ${success} 个标准`);
+  } else {
+    // 失败文件保留在列表里可重试，成功的移除
+    uploadFiles.value = uploadFiles.value.filter((f) => failedList.some((x) => x.file === f.name));
+    const reasons = failedList.map((x) => `${x.file}：${x.reason}`).join("；");
+    ElMessage.warning(`成功 ${success} 个，失败 ${failedList.length} 个（${reasons}）。失败文件已保留，可再次点击「上传」重试。`);
   }
 }
 
@@ -268,7 +284,7 @@ function openPdf(s: StandardOut) {
         </div>
         <div class="upload-field">
           <label class="upload-label">选择文件 <span class="req">*</span></label>
-          <div class="upload-drop">
+          <div v-if="!uploading" class="upload-drop">
             <label class="upload-pick">
               <Icon name="plus" :size="20" />
               <span>点击选择文件</span>
@@ -276,12 +292,20 @@ function openPdf(s: StandardOut) {
               <input type="file" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx" hidden @change="onFileChange" />
             </label>
           </div>
+          <div v-else class="upload-progress">
+            <div class="up-info">
+              <span class="up-count">正在上传 {{ uploadProgress?.current }}/{{ uploadProgress?.total }}</span>
+              <span class="up-name">{{ uploadProgress?.name }}</span>
+            </div>
+            <el-progress :percentage="uploadProgress?.percent ?? 0" :stroke-width="8" />
+          </div>
           <ul v-if="uploadFiles.length" class="upload-list">
-            <li v-for="(f, i) in uploadFiles" :key="i">
+            <li v-for="(f, i) in uploadFiles" :key="i" :class="{ uploading: uploading }">
               <Icon name="doc" :size="14" />
               <span class="upload-name">{{ f.name }}</span>
               <span class="upload-size">{{ fmtSize(f.size) }}</span>
-              <span class="upload-remove" @click="removeFile(i)">×</span>
+              <span v-if="!uploading" class="upload-remove" @click="removeFile(i)">×</span>
+              <span v-else class="upload-state">待上传</span>
             </li>
           </ul>
         </div>
@@ -393,6 +417,12 @@ function openPdf(s: StandardOut) {
   font-size: 12px; color: var(--text); border-bottom: 1px solid var(--border-light);
 }
 .upload-list li:last-child { border-bottom: none; }
+.upload-list li.uploading { opacity: 0.75; }
+.upload-state { font-size: 11px; color: var(--text-muted); flex-shrink: 0; }
+.upload-progress { padding: 6px 2px; }
+.up-info { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; font-size: 13px; }
+.up-count { font-weight: 700; color: var(--primary); flex-shrink: 0; }
+.up-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-light); }
 .upload-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .upload-size { color: var(--text-muted); flex-shrink: 0; }
 .upload-remove {

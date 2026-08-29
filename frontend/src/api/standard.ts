@@ -29,10 +29,11 @@ export interface BatchUploadResult {
   fail_count: number;
 }
 
-/** 批量上传标准文件（PDF/Word 等），选分类后一次提交 */
+/** 批量上传标准文件（PDF/Word 等），选分类后提交；onProgress 回调当前传输百分比 0-100 */
 export function uploadStandardsBatch(
   files: File[],
-  categoryId: number
+  categoryId: number,
+  onProgress?: (percent: number) => void
 ): Promise<{ data: BatchUploadResult }> {
   const fd = new FormData();
   fd.append("category_id", String(categoryId));
@@ -40,6 +41,9 @@ export function uploadStandardsBatch(
   return request.post("/standards/upload-batch", fd, {
     headers: { "Content-Type": "multipart/form-data" },
     timeout: 600000,
+    onUploadProgress: (e: { loaded: number; total?: number }) => {
+      if (onProgress && e.total) onProgress(Math.round((e.loaded / e.total) * 100));
+    },
   });
 }
 
