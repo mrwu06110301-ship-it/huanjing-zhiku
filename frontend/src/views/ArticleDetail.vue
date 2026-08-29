@@ -2,7 +2,7 @@
 import { ref, computed, onMounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
-import { getArticle, deleteArticle } from "@/api/article";
+import { getArticle, deleteArticle, approveArticle, rejectArticle } from "@/api/article";
 import { getComments, addComment, deleteComment } from "@/api/comment";
 import type { ArticleOut, CommentOut } from "@/types";
 import { ElMessage, ElMessageBox } from "element-plus";
@@ -23,6 +23,30 @@ const commentLoading = ref(false);
 const is_admin = computed(() => auth.isAdmin());
 const is_author = computed(() => auth.user?.id === article.value?.author_id);
 const can_edit = computed(() => is_admin.value || is_author.value);
+// 管理员审核：仅对未发布的文章显示审核按钮
+const can_review = computed(() => is_admin.value && !!article.value && article.value.status !== "approved");
+
+async function handleReview(action: "approve" | "reject") {
+  if (!article.value) return;
+  const id = article.value.id;
+  const isApprove = action === "approve";
+  try {
+    await ElMessageBox.confirm(
+      isApprove ? "确定审核通过并发布这篇文章？" : "确定拒绝这篇文章？",
+      "审核确认",
+      { confirmButtonText: isApprove ? "通过" : "拒绝", cancelButtonText: "取消", type: "warning" }
+    );
+  } catch { return; }
+  try {
+    if (isApprove) await approveArticle(id);
+    else await rejectArticle(id);
+    ElMessage.success(isApprove ? "已审核通过" : "已拒绝");
+    const res = await getArticle(id);
+    article.value = res.data;
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.detail || "操作失败");
+  }
+}
 
 const rendered_content = computed(() => {
   if (!article.value?.content) return "";
@@ -113,6 +137,14 @@ function formatTime(dateStr: string) {
       <div class="detail-content rich-text" v-html="rendered_content"></div>
 
       <div class="detail-actions">
+        <template v-if="can_review">
+          <el-button type="success" size="small" @click="handleReview('approve')">
+            <Icon name="check" :size="14" /> 审核通过
+          </el-button>
+          <el-button type="danger" size="small" @click="handleReview('reject')">
+            <Icon name="close" :size="14" /> 拒绝
+          </el-button>
+        </template>
         <el-button plain size="small" @click="share(article.title, article.summary)">
           <Icon name="share" :size="14" /> 分享
         </el-button>
