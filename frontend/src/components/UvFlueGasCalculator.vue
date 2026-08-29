@@ -3,7 +3,7 @@
  * UvFlueGasCalculator.vue — 紫外烟气模型
  * 依据 HJ 75/1045 附录 A 公式链（干湿基换算 / NOx / 基准含氧量折算）
  * SO2/NO/NO2 输入 + NOx 自动计算（以 NO2 计），μmol/mol ↔ mg/m³ 单位全表联动
- * 布局：现场参数卡 + 仪器示值→换算→折算合并比对表；公式以 ? 图标提示
+ * 布局：现场参数卡 + 仪器示值→换算→折算合并比对表；公式见底部"公式依据"折叠卡
  */
 import { ref, reactive, computed } from "vue";
 import { ElMessage } from "element-plus";
@@ -59,37 +59,6 @@ const noxPpm = computed<number | null>(() => {
 });
 
 const unitLabel = computed(() => (concUnit.value === "ppm" ? "μmol/mol" : "mg/m³"));
-
-/** NOₓ ?气泡公式：按当前输入单位显示对应算法 */
-const a4Formula = computed(() =>
-  concUnit.value === "ppm"
-    ? "C(NOₓ) = C(NO) + C(NO₂)"
-    : "C(NOₓ) = C(NO) × 46.005/30.006 + C(NO₂)"
-);
-
-/** NOₓ ?气泡数值代入过程（有输入时显示） */
-const a4Steps = computed(() => {
-  const noV = toPpm("NO", gases.NO);
-  const no2V = toPpm("NO2", gases.NO2);
-  if (noV === null && no2V === null) return "";
-  const a = noV ?? 0, b = no2V ?? 0;
-  if (concUnit.value === "ppm") {
-    return `代入：C(NOₓ) = ${a.toFixed(2)} + ${b.toFixed(2)} = ${noxPpm.value!.toFixed(2)} μmol/mol`;
-  }
-  const noM = fromPpm("NO", noV) ?? 0;
-  const no2M = fromPpm("NO2", no2V) ?? 0;
-  return `代入：C(NOₓ) = ${noM.toFixed(2)} × 46.005/30.006 + ${no2M.toFixed(2)} = ${(noM * 46.005 / 30.006 + no2M).toFixed(2)} mg/m³`;
-});
-
-/** 干基列 ?气泡：示值→干基数值代入（取首个有值的气体，按当前单位显示） */
-const drySteps = computed(() => {
-  if (rows.value.length === 0) return formulaTips.A3.desc;
-  const r = rows.value[0];
-  if (!isHotWet.value) {
-    return `冷干法：仪器示值即干基（${disp(r.key, r.ppm)} ${unitLabel.value}），无需含湿量换算。`;
-  }
-  return `代入（${r.label}）：C干 = C湿/(1−Xsw/100) = ${disp(r.key, r.ppmWet)}/(1−${env.Xsw}/100) = ${disp(r.key, r.ppmDry)} ${unitLabel.value}`;
-});
 
 // ==================== 采样方法：冷干法（读数=干基）/ 热湿法（读数=湿基） ====================
 type SampleMethod = "cold-dry" | "hot-wet";
@@ -171,44 +140,6 @@ function fmt(v: number | null): string {
   return String(Number(v.toFixed(2)));
 }
 
-// ==================== 公式气泡（? 提示） ====================
-const formulaTips: Record<string, { title: string; formula: string; desc: string }> = {
-  SM: {
-    title: "采样方法：冷干法 vs 热湿法",
-    formula: "热湿法换干基：C干 = C湿 / (1 − Xsw/100)",
-    desc: "冷干法（完全抽取+冷凝除湿）：仪器示值即干基浓度，无需含湿量换算；热湿法（全程伴热）：仪器示值为湿基浓度，必须填写含湿量 Xsw，除以 (1−Xsw/100) 换算为干基后再折算。",
-  },
-  A2: {
-    title: "湿基 → 干基 换算",
-    formula: "C干 = C湿 / (1 − Xsw/100)",
-    desc: "Xsw 含湿量 %。计算方向统一由湿基换算到干基：热湿法仪器读数为湿基浓度，除以 (1−Xsw/100) 得干基浓度；冷干法仪器读数本身即为干基浓度，无需换算。",
-  },
-  A3: {
-    title: "标态干基质量浓度",
-    formula: "C干 = C湿 / (1 − Xsw/100)，C标干 = M/22.4 × Cv",
-    desc: "热湿法：先按 Xsw 将湿基读数换算为干基（C干 = C湿/(1−Xsw/100)），再按 M/22.4 × Cv 转为标态质量浓度；冷干法：读数即干基，直接 M/22.4 × Cv。M：SO₂=64.06、NO=30.006、NO₂=46.005 g/mol。",
-  },
-  A4: {
-    title: "NOₓ 自动计算（以 NO₂ 计）",
-    formula: "体积：C(NOₓ) = C(NO) + C(NO₂)；质量：C(NOₓ) = C(NO) × 46.005/30.006 + C(NO₂)",
-    desc: "NOₓ 为自动计算结果，无需输入。NOx 以 NO₂ 计（M=46.005 g/mol）：体积浓度为 NO 与 NO₂ 直接相加；质量浓度需将 NO 按 M(NO₂)/M(NO) 折算后与 NO₂ 相加。",
-  },
-  A8: {
-    title: "实测过剩空气系数",
-    formula: "α = 21 / (21 − O₂干)",
-    desc: "O₂干 为干烟气中氧含量 %",
-  },
-  A9: {
-    title: "基准含氧量折算",
-    formula: "C折 = C干 × (21 − O₂s) / (21 − O₂干)",
-    desc: "O₂s 为行业基准含氧量（按排放标准取值）；C干 为干基浓度；该折算比例对体积浓度与质量浓度通用。",
-  },
-};
-const tipVisible = reactive<Record<string, boolean>>({});
-function toggleTip(k: string) {
-  tipVisible[k] = !tipVisible[k];
-}
-
 const showExplain = ref(false);
 </script>
 
@@ -224,17 +155,11 @@ const showExplain = ref(false);
       </div>
 
       <el-alert type="info" :closable="false" show-icon class="rule-tip">
-        依据 HJ 75 / HJ 1045 附录 A 公式链：仪器示值 → 干湿基换算 → 基准含氧量折算。支持<b>冷干法（示值即干基）</b>与<b>热湿法（示值为湿基，需含湿量换算干基）</b>；NOₓ 由 NO+NO₂ 自动计算（以 NO₂ 计）。结果单位跟随示值单位自动切换，<span class="q-demo">?</span> 可点击查看计算过程。
+        依据 HJ 75 / HJ 1045 附录 A 公式链：仪器示值 → 干湿基换算 → 基准含氧量折算。支持<b>冷干法（示值即干基）</b>与<b>热湿法（示值为湿基，需含湿量换算干基）</b>；NOₓ 由 NO+NO₂ 自动计算（以 NO₂ 计）。结果单位跟随示值单位自动切换，公式见底部"公式依据"。
       </el-alert>
 
       <div class="grp-title">
         采样方法
-        <span class="q-tip" @click="toggleTip('SM')">?</span>
-        <div v-if="tipVisible.SM" class="tip-pop tip-pop-right">
-          <div class="tip-title">{{ formulaTips.SM.title }}</div>
-          <div class="tip-formula">{{ formulaTips.SM.formula }}</div>
-          <div class="tip-desc">{{ formulaTips.SM.desc }}</div>
-        </div>
         <el-radio-group v-model="sampleMethod" size="small" class="unit-switch">
           <el-radio-button value="cold-dry">冷干法</el-radio-button>
           <el-radio-button value="hot-wet">热湿法</el-radio-button>
@@ -259,12 +184,6 @@ const showExplain = ref(false);
         <div class="field" :class="{ 'field-warn': isHotWet && (env.Xsw === null || env.Xsw >= 100) }">
           <label>
             含湿量 Xsw（%）<span v-if="isHotWet" class="req">*</span>
-            <span class="q-tip" @click="toggleTip('A2')">?</span>
-            <div v-if="tipVisible.A2" class="tip-pop">
-              <div class="tip-title">{{ formulaTips.A2.title }}</div>
-              <div class="tip-formula">{{ formulaTips.A2.formula }}</div>
-              <div class="tip-desc">{{ formulaTips.A2.desc }}</div>
-            </div>
           </label>
           <el-input-number v-model="env.Xsw" :min="0" :max="100" :precision="2" :controls="false" :placeholder="isHotWet ? '热湿法必填' : '7.8'" style="width:100%" />
           <div v-if="isHotWet && (env.Xsw === null || env.Xsw >= 100)" class="field-err">热湿法需填写含湿量（&lt;100%）以换算干基</div>
@@ -304,30 +223,12 @@ const showExplain = ref(false);
               <th class="gas-th">污染物</th>
               <th>
                 仪器示值<small>（{{ isHotWet ? "湿基" : "干基" }}，{{ unitLabel }}）</small>
-                <span class="q-tip" @click="toggleTip('SM')">?</span>
-                <div v-if="tipVisible.SM" class="tip-pop">
-                  <div class="tip-title">{{ formulaTips.SM.title }}</div>
-                  <div class="tip-formula">{{ formulaTips.SM.formula }}</div>
-                  <div class="tip-desc">{{ formulaTips.SM.desc }}</div>
-                </div>
               </th>
               <th v-if="isHotWet" class="hot-col">
                 干基 <small>{{ unitLabel }}</small>
-                <span class="q-tip" @click="toggleTip('A3')">?</span>
-                <div v-if="tipVisible.A3" class="tip-pop">
-                  <div class="tip-title">{{ formulaTips.A3.title }}</div>
-                  <div class="tip-formula">{{ formulaTips.A3.formula }}</div>
-                  <div class="tip-desc">{{ drySteps }}</div>
-                </div>
               </th>
               <th>
                 折算浓度 <small>{{ unitLabel }}（O₂s={{ o2sInput ?? "—" }}%）</small>
-                <span class="q-tip" @click="toggleTip('A9')">?</span>
-                <div v-if="tipVisible.A9" class="tip-pop">
-                  <div class="tip-title">{{ formulaTips.A9.title }}</div>
-                  <div class="tip-formula">{{ formulaTips.A9.formula }}</div>
-                  <div class="tip-desc">{{ formulaTips.A9.desc }}</div>
-                </div>
               </th>
             </tr>
           </thead>
@@ -345,12 +246,6 @@ const showExplain = ref(false);
               </td>
               <td v-else class="input-cell nox-cell">
                 <span class="nox-val">{{ noxPpm !== null ? disp("NOx", noxPpm) : "—" }}</span>
-                <span class="q-tip" @click="toggleTip('A4')">?</span>
-                <div v-if="tipVisible.A4" class="tip-pop tip-pop-left">
-                  <div class="tip-title">{{ formulaTips.A4.title }}</div>
-                  <div class="tip-formula">{{ a4Formula }}</div>
-                  <div v-if="a4Steps" class="tip-desc">{{ a4Steps }}</div>
-                </div>
               </td>
               <!-- 干基（热湿法换算结果；冷干法示值即干基不重复列） -->
               <td v-if="isHotWet" class="hot-col"><b>{{ disp(r.key, r.ppmDry) }}</b></td>
@@ -411,11 +306,6 @@ const showExplain = ref(false);
 .card-head h3 { font-size: 16px; font-weight: 700; color: var(--text); display: flex; align-items: center; gap: 8px; margin: 0; }
 .rule-tip { margin-bottom: 18px; }
 .rule-tip :deep(.el-alert__description) { font-size: 13px; line-height: 1.7; }
-.q-demo {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 15px; height: 15px; border-radius: 50%; font-size: 10.5px; font-weight: 700;
-  color: var(--primary); border: 1px solid var(--primary); vertical-align: middle; cursor: pointer;
-}
 
 .grp-title {
   font-size: 12.5px; font-weight: 700; color: var(--primary);
@@ -425,7 +315,6 @@ const showExplain = ref(false);
 }
 .grp-title:first-of-type { margin-top: 0; }
 .unit-switch { flex-shrink: 0; }
-.tip-pop-right { left: auto; right: 0; transform: none; }
 
 .method-banner {
   display: flex; align-items: center; gap: 6px;
@@ -442,8 +331,6 @@ const showExplain = ref(false);
 
 .env-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px 16px; }
 .field label { display: block; font-size: 13px; color: var(--text-light); margin-bottom: 6px; font-weight: 500; }
-.field label .q-tip { vertical-align: -3px; }
-.field label .tip-pop { left: 0; transform: none; margin-top: 6px; }
 .req { color: #ef4444; margin-left: 2px; }
 .field-err { font-size: 11.5px; color: #ef4444; margin-top: 4px; }
 .head-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
@@ -458,33 +345,8 @@ const showExplain = ref(false);
   color: var(--primary); font-weight: 700; font-size: 14.5px;
   font-family: Consolas, Monaco, monospace;
 }
-.tip-pop-left { left: 0; transform: none; }
 .adj-val { color: var(--primary); font-size: 14.5px; }
 .empty-row { text-align: center; color: var(--text-light); font-size: 12.5px; padding: 18px 10px !important; }
-
-/* ? 公式气泡 */
-.q-tip {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 16px; height: 16px; border-radius: 50%;
-  font-size: 11px; font-weight: 700; color: var(--primary);
-  border: 1px solid rgba(37, 99, 235, 0.5); margin-left: 5px;
-  cursor: pointer; user-select: none; vertical-align: middle; position: relative;
-}
-.q-tip:hover { background: rgba(37, 99, 235, 0.1); }
-.tip-pop {
-  position: absolute; z-index: 20; top: calc(100% + 8px); left: 50%; transform: translateX(-50%);
-  width: max-content; max-width: 320px;
-  background: var(--white, #fff); border: 1px solid var(--border-light);
-  border-radius: 12px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.13);
-  padding: 12px 14px; text-align: left;
-}
-.tip-title { font-size: 12.5px; font-weight: 700; color: var(--text); margin-bottom: 6px; }
-.tip-formula {
-  font-family: Consolas, Monaco, monospace; font-size: 12.5px; color: var(--primary);
-  background: rgba(37, 99, 235, 0.06); border-radius: 8px; padding: 6px 10px; margin-bottom: 6px;
-  white-space: pre-wrap; word-break: break-all;
-}
-.tip-desc { font-size: 12px; color: var(--text-light); line-height: 1.6; }
 
 .matrix-wrap { overflow-x: auto; }
 .matrix { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13.5px; }
@@ -536,6 +398,5 @@ const showExplain = ref(false);
   .card { padding: 16px 14px; }
   .env-grid { grid-template-columns: 1fr 1fr; }
   .cell-input { max-width: none; }
-  .tip-pop { max-width: 240px; }
 }
 </style>
