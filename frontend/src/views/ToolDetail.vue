@@ -23,28 +23,44 @@ onMounted(async () => {
 const isFlueSampling = computed(() => tool.value?.slug === "flue-sampling");
 const isAtmosphericStability = computed(() => tool.value?.slug === "atmospheric-stability");
 
+/** 工具图标：与工具主页 Tools.vue 的 getToolIcon 保持一致 */
+const toolIcon = computed(() => {
+  const map: Record<string, string> = {
+    "atmospheric-stability": "trendUp",
+    "unit-converter": "layers",
+    "air-sampling-model": "flame",
+    "pollution-source-model": "fire",
+    "doas-model": "beaker",
+    "flue-sampling": "filter",
+  };
+  return map[tool.value?.slug ?? ""] || "tool";
+});
+
 function handleCalculate() { alert("计算功能开发中"); }
 </script>
 
 <template>
   <div class="tool-page" v-if="tool">
+    <!-- 统一页头：图标+标题靠左上，样式与其他模块主页一致 -->
+    <div class="page-header page-header-row">
+      <div class="header-left">
+        <div class="page-header-main">
+          <div class="page-title-icon">
+            <Icon :name="toolIcon" :size="26" />
+          </div>
+          <h1>{{ tool.name }}</h1>
+        </div>
+        <p class="page-header-sub">{{ tool.description }}</p>
+      </div>
+      <el-button plain size="small" class="share-btn" @click="share(tool.name, tool.description)">
+        <Icon name="share" :size="14" style="margin-right:6px" /> 分享
+      </el-button>
+    </div>
+
     <FlueSamplingCalculator v-if="isFlueSampling" />
     <AtmosphericStabilityCalculator v-else-if="isAtmosphericStability" />
 
     <template v-else>
-      <div class="page-header">
-        <div class="page-header-left">
-          <h1>
-            <Icon :name="tool.slug?.includes('converter') ? 'tools' : tool.slug?.includes('stability') ? 'globe' : 'calculator'" :size="26" />
-            {{ tool.name }}
-          </h1>
-          <p>{{ tool.description }}</p>
-        </div>
-        <el-button plain size="small" @click="share(tool.name, tool.description)">
-          <Icon name="share" :size="14" /> 分享
-        </el-button>
-      </div>
-
       <div class="tool-body">
         <div class="tool-inputs">
           <h3>输入参数</h3>
@@ -89,10 +105,7 @@ function handleCalculate() { alert("计算功能开发中"); }
 </template>
 
 <style scoped>
-.tool-page { max-width: 1200px; margin: 0 auto; padding: 24px 0; }
-.page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; }
-.page-header-left h1 { font-size: 26px; font-weight: 800; display: flex; align-items: center; gap: 10px; background: linear-gradient(135deg, var(--primary), var(--accent)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
-.page-header-left p { font-size: 14px; color: var(--text-light); margin-top: 6px; }
+.tool-page { max-width: 1200px; margin: 0 auto; padding: 24px 0 40px; }
 .tool-body { display: grid; grid-template-columns: 360px 1fr; gap: 24px; }
 .tool-inputs {
   background: var(--card-bg); border-radius: var(--radius); padding: 24px;

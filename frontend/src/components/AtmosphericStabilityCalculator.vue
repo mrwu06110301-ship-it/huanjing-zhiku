@@ -384,77 +384,93 @@ function radiationLabel(lv: number): string {
         模板支持一次导入全部参数（基本信息 + 每分钟一组的过程数据）；过程数据风速、风向为必填，气压/温度/湿度选填。
       </el-alert>
 
-      <div class="base-grid">
-        <div class="field geo-field">
-          <label>经纬度<span class="req">*</span></label>
-          <div class="geo-row">
-            <el-input-number v-model="form.longitude" :min="-180" :max="180" :precision="4" :controls="false" placeholder="经度（东经为正）" style="flex:1" />
-            <el-input-number v-model="form.latitude" :min="-90" :max="90" :precision="4" :controls="false" placeholder="纬度（北纬为正）" style="flex:1" />
-            <el-button :loading="locating" @click="locateDevice" title="获取设备当前定位">
-              <Icon name="globe" :size="15" />
-              <span class="geo-btn-text">定位</span>
-            </el-button>
+      <div class="input-columns">
+        <!-- 左栏：基本信息（纵排） -->
+        <div class="col-left">
+          <div class="col-title">
+            <Icon name="write" :size="15" /> 基本信息
+          </div>
+
+          <div class="field">
+            <label>测量时间（结束时间）<span class="req">*</span></label>
+            <el-date-picker
+              v-model="form.measureTime"
+              type="datetime"
+              format="YYYY-MM-DD HH:mm:ss"
+              value-format="YYYY-MM-DD HH:mm:ss"
+              placeholder="选择日期时间"
+              style="width: 100%"
+            />
+          </div>
+
+          <div class="field">
+            <label>经纬度（东经/北纬为正）<span class="req">*</span></label>
+            <div class="geo-grid">
+              <el-input-number v-model="form.longitude" :min="-180" :max="180" :precision="4" :controls="false" placeholder="经度" />
+              <el-input-number v-model="form.latitude" :min="-90" :max="90" :precision="4" :controls="false" placeholder="纬度" />
+              <el-button class="geo-btn" :loading="locating" @click="locateDevice">
+                <Icon name="globe" :size="14" style="margin-right:5px" />
+                获取设备定位
+              </el-button>
+            </div>
+          </div>
+
+          <div class="field">
+            <label>测量高度（m，测风仪离地高度）<span class="req">*</span></label>
+            <el-input-number v-model="form.measureHeight" :min="0.1" :max="100" :precision="1" :controls="false" style="width: 100%" />
+          </div>
+
+          <div class="cloud-row">
+            <div class="field">
+              <label>总云量（十分制）<span class="req">*</span></label>
+              <el-input-number v-model="form.totalCloud" :min="0" :max="10" :precision="0" :controls="false" style="width: 100%" />
+            </div>
+            <div class="field">
+              <label>低云量（十分制）<span class="req">*</span></label>
+              <el-input-number v-model="form.lowCloud" :min="0" :max="10" :precision="0" :controls="false" style="width: 100%" />
+            </div>
+          </div>
+
+          <div class="field">
+            <label>区域<span class="req">*</span></label>
+            <el-radio-group v-model="form.region">
+              <el-radio-button value="urban">城市</el-radio-button>
+              <el-radio-button value="rural">农村</el-radio-button>
+            </el-radio-group>
           </div>
         </div>
-        <div class="field">
-          <label>测量高度（m）<span class="req">*</span></label>
-          <el-input-number v-model="form.measureHeight" :min="0.1" :max="100" :precision="1" :controls="false" style="width: 100%" />
-        </div>
-        <div class="field">
-          <label>总云量（十分制）<span class="req">*</span></label>
-          <el-input-number v-model="form.totalCloud" :min="0" :max="10" :precision="0" :controls="false" style="width: 100%" />
-        </div>
-        <div class="field">
-          <label>低云量（十分制）<span class="req">*</span></label>
-          <el-input-number v-model="form.lowCloud" :min="0" :max="10" :precision="0" :controls="false" style="width: 100%" />
-        </div>
-        <div class="field">
-          <label>区域<span class="req">*</span></label>
-          <el-radio-group v-model="form.region">
-            <el-radio-button value="urban">城市</el-radio-button>
-            <el-radio-button value="rural">农村</el-radio-button>
-          </el-radio-group>
-        </div>
-        <div class="field geo-field">
-          <label>测量时间（结束时间）<span class="req">*</span></label>
-          <el-date-picker
-            v-model="form.measureTime"
-            type="datetime"
-            format="YYYY-MM-DD HH:mm:ss"
-            value-format="YYYY-MM-DD HH:mm:ss"
-            placeholder="选择日期时间"
-            style="width: 100%"
-          />
-        </div>
-      </div>
 
-      <div class="rows-head">
-        <h4>过程数据（每分钟一组）</h4>
-        <span class="rows-hint">风速、风向必填；建议 10 组</span>
-      </div>
-      <div class="table-scroll">
-        <table class="rows-table">
-          <thead>
-            <tr>
-              <th style="width: 48px">#</th>
-              <th>风速 (m/s)<span class="req">*</span></th>
-              <th>风向 (°)<span class="req">*</span></th>
-              <th>大气压 (kPa)</th>
-              <th>温度 (℃)</th>
-              <th>湿度 (%RH)</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="(r, i) in rows" :key="i">
-              <td class="row-no">{{ i + 1 }}</td>
-              <td><el-input-number v-model="r.windSpeed" :min="0" :max="60" :precision="1" :controls="false" placeholder="0.0" /></td>
-              <td><el-input-number v-model="r.windDir" :min="0" :max="360" :precision="0" :controls="false" placeholder="0-360" /></td>
-              <td><el-input-number v-model="r.pressure" :min="30" :max="110" :precision="1" :controls="false" placeholder="101.3" /></td>
-              <td><el-input-number v-model="r.temperature" :min="-60" :max="60" :precision="1" :controls="false" placeholder="25.0" /></td>
-              <td><el-input-number v-model="r.humidity" :min="0" :max="100" :precision="1" :controls="false" placeholder="60.0" /></td>
-            </tr>
-          </tbody>
-        </table>
+        <!-- 右栏：分钟过程数据 -->
+        <div class="col-right">
+          <div class="rows-head">
+            <h4><Icon name="chart" :size="15" style="margin-right:5px" />过程数据（每分钟一组）</h4>
+            <span class="rows-hint">风速、风向必填；建议 10 组</span>
+          </div>
+          <div class="table-scroll">
+            <table class="rows-table">
+              <thead>
+                <tr>
+                  <th style="width: 40px">#</th>
+                  <th>风速 (m/s)<span class="req">*</span></th>
+                  <th>风向 (°)<span class="req">*</span></th>
+                  <th>大气压 (kPa)</th>
+                  <th>温度 (℃)</th>
+                  <th>湿度 (%RH)</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(r, i) in rows" :key="i">
+                  <td class="row-no">{{ i + 1 }}</td>
+                  <td><el-input-number v-model="r.windSpeed" :min="0" :max="60" :precision="1" :controls="false" placeholder="0.0" /></td>
+                  <td><el-input-number v-model="r.windDir" :min="0" :max="360" :precision="0" :controls="false" placeholder="0-360" /></td>
+                  <td><el-input-number v-model="r.pressure" :min="30" :max="110" :precision="1" :controls="false" placeholder="101.3" /></td>
+                  <td><el-input-number v-model="r.temperature" :min="-60" :max="60" :precision="1" :controls="false" placeholder="25.0" /></td>
+                  <td><el-input-number v-model="r.humidity" :min="0" :max="100" :precision="1" :controls="false" placeholder="60.0" /></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
 
       <div class="btn-row">
@@ -693,13 +709,69 @@ function radiationLabel(lv: number): string {
 .head-actions { display: flex; gap: 8px; }
 .import-tip { margin-bottom: 18px; }
 
-.base-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px 18px; }
+/* ===== 左右分栏输入布局 ===== */
+.input-columns {
+  display: grid;
+  grid-template-columns: 340px 1fr;
+  gap: 0 28px;
+  align-items: start;
+}
+.col-left {
+  border-right: 1px dashed var(--border-light);
+  padding-right: 28px;
+  display: flex; flex-direction: column; gap: 14px;
+}
+.col-title {
+  font-size: 13.5px; font-weight: 700; color: var(--text);
+  display: flex; align-items: center; gap: 6px; margin-bottom: 2px;
+}
+.col-title:first-child { margin-top: 0; }
 .field label { display: block; font-size: 13px; color: var(--text-light); margin-bottom: 6px; font-weight: 500; }
 .req { color: #ef4444; margin-left: 2px; }
-.geo-field { grid-column: span 2; }
-.geo-row { display: flex; gap: 8px; align-items: center; }
-.geo-btn-text { margin-left: 4px; }
-@media (max-width: 640px) { .geo-field { grid-column: span 1; } .geo-row { flex-wrap: wrap; } }
+
+/* 经纬度 + 定位按钮 */
+.geo-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.geo-btn { grid-column: span 2; width: 100%; }
+
+/* 总云量/低云量并排 */
+.cloud-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+/* 右栏分钟数据 */
+.col-right { min-width: 0; }
+.rows-head { display: flex; align-items: baseline; gap: 10px; margin: 0 0 10px; }
+.rows-head h4 {
+  font-size: 13.5px; font-weight: 700; color: var(--text); margin: 0;
+  display: flex; align-items: center;
+}
+.rows-hint { font-size: 12px; color: var(--text-muted); }
+
+/* ===== 输入框大圆角 + 丝滑过渡（覆盖 Element Plus 默认） ===== */
+.atm-tool :deep(.el-input__wrapper),
+.atm-tool :deep(.el-input-number .el-input__wrapper),
+.atm-tool :deep(.el-select__wrapper),
+.atm-tool :deep(.el-date-editor.el-input .el-input__wrapper),
+.atm-tool :deep(.el-textarea__inner) {
+  border-radius: 12px;
+  transition: box-shadow 0.25s var(--ease), border-color 0.25s var(--ease), background-color 0.25s var(--ease);
+}
+.atm-tool :deep(.el-input__wrapper.is-focus),
+.atm-tool :deep(.el-select__wrapper.is-focused) {
+  box-shadow: 0 0 0 1px var(--primary) inset, 0 4px 14px rgba(37, 99, 235, 0.12);
+}
+.atm-tool :deep(.el-button:not(.is-text):not(.is-link)) {
+  border-radius: 12px;
+  transition: all 0.25s var(--ease);
+}
+.atm-tool :deep(.el-radio-group) .el-radio-button__inner {
+  border-radius: 0;
+  transition: all 0.2s var(--ease);
+}
+.atm-tool :deep(.el-radio-group) .el-radio-button:first-child .el-radio-button__inner {
+  border-radius: 12px 0 0 12px;
+}
+.atm-tool :deep(.el-radio-group) .el-radio-button:last-child .el-radio-button__inner {
+  border-radius: 0 12px 12px 0;
+}
 
 /* 表引用链接 */
 .tbl-link {
@@ -736,11 +808,7 @@ function radiationLabel(lv: number): string {
 .ref-table .row-head { background: var(--bg-soft); font-weight: 600; color: var(--text-light); }
 .dialog-src { font-size: 12px; color: var(--text-muted); }
 
-.rows-head { display: flex; align-items: baseline; gap: 10px; margin: 20px 0 10px; }
-.rows-head h4 { font-size: 14.5px; font-weight: 700; color: var(--text); margin: 0; }
-.rows-hint { font-size: 12px; color: var(--text-muted); }
-
-.table-scroll { overflow-x: auto; }
+.table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 .rows-table, .minute-table { width: 100%; border-collapse: collapse; min-width: 620px; }
 .rows-table th, .rows-table td, .minute-table th, .minute-table td {
   padding: 7px 8px; font-size: 13px; text-align: center; border-bottom: 1px solid var(--border-light);
@@ -823,5 +891,31 @@ function radiationLabel(lv: number): string {
   body * { visibility: hidden; }
   #atm-report, #atm-report * { visibility: visible; }
   #atm-report { position: absolute; left: 0; top: 0; width: 100%; box-shadow: none; }
+}
+
+/* ===== 移动端 H5 适配 ===== */
+@media (max-width: 900px) {
+  .input-columns { grid-template-columns: 1fr; gap: 18px; }
+  .col-left { border-right: none; padding-right: 0; border-bottom: 1px dashed var(--border-light); padding-bottom: 18px; }
+}
+
+@media (max-width: 640px) {
+  .input-card, .report-card, .explain-card { padding: 16px 14px; border-radius: 16px; }
+  .card-head { flex-direction: column; align-items: stretch; gap: 10px; }
+  .head-actions { justify-content: flex-end; }
+  .import-tip { margin-bottom: 14px; }
+  .cloud-row { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .geo-grid { grid-template-columns: 1fr; gap: 8px; }
+  .geo-btn { grid-column: span 1; }
+  /* 分钟数据表：横向滚动自然，输入框收紧 */
+  .rows-table, .minute-table { min-width: 540px; }
+  .rows-table th, .rows-table td { padding: 6px 5px; font-size: 12.5px; }
+  .btn-row { flex-direction: column; gap: 10px; }
+  .btn-row :deep(.el-button) { width: 100%; margin-left: 0; }
+  .verdict { padding: 14px 14px; }
+  .verdict-grade strong { font-size: 19px; }
+  .rule-status { margin-left: 0; width: 100%; }
+  .report-head { flex-direction: column; align-items: stretch; gap: 10px; }
+  .explain-body ol { padding-left: 18px; }
 }
 </style>
