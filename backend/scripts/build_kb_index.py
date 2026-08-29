@@ -5,12 +5,16 @@
   venv/bin/python scripts/build_kb_index.py --dry-run   # 只统计切片数
   venv/bin/python scripts/build_kb_index.py             # 增量更新（默认）
   venv/bin/python scripts/build_kb_index.py --full      # 全量重建（清空重跑，~50 分钟）
+  venv/bin/python scripts/build_kb_index.py --fts-only  # 仅按 kb_chunks 重建 FTS（分词升级用，~2 分钟）
 
 切片方案:
   1. 文章(含论坛): 正文按段落切片（~500字/块，50字重叠）
   2. 标准: 元数据块（标准号+名称+分类）+ PDF 全文按页切片（~600字/块）
   3. 视频/工具: 标题+描述整条一块
-  4. 索引: SQLite FTS5 虚拟表（unicode61 分词），BM25 排序，零 API 成本
+  4. FAQ(维保): 问题+回答整条一块（仅公开）
+  5. 留言: 用户留言+管理员回复整条一块（仅审核通过）
+  6. 关于作者: 富文本去 HTML 标签后按段切片
+  7. 索引: SQLite FTS5 虚拟表（unicode61 分词），BM25 排序，零 API 成本
 
 增量自学习机制（供 cron 每周定时执行）:
   - 文本源(文章/视频/工具/标准元数据): 采集廉价，逐条比对 content_hash，未变跳过写入
@@ -70,6 +74,25 @@ def norm_std_title(title: str) -> str:
 def sanitize(text: str) -> str:
     r"""清理代理对等非法字符（部分 PDF 提取文本含 \ud835 类代理项）"""
     return text.encode("utf-8", errors="ignore").decode("utf-8", errors="ignore")
+
+
+_CN_SEG_RE = re.compile(r"([\u4e00-\u9fff]+)")
+
+
+def expand_cn(text: str) -> str:
+    r"""中文 2-gram 空格展开。
+    FTS unicode61 对无空格中文整段只建单 token，子串查询无法命中；
+    写入侧展开 2-gram 后与查询侧（assistant._tokenize 的 2-gram）天然匹配。
+    英文/数字/标点原样保留。kb_chunks 存原文，仅 kb_fts 写展开文本。"""
+    parts = _CN_SEG_RE.split(text)
+    outs = []
+    for seg in parts:
+        if seg and "\u4e00" <= seg[0] <= "\u9fff":
+            grams = [seg[i:i + 2] for i in range(len(seg) - 1)] or ([seg] if seg else [])
+            outs.append(" ".join(grams))
+        else:
+            outs.append(seg)
+    return " ".join(x for x in outs if x)
 
 
 def md5s(s: str) -> str:
@@ -215,6 +238,39 @@ def collect_chunks(db: sqlite3.Connection, with_pdf: bool = True, workers: int =
                        "title": name, "content": f"计算工具：{name}\n{desc}"[:800],
                        "url": f"/tools/{slug}"})
 
+    # 常见问题 FAQ（维保）
+    for fid, q, a in cur.execute(
+        "SELECT id, question, COALESCE(answer,'') FROM faqs WHERE is_public = 1"
+    ):
+        live_keys.add(("faq", fid))
+        chunks.append({"source_type": "faq", "source_id": fid, "chunk_idx": 0,
+                       "title": q, "content": f"常见问题：{q}\n{a}"[:1200],
+                       "url": "/faq"})
+
+    # 留言（含管理员回复，仅审核通过的）
+    for mid, content, reply in cur.execute(
+        "SELECT id, content, COALESCE(reply,'') FROM messages WHERE status = 'approved'"
+    ):
+        live_keys.add(("message", mid))
+        body = f"用户留言：{content}"
+        if reply:
+            body = f"{body}\n管理员回复：{reply}"
+        chunks.append({"source_type": "message", "source_id": mid, "chunk_idx": 0,
+                       "title": content[:60], "content": body[:1200],
+                       "url": "/messages"})
+
+    # 关于作者（单行富文本，HTML 去标签后按段切片）
+    about_row = cur.execute("SELECT id, COALESCE(content,'') FROM about_content ORDER BY id LIMIT 1").fetchone()
+    if about_row and about_row[1].strip():
+        aid_, html = about_row
+        live_keys.add(("about", aid_))
+        plain = re.sub(r"<[^>]+>", " ", html)
+        plain = re.sub(r"\s+", " ", plain).strip()
+        for idx, c in enumerate(split_text(plain, size=500, overlap=50)):
+            chunks.append({"source_type": "about", "source_id": aid_, "chunk_idx": idx,
+                           "title": "关于作者", "content": f"关于作者：{c}",
+                           "url": "/about"})
+
     return chunks, live_keys
 
 
@@ -298,7 +354,7 @@ def build_fts(db: sqlite3.Connection, chunks: list[dict], rebuild: bool, live_ke
                 (sid,),
             )
 
-    # 插入新切片
+    # 插入新切片（kb_chunks 存原文；kb_fts 写中文 2-gram 展开文本保证子串可命中）
     for i, c in enumerate(todo):
         c["title"] = sanitize(c["title"])
         c["content"] = sanitize(c["content"])
@@ -310,7 +366,8 @@ def build_fts(db: sqlite3.Connection, chunks: list[dict], rebuild: bool, live_ke
         )
         cur.execute(
             "INSERT INTO kb_fts (title, content, rowid_map) VALUES (?,?,?)",
-            (c["title"], c["content"], f"{c['source_type']}:{c['source_id']}:{c['chunk_idx']}:{cur.lastrowid}"),
+            (expand_cn(c["title"]), expand_cn(c["content"]),
+             f"{c['source_type']}:{c['source_id']}:{c['chunk_idx']}:{cur.lastrowid}"),
         )
         if (i + 1) % 2000 == 0:
             db.commit()
@@ -366,12 +423,42 @@ def runs_finish(db: sqlite3.Connection, run_id: int, status: str,
     db.commit()
 
 
+def rebuild_fts_only(db: sqlite3.Connection) -> int:
+    """仅用 kb_chunks 现有切片重建 kb_fts（应用中文 2-gram 展开）。
+    不重新采集、不解析 PDF——用于分词方案升级后的索引重建（~2 分钟）。"""
+    cur = db.cursor()
+    cur.execute("DROP TABLE IF EXISTS kb_fts")
+    cur.execute(
+        """CREATE VIRTUAL TABLE kb_fts USING fts5(
+            title, content, rowid_map UNINDEXED,
+            tokenize='unicode61'
+        )"""
+    )
+    n = 0
+    for rid, st, sid, cidx, title, content in cur.execute(
+        "SELECT id, source_type, source_id, chunk_idx, title, content FROM kb_chunks"
+    ).fetchall():
+        db.execute(
+            "INSERT INTO kb_fts (title, content, rowid_map) VALUES (?,?,?)",
+            (expand_cn(title or ""), expand_cn(content or ""),
+             f"{st}:{sid}:{cidx}:{rid}"),
+        )
+        n += 1
+        if n % 5000 == 0:
+            db.commit()
+            print(f"  fts rebuilt {n}", flush=True)
+    db.commit()
+    return n
+
+
 # ---------------- 主流程 ----------------
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--full", action="store_true", help="全量重建（清空重跑）")
     ap.add_argument("--no-pdf", action="store_true")
+    ap.add_argument("--fts-only", action="store_true",
+                    help="仅按 kb_chunks 重建 FTS（分词升级后用，快）")
     ap.add_argument("--workers", type=int, default=2)
     ap.add_argument("--trigger", type=str, default="cron", choices=["cron", "manual"],
                     help="触发来源（记录到历史表）")
@@ -396,6 +483,16 @@ def main() -> None:
             sys.exit(1)
     cur.execute("INSERT OR REPLACE INTO kb_build_lock (id, held_since) VALUES (1, datetime('now','localtime'))")
     db.commit()
+
+    if args.fts_only:
+        try:
+            print(f"[fts-only] 按 kb_chunks 重建 FTS（{time.strftime('%F %T')}）...", flush=True)
+            n = rebuild_fts_only(db)
+            print(f"完成: kb_fts={n} 条（中文 2-gram 展开）", flush=True)
+        finally:
+            db.execute("UPDATE kb_build_lock SET held_since=NULL WHERE id=1")
+            db.commit()
+        return
 
     mode = "全量重建" if args.full else "增量"
     run_id = 0

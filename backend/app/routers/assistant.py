@@ -75,8 +75,7 @@ def _search_chunks(question: str) -> list[dict]:
         for expr in match_exprs:
             try:
                 rows = conn.execute(
-                    """SELECT rowid_map, title, content,
-                              bm25(kb_fts, 3.0, 1.0, 0) AS rank
+                    """SELECT rowid_map, bm25(kb_fts, 3.0, 1.0, 0) AS rank
                        FROM kb_fts WHERE kb_fts MATCH ?
                        ORDER BY rank LIMIT ?""",
                     (expr, TOP_K),
@@ -86,6 +85,18 @@ def _search_chunks(question: str) -> list[dict]:
             if rows:
                 break
 
+        # kb_fts 存的是中文 2-gram 展开文本，命中后按 rowid_map 尾部 id 回 kb_chunks 取原文
+        if rows:
+            ids = [int(r["rowid_map"].rsplit(":", 1)[1]) for r in rows]
+            ph = ",".join("?" * len(ids))
+            byid = {r["id"]: r for r in conn.execute(
+                f"SELECT id, title, content FROM kb_chunks WHERE id IN ({ph})", ids
+            ).fetchall()}
+            rows = [
+                {"rowid_map": r["rowid_map"], "rank": r["rank"],
+                 "title": byid[i]["title"], "content": byid[i]["content"]}
+                for r, i in zip(rows, ids) if i in byid
+            ]
         # LIKE 兜底：取标题含关键词的元数据块
         if not rows:
             clean_q = re.sub(r"[?？!！。，,\s]+", "", question)[:20]
@@ -131,6 +142,12 @@ def _resolve_urls(chunks: list[dict]) -> None:
             elif st == "tool":
                 row = cur.execute("SELECT slug FROM tools WHERE id=?", (sid,)).fetchone()
                 c["url"] = f"/tools/{row[0]}" if row else "/tools"
+            elif st == "faq":
+                c["url"] = "/faq"
+            elif st == "message":
+                c["url"] = "/messages"
+            elif st == "about":
+                c["url"] = "/about"
             else:  # standard_meta / standard_pdf
                 c["url"] = "/standards"
     finally:
@@ -139,13 +156,13 @@ def _resolve_urls(chunks: list[dict]) -> None:
 
 def _build_prompt(question: str, chunks: list[dict]) -> str:
     labels = {"article": "文章", "standard_meta": "标准", "standard_pdf": "标准全文",
-              "video": "视频", "tool": "工具"}
+              "video": "视频", "tool": "工具", "faq": "常见问题", "message": "留言", "about": "关于作者"}
     parts = ["【" + str(i) + "】（" + labels.get(c['source_type'], '资料') + "）" + c['title'] + "\n" + c['content'][:700]
              for i, c in enumerate(chunks, 1)]
     ctx = "\n\n".join(parts)
     return f"""你是「产品小吴知识库」的 AI 助手，专注环境监测领域（气体检测、烟尘采样、水质监测、标准规范、检测仪器）。
 
-【站点模块】你可引导用户使用：技术文章（论坛：数智化/案例分享/技术分享/产品经理/行业动态）、标准库（1242+ 国家/环境/职业卫生/EPA 标准全文检索与在线预览）、视频（技术畅享/探讨交流/产品经理）、在线计算工具（大气稳定度、烟道布点、采样模型、单位换算、紫外差分等 6 个）。
+【站点模块】你可引导用户使用：技术文章（论坛：数智化/案例分享/技术分享/产品经理/行业动态）、标准库（1242+ 国家/环境/职业卫生/EPA 标准全文检索与在线预览）、视频（技术畅享/探讨交流/产品经理）、在线计算工具（大气稳定度、烟道布点、采样模型、单位换算、紫外差分等 6 个）、常见问题（维保：现场/用户提问/设备/维护保养）、留言板（用户交流与管理员回复）、关于作者（站长介绍）。
 
 【职责边界 — 必须遵守】
 1. 只解答环境监测领域知识问题、介绍站内内容、提供学习引导。用户说"帮我设计一个软件/写代码/写方案/做其他工作"等超出知识问答范围的请求，礼貌拒绝并说明你只提供环境监测知识服务
