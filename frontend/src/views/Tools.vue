@@ -38,7 +38,7 @@ function getToolIcon(slug: string): string {
     "atmospheric-stability": "trendUp",
     "unit-converter": "layers",
     "air-sampling-model": "flame",
-    "pollution-source-model": "fire",
+    "pollution-source-model": "chimney",
     "doas-model": "beaker",
     "flue-sampling": "filter",
   };

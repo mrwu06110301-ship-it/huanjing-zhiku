@@ -7,6 +7,7 @@ import FlueSamplingCalculator from "@/components/FlueSamplingCalculator.vue";
 import AtmosphericStabilityCalculator from "@/components/AtmosphericStabilityCalculator.vue";
 import AirSamplingCalculator from "@/components/AirSamplingCalculator.vue";
 import UnitConverterCalculator from "@/components/UnitConverterCalculator.vue";
+import DustSamplingCalculator from "@/components/DustSamplingCalculator.vue";
 import { useShare } from "@/composables/useShare";
 import Icon from "@/components/Icon.vue";
 
@@ -26,6 +27,7 @@ const isFlueSampling = computed(() => tool.value?.slug === "flue-sampling");
 const isAtmosphericStability = computed(() => tool.value?.slug === "atmospheric-stability");
 const isAirSampling = computed(() => tool.value?.slug === "air-sampling-model");
 const isUnitConverter = computed(() => tool.value?.slug === "unit-converter");
+const isDustSampling = computed(() => tool.value?.slug === "pollution-source-model");
 
 /** 工具图标：与工具主页 Tools.vue 的 getToolIcon 保持一致 */
 const toolIcon = computed(() => {
@@ -33,7 +35,7 @@ const toolIcon = computed(() => {
     "atmospheric-stability": "trendUp",
     "unit-converter": "layers",
     "air-sampling-model": "flame",
-    "pollution-source-model": "fire",
+    "pollution-source-model": "chimney",
     "doas-model": "beaker",
     "flue-sampling": "filter",
   };
@@ -65,6 +67,7 @@ function handleCalculate() { alert("计算功能开发中"); }
     <AtmosphericStabilityCalculator v-else-if="isAtmosphericStability" />
     <AirSamplingCalculator v-else-if="isAirSampling" />
     <UnitConverterCalculator v-else-if="isUnitConverter" />
+    <DustSamplingCalculator v-else-if="isDustSampling" />
 
     <template v-else>
       <div class="tool-body">
