@@ -37,7 +37,7 @@ function getToolIcon(slug: string): string {
   const map: Record<string, string> = {
     "atmospheric-stability": "trendUp",
     "unit-converter": "layers",
-    "air-sampling-model": "flame",
+    "air-sampling-model": "wind",
     "pollution-source-model": "chimney",
     "doas-model": "beaker",
     "flue-sampling": "filter",

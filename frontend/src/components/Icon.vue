@@ -16,7 +16,7 @@ import {
   Plus, Lock, Globe, Info, Calendar, Time, Pencil, Helpcenter,
   TrendTwo, Layers, Filter, Rocket, Star, Mail, Phone, Send, Copy,
   Refresh, LinkTwo, EditOne, Magic, Shield, Key, Login,
-  DatabaseConfig, Server, CloudStorage, Lightning, Chimney,
+  DatabaseConfig, Server, CloudStorage, Lightning, Chimney, Wind,
 } from "@icon-park/vue-next";
 
 const props = withDefaults(defineProps<{
@@ -106,6 +106,7 @@ const ICON_MAP: Record<string, unknown> = {
   cloud: CloudStorage,
   lightning: Lightning,
   chimney: Chimney,
+  wind: Wind,
 };
 
 const comp = computed(() => ICON_MAP[props.name]);
