@@ -15,14 +15,14 @@ import {
   type GasKey,
 } from "@/utils/uv-flue-gas";
 
-// ==================== 现场参数（过程输入） ====================
+// ==================== 现场参数（过程输入；Ba/Ps 以 kPa 输入，×100 转 Pa 参与计算） ====================
 const env = reactive({
-  ba: 101325 as number | null,   // 环境大气压 Pa
-  ps: 0 as number | null,        // 烟气静压 Pa（表压）
-  ts: null as number | null,     // 烟温 ℃
-  Xsw: null as number | null,    // 含湿量 %
-  O2dry: null as number | null,  // 氧量干基 %
-  o2s: 6 as number | null,       // 基准含氧量 %（下拉/自定义）
+  ba: 101.325 as number | null,   // 环境大气压 kPa
+  ps: 0 as number | null,         // 烟气静压 kPa（表压）
+  ts: null as number | null,      // 烟温 Ts ℃
+  Xsw: null as number | null,     // 含湿量 %
+  O2dry: null as number | null,   // 氧量干基 %
+  o2s: 6 as number | null,        // 基准含氧量 %（下拉/自定义）
 });
 
 // ==================== 基准含氧量（O2sPicker 数值+行业组合） ====================
@@ -126,7 +126,11 @@ const adjustRatio = computed(() => {
 });
 
 function loadDemo() {
-  Object.assign(env, { ba: UV_DEMO.ba, ps: UV_DEMO.ps, ts: UV_DEMO.ts, Xsw: UV_DEMO.Xsw, O2dry: UV_DEMO.O2dry, o2s: UV_DEMO.o2s });
+  // UV_DEMO 的 ba/ps 为 Pa，界面以 kPa 输入，÷100 转换
+  Object.assign(env, {
+    ba: UV_DEMO.ba / 100, ps: UV_DEMO.ps / 100,
+    ts: UV_DEMO.ts, Xsw: UV_DEMO.Xsw, O2dry: UV_DEMO.O2dry, o2s: UV_DEMO.o2s,
+  });
   o2sInput.value = UV_DEMO.o2s;
   Object.assign(gases, { SO2: UV_DEMO.so2_ppm, NO: UV_DEMO.no_ppm, NO2: UV_DEMO.no2_ppm });
   concUnit.value = "ppm";
@@ -170,15 +174,15 @@ const showExplain = ref(false);
       <div class="grp-title">现场过程参数</div>
       <div class="env-grid">
         <div class="field">
-          <label>环境大气压 Ba（Pa）<span class="req">*</span></label>
-          <el-input-number v-model="env.ba" :min="30000" :max="120000" :precision="0" :controls="false" placeholder="101325" style="width:100%" />
+          <label>环境大气压 Ba（kPa）<span class="req">*</span></label>
+          <el-input-number v-model="env.ba" :min="30" :max="120" :precision="1" :controls="false" placeholder="101.3" style="width:100%" />
         </div>
         <div class="field">
-          <label>烟气静压 Ps（Pa）<span class="req">*</span></label>
-          <el-input-number v-model="env.ps" :min="-50000" :max="50000" :precision="0" :controls="false" placeholder="0（正压）/ −800" style="width:100%" />
+          <label>烟气静压 Ps（kPa）<span class="req">*</span></label>
+          <el-input-number v-model="env.ps" :min="-50" :max="50" :precision="1" :controls="false" placeholder="0（正压）/ −0.8" style="width:100%" />
         </div>
         <div class="field">
-          <label>烟气温度 ts（℃）<span class="req">*</span></label>
+          <label>烟气温度 Ts（℃）<span class="req">*</span></label>
           <el-input-number v-model="env.ts" :min="0" :max="600" :precision="1" :controls="false" placeholder="93.4" style="width:100%" />
         </div>
         <div class="field" :class="{ 'field-warn': isHotWet && (env.Xsw === null || env.Xsw >= 100) }">
@@ -216,16 +220,16 @@ const showExplain = ref(false);
         </div>
       </div>
 
-      <div class="matrix-wrap" v-if="rows.length || true">
+      <div class="matrix-wrap">
         <table class="matrix">
           <thead>
             <tr>
               <th class="gas-th">污染物</th>
-              <th>
-                仪器示值<small>（{{ isHotWet ? "湿基" : "干基" }}，{{ unitLabel }}）</small>
+              <th :class="{ 'hot-col': isHotWet }">
+                湿基<small>（{{ isHotWet ? "仪器示值" : "不适用" }}，{{ unitLabel }}）</small>
               </th>
-              <th v-if="isHotWet" class="hot-col">
-                干基 <small>{{ unitLabel }}</small>
+              <th :class="{ 'hot-col': !isHotWet }">
+                干基<small>（{{ isHotWet ? "换算值" : "仪器示值" }}，{{ unitLabel }}）</small>
               </th>
               <th>
                 折算浓度 <small>{{ unitLabel }}（O₂s={{ o2sInput ?? "—" }}%）</small>
@@ -235,26 +239,36 @@ const showExplain = ref(false);
           <tbody>
             <tr v-for="r in rows" :key="r.key" :class="{ noxrow: r.key === 'NOx' }">
               <td class="gas-name">{{ r.label }}</td>
-              <!-- 仪器示值：NOₓ 自动计算只读，其余输入 -->
-              <td v-if="r.key !== 'NOx'" class="input-cell">
+              <!-- 湿基：热湿法=仪器示值（输入/NOₓ自动）；冷干法显示 — -->
+              <td v-if="isHotWet" :class="{ 'input-cell': true }">
                 <el-input-number
+                  v-if="r.key !== 'NOx'"
                   v-model="gases[r.key]"
                   :min="0" :precision="1" :controls="false"
                   :placeholder="r.key === 'SO2' ? '86' : r.key === 'NO' ? '92' : '6'"
                   class="cell-input"
                 />
+                <span v-else class="nox-val">{{ noxPpm !== null ? disp("NOx", noxPpm) : "—" }}</span>
               </td>
-              <td v-else class="input-cell nox-cell">
-                <span class="nox-val">{{ noxPpm !== null ? disp("NOx", noxPpm) : "—" }}</span>
+              <td v-else class="dim">—</td>
+              <!-- 干基：冷干法=仪器示值（输入/NOₓ自动）；热湿法=换算结果 -->
+              <td v-if="!isHotWet" class="input-cell">
+                <el-input-number
+                  v-if="r.key !== 'NOx'"
+                  v-model="gases[r.key]"
+                  :min="0" :precision="1" :controls="false"
+                  :placeholder="r.key === 'SO2' ? '86' : r.key === 'NO' ? '92' : '6'"
+                  class="cell-input"
+                />
+                <span v-else class="nox-val">{{ noxPpm !== null ? disp("NOx", noxPpm) : "—" }}</span>
               </td>
-              <!-- 干基（热湿法换算结果；冷干法示值即干基不重复列） -->
-              <td v-if="isHotWet" class="hot-col"><b>{{ disp(r.key, r.ppmDry) }}</b></td>
+              <td v-else class="hot-col"><b>{{ disp(r.key, r.ppmDry) }}</b></td>
               <!-- 折算 -->
               <td><b class="adj-val">{{ fmtAdj(r) }}</b></td>
             </tr>
             <tr v-if="!rows.length">
-              <td :colspan="isHotWet ? 4 : 3" class="empty-row">
-                {{ isHotWet ? "填写仪器示值（湿基）与含湿量 Xsw 后自动计算" : "填写仪器示值后自动计算" }}
+              <td colspan="4" class="empty-row">
+                {{ isHotWet ? "填写湿基示值与含湿量 Xsw 后自动计算" : "填写干基示值后自动计算" }}
               </td>
             </tr>
           </tbody>
@@ -262,8 +276,8 @@ const showExplain = ref(false);
       </div>
       <p class="matrix-note">
         {{ isHotWet
-          ? "热湿法：仪器示值为湿基浓度；干基 = 示值 /(1−Xsw/100)；折算 = 干基 × (21−O₂s)/(21−O₂干)"
-          : "冷干法：仪器示值即干基浓度，无需含湿量换算；折算 = 干基 × (21−O₂s)/(21−O₂干)" }}；NOₓ 由 NO+NO₂ 自动计算（以 NO₂ 计）。
+          ? "热湿法：湿基列 = 仪器示值；干基 = 湿基示值 /(1−Xsw/100)；折算 = 干基 × (21−O₂s)/(21−O₂干)"
+          : "冷干法：干基列 = 仪器示值（无需含湿量换算）；折算 = 干基 × (21−O₂s)/(21−O₂干)" }}；NOₓ 由 NO+NO₂ 自动计算（以 NO₂ 计）。
       </p>
     </div>
 
@@ -289,7 +303,7 @@ const showExplain = ref(false);
         <ul>
           <li>仪器示值单位可切换 μmol/mol ↔ mg/m³，全表结果随单位自动切换</li>
           <li>基准含氧量按行业排放标准下拉选择，也支持自定义输入</li>
-          <li>Ba 为环境大气压（Pa）、Ps 为烟气静压（Pa，表压可负）；Ba+Ps = 烟道绝对压</li>
+          <li>Ba 为环境大气压、Ps 为烟气静压（kPa，表压可负）；(Ba+Ps)×100 = 烟道绝对压 Pa</li>
         </ul>
       </div>
     </div>
@@ -339,13 +353,13 @@ const showExplain = ref(false);
 .input-cell { text-align: left !important; }
 .cell-input { width: 100%; max-width: 180px; }
 .cell-input :deep(.el-input__inner) { text-align: right; font-family: Consolas, Monaco, monospace; }
-/* NOₓ 单元格（自动计算只读） */
-.nox-cell { display: flex; align-items: center; gap: 6px; position: relative; }
+/* NOₓ 数值（自动计算只读） */
 .nox-val {
   color: var(--primary); font-weight: 700; font-size: 14.5px;
   font-family: Consolas, Monaco, monospace;
 }
 .adj-val { color: var(--primary); font-size: 14.5px; }
+.dim { color: var(--text-light); opacity: 0.55; }
 .empty-row { text-align: center; color: var(--text-light); font-size: 12.5px; padding: 18px 10px !important; }
 
 .matrix-wrap { overflow-x: auto; }
