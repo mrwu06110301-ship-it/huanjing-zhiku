@@ -26,6 +26,7 @@ import re
 import sqlite3
 import sys
 import time
+from collections import Counter
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
@@ -67,7 +68,7 @@ def norm_std_title(title: str) -> str:
 
 
 def sanitize(text: str) -> str:
-    """清理代理对等非法字符（部分 PDF 提取文本含 \ud835 类代理项）"""
+    r"""清理代理对等非法字符（部分 PDF 提取文本含 \ud835 类代理项）"""
     return text.encode("utf-8", errors="ignore").decode("utf-8", errors="ignore")
 
 
@@ -318,6 +319,53 @@ def build_fts(db: sqlite3.Connection, chunks: list[dict], rebuild: bool, live_ke
     return stats
 
 
+# ---------------- 运行历史 ----------------
+def ensure_runs_table(db: sqlite3.Connection) -> None:
+    db.execute(
+        """CREATE TABLE IF NOT EXISTS kb_build_runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            started_at TEXT NOT NULL,
+            finished_at TEXT,
+            mode TEXT DEFAULT '增量',
+            trigger_type TEXT DEFAULT 'cron',
+            status TEXT DEFAULT 'running',
+            chunks_changed INTEGER,
+            total_chunks INTEGER,
+            message TEXT
+        )"""
+    )
+    db.commit()
+
+
+def runs_start(db: sqlite3.Connection, mode: str, trigger: str = "cron") -> int:
+    """记录一次构建开始，返回 run_id"""
+    ensure_runs_table(db)
+    # 自愈：上次异常退出（进程被杀）遗留的 running 记录，标记为 failed
+    db.execute(
+        """UPDATE kb_build_runs SET status='failed', finished_at=datetime('now','localtime'),
+               message=COALESCE(message,'') || '（进程异常退出，自动标记）'
+           WHERE status='running'"""
+    )
+    cur = db.execute(
+        "INSERT INTO kb_build_runs (started_at, mode, trigger_type) VALUES (datetime('now','localtime'), ?, ?)",
+        (mode, trigger),
+    )
+    db.commit()
+    return int(cur.lastrowid or 0)
+
+
+def runs_finish(db: sqlite3.Connection, run_id: int, status: str,
+                chunks_changed: int | None, total_chunks: int | None,
+                message: str = "") -> None:
+    db.execute(
+        """UPDATE kb_build_runs SET finished_at=datetime('now','localtime'), status=?,
+               chunks_changed=?, total_chunks=?, message=?
+           WHERE id=?""",
+        (status, chunks_changed, total_chunks, message, run_id),
+    )
+    db.commit()
+
+
 # ---------------- 主流程 ----------------
 def main() -> None:
     ap = argparse.ArgumentParser()
@@ -325,6 +373,8 @@ def main() -> None:
     ap.add_argument("--full", action="store_true", help="全量重建（清空重跑）")
     ap.add_argument("--no-pdf", action="store_true")
     ap.add_argument("--workers", type=int, default=2)
+    ap.add_argument("--trigger", type=str, default="cron", choices=["cron", "manual"],
+                    help="触发来源（记录到历史表）")
     args = ap.parse_args()
 
     db = sqlite3.connect(DB_PATH, timeout=60)
@@ -347,11 +397,13 @@ def main() -> None:
     cur.execute("INSERT OR REPLACE INTO kb_build_lock (id, held_since) VALUES (1, datetime('now','localtime'))")
     db.commit()
 
+    mode = "全量重建" if args.full else "增量"
+    run_id = 0
     try:
-        mode = "全量重建" if args.full else "增量"
+        if not args.dry_run:
+            run_id = runs_start(db, mode, trigger=args.trigger)
         print(f"[1/2] 收集切片（{mode}模式，{time.strftime('%F %T')}）...", flush=True)
         chunks, live_keys = collect_chunks(db, with_pdf=not args.no_pdf, workers=args.workers)
-        from collections import Counter
         print(f"本次采集 {len(chunks)} 切片:", dict(Counter(c['source_type'] for c in chunks)), flush=True)
         if args.dry_run:
             return
@@ -361,6 +413,18 @@ def main() -> None:
         f = db.execute("SELECT COUNT(*) FROM kb_fts").fetchone()[0]
         print(f"完成（{time.strftime('%F %T')}）: kb_chunks={n}, kb_fts={f}, "
               f"本次写入 {stats['changed']} 条", flush=True)
+        if run_id:
+            runs_finish(db, run_id, "success", stats["changed"], n,
+                        f"kb_chunks={n}, kb_fts={f}")
+    except SystemExit:
+        raise
+    except Exception as e:
+        if run_id:
+            try:
+                runs_finish(db, run_id, "failed", None, None, str(e)[:500])
+            except Exception:
+                pass
+        raise
     finally:
         db.execute("UPDATE kb_build_lock SET held_since=NULL WHERE id=1")
         db.commit()

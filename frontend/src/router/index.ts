@@ -104,6 +104,12 @@ const router = createRouter({
       meta: { requiresAuth: true, requiresAdmin: true },
     },
     {
+      path: "/admin/kb",
+      name: "AdminKB",
+      component: () => import("@/views/AdminKB.vue"),
+      meta: { requiresAuth: true, requiresAdmin: true },
+    },
+    {
       path: "/about",
       name: "About",
       component: () => import("@/views/About.vue"),
