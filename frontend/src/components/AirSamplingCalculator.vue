@@ -1,18 +1,21 @@
 <script setup lang="ts">
 /**
  * AirSamplingCalculator.vue — 大气采样模型
- * 流量体系换算（入口/标况/参比/刻度）+ 采样累计体积 → 标况/参比体积
+ * 卡片一：流量换算（自动计算；左输入/右结果 + 右侧现场条件隔离区）
+ * 卡片二：采样体积换算（左侧输入 / 右侧结果上下排布，自动计算）
+ * 卡片三：设备标况体积对比（独立隔离区，自动对比）
+ * 卡片四：公式与流量体系说明
  * 依据 JJG 956-2013《大气采样器检定规程》、JJG 1169-2019《烟气采样器检定规程》
  */
-import { ref, reactive, computed } from "vue";
+import { ref, reactive, computed, watch } from "vue";
 import { ElMessage } from "element-plus";
 import Icon from "@/components/Icon.vue";
 import {
-  convertFlow, convertVolume, FLOW_LABEL, FLOW_SETTING_LABEL,
+  convertFlow, convertVolume, FLOW_LABEL,
   type FlowKind, type FlowSetting, type VolumeConvertResult,
 } from "@/utils/atmospheric-sampling";
 
-// ====================== 流量换算 ======================
+// ====================== 卡片一：流量换算（自动计算） ======================
 const flowForm = reactive({
   Q: null as number | null,
   from: "inlet" as FlowKind,
@@ -34,25 +37,19 @@ const flowKinds: { value: FlowKind; label: string; hint: string }[] = [
 const needGauge = computed(
   () => flowForm.from === "scale" || flowForm.to === "scale"
 );
+const gaugeInvalid = computed(
+  () =>
+    needGauge.value &&
+    (flowForm.gaugePressure === null ||
+      flowForm.pressure === null ||
+      flowForm.pressure - flowForm.gaugePressure <= 0)
+);
 
 function calcFlow() {
   const f = flowForm;
-  if (f.Q === null || f.temperature === null || f.pressure === null) {
-    ElMessage.warning("请填写流量、环境温度和大气压");
-    return;
-  }
-  if (f.from === f.to) {
-    ElMessage.info("两种流量类型相同，无需换算");
-    flowResult.value = f.Q;
-    flowFactor.value = 1;
-    return;
-  }
-  if (needGauge.value && (f.gaugePressure === null || f.gaugePressure < 0)) {
-    ElMessage.warning("刻度流量换算需填写计前负压 Pf（kPa）");
-    return;
-  }
-  if (needGauge.value && f.pressure - (f.gaugePressure ?? 0) <= 0) {
-    ElMessage.warning("大气压必须大于计前负压");
+  if (f.Q === null || f.temperature === null || f.pressure === null || gaugeInvalid.value) {
+    flowResult.value = null;
+    flowFactor.value = null;
     return;
   }
   const base = convertFlow({
@@ -60,36 +57,39 @@ function calcFlow() {
     pressure: f.pressure, gaugePressure: f.gaugePressure ?? 0,
   });
   flowFactor.value = base;
-  flowResult.value = base * f.Q;
+  flowResult.value = f.from === f.to ? f.Q : base * f.Q;
+}
+watch(flowForm, calcFlow, { deep: true });
+
+function swapFlow() {
+  const t = flowForm.from;
+  flowForm.from = flowForm.to;
+  flowForm.to = t;
 }
 
-// ====================== 体积换算 ======================
+// ====================== 卡片二：体积换算（自动计算） ======================
 const volForm = reactive({
   flowSetting: "inlet" as FlowSetting,
   accumulatedVolume: null as number | null,
   temperature: 25.0 as number | null,
   pressure: 101.3 as number | null,
   gaugePressure: 0 as number | null,
-  deviceNormalVolume: null as number | null, // 设备显示的标况体积（选填，用于比对）
 });
 const volResult = ref<VolumeConvertResult | null>(null);
-const volDiff = ref<{ device: number; calc: number; diffPct: number } | null>(null);
+
+const volGaugeInvalid = computed(
+  () =>
+    volForm.flowSetting === "scale" &&
+    (volForm.gaugePressure === null ||
+      volForm.pressure === null ||
+      volForm.pressure - volForm.gaugePressure <= 0)
+);
 
 function calcVolume() {
   const f = volForm;
-  if (f.accumulatedVolume === null || f.temperature === null || f.pressure === null) {
-    ElMessage.warning("请填写累计体积、环境温度和大气压");
+  if (f.accumulatedVolume === null || f.temperature === null || f.pressure === null || volGaugeInvalid.value) {
+    volResult.value = null;
     return;
-  }
-  if (f.flowSetting === "scale") {
-    if (f.gaugePressure === null || f.gaugePressure < 0) {
-      ElMessage.warning("刻流模式需填写计前负压 Pf（kPa）");
-      return;
-    }
-    if (f.pressure - f.gaugePressure <= 0) {
-      ElMessage.warning("大气压必须大于计前负压");
-      return;
-    }
   }
   volResult.value = convertVolume({
     flowSetting: f.flowSetting,
@@ -98,20 +98,23 @@ function calcVolume() {
     pressure: f.pressure,
     gaugePressure: f.gaugePressure ?? 0,
   });
-
-  // 与设备显示标况体积比对
-  if (f.deviceNormalVolume !== null && f.deviceNormalVolume > 0) {
-    const calc = volResult.value.normalVolume;
-    volDiff.value = {
-      device: f.deviceNormalVolume,
-      calc,
-      diffPct: ((calc - f.deviceNormalVolume) / f.deviceNormalVolume) * 100,
-    };
-  } else {
-    volDiff.value = null;
-  }
 }
+watch(volForm, calcVolume, { deep: true });
 
+// ====================== 卡片三：设备标况体积对比（独立隔离区） ======================
+const deviceNormalVolume = ref<number | null>(null);
+const volDiff = computed(() => {
+  if (deviceNormalVolume.value === null || deviceNormalVolume.value <= 0 || !volResult.value) return null;
+  const calc = volResult.value.normalVolume;
+  return {
+    device: deviceNormalVolume.value,
+    calc,
+    diffPct: ((calc - deviceNormalVolume.value) / deviceNormalVolume.value) * 100,
+  };
+});
+const diffOk = computed(() => volDiff.value !== null && Math.abs(volDiff.value.diffPct) <= 1);
+
+// ====================== 示例数据 ======================
 function loadDemo(demo: "inlet" | "scale") {
   if (demo === "inlet") {
     volForm.flowSetting = "inlet";
@@ -119,18 +122,16 @@ function loadDemo(demo: "inlet" | "scale") {
     volForm.temperature = 26.1;
     volForm.pressure = 100.91;
     volForm.gaugePressure = 0;
-    volForm.deviceNormalVolume = 2.98;
+    deviceNormalVolume.value = 2.98;
   } else {
     volForm.flowSetting = "scale";
     volForm.accumulatedVolume = 2.9;
     volForm.temperature = 27.7;
     volForm.pressure = 100.93;
     volForm.gaugePressure = 16.45;
-    volForm.deviceNormalVolume = 2.41;
+    deviceNormalVolume.value = 2.41;
   }
-  volResult.value = null;
-  volDiff.value = null;
-  ElMessage.success("已填入示例数据，点击「换算体积」查看结果");
+  ElMessage.success("已填入示例数据，结果自动换算");
 }
 
 // ====================== 计算说明 ======================
@@ -139,7 +140,80 @@ const showExplain = ref(false);
 
 <template>
   <div class="as-tool">
-    <!-- ===== 卡片一：采样体积换算（核心功能放最前） ===== -->
+    <!-- ===== 卡片一：流量换算 ===== -->
+    <div class="card">
+      <div class="card-head">
+        <h3><Icon name="trendUp" :size="17" /> 流量换算（入口 / 标况 / 参比 / 刻度）</h3>
+      </div>
+
+      <div class="flow-layout">
+        <!-- 左：换算主区（输入 ⇆ 结果） -->
+        <div class="flow-main">
+          <div class="convert-row">
+            <div class="io-card">
+              <label><span>输入流量</span><span class="unit">L/min</span></label>
+              <div class="io-line">
+                <el-input-number v-model="flowForm.Q" :min="0" :precision="1" :controls="false" placeholder="0.5" class="io-num" />
+                <el-select v-model="flowForm.from" class="io-select">
+                  <el-option v-for="k in flowKinds" :key="k.value" :value="k.value" :label="k.label">
+                    <span>{{ k.label }}</span>
+                    <span class="opt-hint">{{ k.hint }}</span>
+                  </el-option>
+                </el-select>
+              </div>
+            </div>
+
+            <div class="swap-cell">
+              <el-button circle plain @click="swapFlow" title="交换方向">
+                <Icon name="refresh" :size="14" />
+              </el-button>
+            </div>
+
+            <div class="io-card result-card">
+              <label><span>换算结果</span><span class="unit">L/min</span></label>
+              <div class="io-line">
+                <div class="result-num">
+                  <template v-if="flowResult !== null">{{ flowResult.toFixed(2) }}</template>
+                  <span v-else>—</span>
+                </div>
+                <el-select v-model="flowForm.to" class="io-select">
+                  <el-option v-for="k in flowKinds" :key="k.value" :value="k.value" :label="k.label">
+                    <span>{{ k.label }}</span>
+                    <span class="opt-hint">{{ k.hint }}</span>
+                  </el-option>
+                </el-select>
+              </div>
+            </div>
+          </div>
+
+          <div class="fr-factor" v-if="flowFactor !== null">
+            换算系数（目标/已知）= {{ flowFactor.toFixed(5) }}
+            <span v-if="needGauge" class="fr-note">（含计前负压 {{ flowForm.gaugePressure }} kPa 修正）</span>
+            <span v-else-if="flowForm.from === flowForm.to" class="fr-note">（同类型流量，系数为 1）</span>
+          </div>
+        </div>
+
+        <!-- 右：现场条件隔离区 -->
+        <div class="env-panel">
+          <div class="panel-title"><Icon name="info" :size="14" /> 现场条件</div>
+          <div class="field">
+            <label>环境温度（℃）</label>
+            <el-input-number v-model="flowForm.temperature" :min="-50" :max="60" :precision="1" :controls="false" placeholder="25.0" style="width:100%" />
+          </div>
+          <div class="field">
+            <label>大气压（kPa）</label>
+            <el-input-number v-model="flowForm.pressure" :min="30" :max="110" :precision="2" :controls="false" placeholder="101.3" style="width:100%" />
+          </div>
+          <div class="field" v-if="needGauge">
+            <label>计前负压 Pf（kPa）</label>
+            <el-input-number v-model="flowForm.gaugePressure" :min="0" :max="100" :precision="2" :controls="false" placeholder="16.45" style="width:100%" />
+            <div v-if="gaugeInvalid" class="field-err">需满足：大气压 − Pf &gt; 0</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 卡片二：采样体积换算 ===== -->
     <div class="card">
       <div class="card-head">
         <h3><Icon name="database" :size="17" /> 采样体积换算（累计体积 → 标况体积）</h3>
@@ -153,145 +227,90 @@ const showExplain = ref(false);
         <b>关键规则</b>：流量设置为「刻度」时累计体积为刻度流量体积（需先反推入口体积）；设置为「入口」时为入口体积；设置为「标况」时累计体积仍为<b>入口流量体积</b>（设备按入口控制采样）。
       </el-alert>
 
-      <div class="vol-grid">
-        <div class="field">
-          <label>流量设置方式<span class="req">*</span></label>
-          <el-radio-group v-model="volForm.flowSetting">
-            <el-radio-button value="scale">刻度</el-radio-button>
-            <el-radio-button value="inlet">入口</el-radio-button>
-            <el-radio-button value="normal">标况</el-radio-button>
-          </el-radio-group>
+      <div class="vol-layout">
+        <!-- 左：输入区（纵排） -->
+        <div class="vol-inputs">
+          <div class="field">
+            <label>流量设置方式<span class="req">*</span></label>
+            <el-radio-group v-model="volForm.flowSetting">
+              <el-radio-button value="inlet">入口</el-radio-button>
+              <el-radio-button value="normal">标况</el-radio-button>
+              <el-radio-button value="scale">刻度</el-radio-button>
+            </el-radio-group>
+          </div>
+          <div class="field">
+            <label>累计体积（L）<span class="req">*</span></label>
+            <el-input-number v-model="volForm.accumulatedVolume" :min="0" :precision="2" :controls="false" placeholder="如 3.28" style="width:100%" />
+          </div>
+          <div class="field">
+            <label>环境温度（℃）<span class="req">*</span></label>
+            <el-input-number v-model="volForm.temperature" :min="-50" :max="60" :precision="1" :controls="false" placeholder="26.1" style="width:100%" />
+          </div>
+          <div class="field">
+            <label>大气压（kPa）<span class="req">*</span></label>
+            <el-input-number v-model="volForm.pressure" :min="30" :max="110" :precision="2" :controls="false" placeholder="101.3" style="width:100%" />
+          </div>
+          <div class="field" v-if="volForm.flowSetting === 'scale'">
+            <label>计前负压 Pf（kPa）<span class="req">*</span></label>
+            <el-input-number v-model="volForm.gaugePressure" :min="0" :max="100" :precision="2" :controls="false" placeholder="16.45" style="width:100%" />
+            <div v-if="volGaugeInvalid" class="field-err">需满足：大气压 − Pf &gt; 0</div>
+          </div>
         </div>
-        <div class="field">
-          <label>累计体积（L）<span class="req">*</span></label>
-          <el-input-number v-model="volForm.accumulatedVolume" :min="0" :precision="2" :controls="false" placeholder="如 3.28" style="width:100%" />
-        </div>
-        <div class="field">
-          <label>环境温度（℃）<span class="req">*</span></label>
-          <el-input-number v-model="volForm.temperature" :min="-50" :max="60" :precision="1" :controls="false" placeholder="26.1" style="width:100%" />
-        </div>
-        <div class="field">
-          <label>大气压（kPa）<span class="req">*</span></label>
-          <el-input-number v-model="volForm.pressure" :min="30" :max="110" :precision="2" :controls="false" placeholder="101.3" style="width:100%" />
-        </div>
-        <div class="field" v-if="volForm.flowSetting === 'scale'">
-          <label>计前负压 Pf（kPa）<span class="req">*</span></label>
-          <el-input-number v-model="volForm.gaugePressure" :min="0" :max="100" :precision="2" :controls="false" placeholder="16.45" style="width:100%" />
-        </div>
-        <div class="field">
-          <label>设备显示标况体积（L，选填）</label>
-          <el-input-number v-model="volForm.deviceNormalVolume" :min="0" :precision="2" :controls="false" placeholder="用于比对" style="width:100%" />
-        </div>
-      </div>
 
-      <div class="btn-row">
-        <el-button type="primary" @click="calcVolume">
-          <Icon name="calculator" :size="15" style="margin-right:6px" /> 换算体积
-        </el-button>
-      </div>
-
-      <!-- 体积结果 -->
-      <div v-if="volResult" class="vol-result">
-        <div class="vr-cards">
+        <!-- 右：换算体积结果（上下排布） -->
+        <div class="vol-outputs">
           <div class="vr-card main">
             <span class="vr-label">标况体积（0℃ / 101.325 kPa）</span>
-            <b>{{ volResult.normalVolume.toFixed(2) }}</b> L
+            <div class="vr-val"><b>{{ volResult ? volResult.normalVolume.toFixed(2) : "—" }}</b> L</div>
           </div>
           <div class="vr-card">
             <span class="vr-label">入口体积（中间量）</span>
-            <b>{{ volResult.inletVolume.toFixed(3) }}</b> L
+            <div class="vr-val"><b>{{ volResult ? volResult.inletVolume.toFixed(3) : "—" }}</b> L</div>
           </div>
           <div class="vr-card">
             <span class="vr-label">参比体积（25℃）</span>
-            <b>{{ volResult.referenceVolume.toFixed(2) }}</b> L
+            <div class="vr-val"><b>{{ volResult ? volResult.referenceVolume.toFixed(2) : "—" }}</b> L</div>
           </div>
         </div>
+      </div>
 
-        <div v-if="volDiff" :class="['diff-bar', Math.abs(volDiff.diffPct) <= 1 ? 'diff-ok' : 'diff-warn']">
-          <Icon :name="Math.abs(volDiff.diffPct) <= 1 ? 'check' : 'info'" :size="15" />
-          <template v-if="Math.abs(volDiff.diffPct) <= 1">
-            与设备显示标况体积（{{ volDiff.device }} L）偏差 {{ volDiff.diffPct.toFixed(2) }}%，数据一致
-          </template>
-          <template v-else>
-            与设备显示标况体积（{{ volDiff.device }} L）偏差 {{ volDiff.diffPct.toFixed(1) }}%——若流量设置为「标况」而偏差明显，请确认流量设置方式与计前负压
-          </template>
-        </div>
-
-        <div class="steps">
-          <div class="steps-title">计算过程</div>
-          <div v-for="(s, i) in volResult.steps" :key="i" class="step-line">{{ s }}</div>
-        </div>
+      <div class="steps" v-if="volResult">
+        <div class="steps-title">计算过程</div>
+        <div v-for="(s, i) in volResult.steps" :key="i" class="step-line">{{ s }}</div>
       </div>
     </div>
 
-    <!-- ===== 卡片二：流量互算 ===== -->
-    <div class="card">
+    <!-- ===== 卡片三：设备标况体积对比（独立隔离区） ===== -->
+    <div class="card compare-card">
       <div class="card-head">
-        <h3><Icon name="trendUp" :size="17" /> 流量换算（入口 / 标况 / 参比 / 刻度）</h3>
+        <h3><Icon name="check" :size="17" /> 设备标况体积对比</h3>
       </div>
 
-      <div class="flow-grid">
-        <div class="field">
-          <label>已知流量（L/min）<span class="req">*</span></label>
-          <el-input-number v-model="flowForm.Q" :min="0" :precision="3" :controls="false" placeholder="1.0" style="width:100%" />
+      <div class="cmp-grid">
+        <div class="cmp-item">
+          <label>仪器显示标况体积（L）</label>
+          <el-input-number v-model="deviceNormalVolume" :min="0" :precision="2" :controls="false" placeholder="输入仪器显示值" style="width:100%" />
         </div>
-        <div class="field">
-          <label>已知类型<span class="req">*</span></label>
-          <el-select v-model="flowForm.from" style="width:100%">
-            <el-option v-for="k in flowKinds" :key="k.value" :value="k.value" :label="k.label">
-              <span>{{ k.label }}</span>
-              <span class="opt-hint">{{ k.hint }}</span>
-            </el-option>
-          </el-select>
-        </div>
-        <div class="field swap-cell">
-          <el-button circle plain @click="const t = flowForm.from; flowForm.from = flowForm.to; flowForm.to = t" title="交换方向">
-            <Icon name="refresh" :size="14" />
-          </el-button>
-        </div>
-        <div class="field">
-          <label>目标类型<span class="req">*</span></label>
-          <el-select v-model="flowForm.to" style="width:100%">
-            <el-option v-for="k in flowKinds" :key="k.value" :value="k.value" :label="k.label">
-              <span>{{ k.label }}</span>
-              <span class="opt-hint">{{ k.hint }}</span>
-            </el-option>
-          </el-select>
-        </div>
-        <div class="field">
-          <label>环境温度（℃）<span class="req">*</span></label>
-          <el-input-number v-model="flowForm.temperature" :min="-50" :max="60" :precision="1" :controls="false" placeholder="25.0" style="width:100%" />
-        </div>
-        <div class="field">
-          <label>大气压（kPa）<span class="req">*</span></label>
-          <el-input-number v-model="flowForm.pressure" :min="30" :max="110" :precision="2" :controls="false" placeholder="101.3" style="width:100%" />
-        </div>
-        <div class="field" v-if="needGauge">
-          <label>计前负压 Pf（kPa）<span class="req">*</span></label>
-          <el-input-number v-model="flowForm.gaugePressure" :min="0" :max="100" :precision="2" :controls="false" placeholder="16.45" style="width:100%" />
+        <div class="cmp-vs">VS</div>
+        <div class="cmp-item calc">
+          <label>本工具计算标况体积（L）</label>
+          <div class="cmp-val">{{ volResult ? volResult.normalVolume.toFixed(2) : "—" }}</div>
         </div>
       </div>
 
-      <div class="btn-row">
-        <el-button type="primary" @click="calcFlow">
-          <Icon name="calculator" :size="15" style="margin-right:6px" /> 换算流量
-        </el-button>
+      <div v-if="volDiff" :class="['diff-bar', diffOk ? 'diff-ok' : 'diff-warn']">
+        <Icon :name="diffOk ? 'check' : 'info'" :size="15" />
+        <template v-if="diffOk">
+          偏差 {{ volDiff.diffPct.toFixed(2) }}%，与仪器显示（{{ volDiff.device }} L）数据一致
+        </template>
+        <template v-else>
+          偏差 {{ volDiff.diffPct.toFixed(1) }}%——若流量设置为「标况」而偏差明显，请确认流量设置方式与计前负压
+        </template>
       </div>
-
-      <div v-if="flowResult !== null" class="flow-result">
-        <div class="fr-line">
-          <span>{{ FLOW_LABEL[flowForm.from] }} {{ flowForm.Q }} L/min</span>
-          <Icon name="arrowRight" :size="16" class="fr-arrow" />
-          <span class="fr-target">{{ FLOW_LABEL[flowForm.to] }} <b>{{ flowResult.toFixed(4) }}</b> L/min</span>
-        </div>
-        <div class="fr-factor" v-if="flowFactor !== null">
-          换算系数（目标/已知）= {{ flowFactor.toFixed(5) }}
-          <span v-if="needGauge" class="fr-note">（含计前负压 {{ flowForm.gaugePressure }} kPa 修正）</span>
-        </div>
-      </div>
+      <div v-else class="cmp-hint">先在上方「采样体积换算」得出计算标况体积，再输入仪器显示值即可自动对比（偏差 ≤ 1% 判定一致）</div>
     </div>
 
-    <!-- ===== 卡片三：公式与说明 ===== -->
+    <!-- ===== 卡片四：公式与说明 ===== -->
     <div class="card">
       <div class="explain-head" @click="showExplain = !showExplain">
         <h3><Icon name="question" :size="17" /> 公式与流量体系说明</h3>
@@ -347,14 +366,47 @@ const showExplain = ref(false);
 .rule-tip { margin-bottom: 18px; }
 .rule-tip :deep(.el-alert__description) { font-size: 13px; line-height: 1.7; }
 
-/* 表单网格 */
-.vol-grid, .flow-grid {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 14px 16px; align-items: end;
+/* ===== 卡片一：流量换算布局 ===== */
+.flow-layout { display: grid; grid-template-columns: 1fr 268px; gap: 16px; align-items: start; }
+.flow-main { min-width: 0; }
+.convert-row { display: flex; gap: 10px; align-items: stretch; }
+.io-card {
+  flex: 1; min-width: 0;
+  border: 1px solid var(--border-light); background: #fff;
+  border-radius: 16px; padding: 12px 14px 14px;
+  transition: border-color 0.25s var(--ease), box-shadow 0.25s var(--ease);
 }
+.io-card:focus-within { border-color: rgba(37, 99, 235, 0.45); box-shadow: 0 4px 14px rgba(37, 99, 235, 0.1); }
+.io-card > label {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 12.5px; color: var(--text-light); font-weight: 600; margin-bottom: 8px;
+}
+.io-card .unit { font-weight: 400; opacity: 0.85; }
+.io-line { display: flex; gap: 8px; align-items: center; }
+.io-num { flex: 1; min-width: 0; }
+.io-select { width: 132px; flex: none; }
+.result-card { background: rgba(37, 99, 235, 0.05); border-color: rgba(37, 99, 235, 0.25); }
+.result-num {
+  flex: 1; min-width: 0; font-size: 22px; font-weight: 800; color: var(--primary); line-height: 1.15;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.swap-cell { display: flex; align-items: center; flex: none; }
+.fr-factor { margin-top: 12px; font-size: 12.5px; color: var(--text-light); }
+.fr-note { opacity: 0.8; }
+
+/* 现场条件隔离区 */
+.env-panel {
+  border: 1.5px dashed rgba(37, 99, 235, 0.35); background: rgba(37, 99, 235, 0.045);
+  border-radius: 16px; padding: 14px 16px 16px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.panel-title { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; color: var(--primary); }
+.env-panel .field label { margin-bottom: 4px; }
+.field-err { font-size: 11.5px; color: #ef4444; margin-top: 4px; }
+
+/* 表单字段 */
 .field label { display: block; font-size: 13px; color: var(--text-light); margin-bottom: 6px; font-weight: 500; }
 .req { color: #ef4444; margin-left: 2px; }
-.swap-cell { display: flex; justify-content: center; }
 .opt-hint { float: right; font-size: 11px; color: var(--text-light); margin-left: 12px; }
 
 /* 大圆角丝滑输入 */
@@ -371,27 +423,21 @@ const showExplain = ref(false);
 .as-tool :deep(.el-radio-button:first-child .el-radio-button__inner) { border-radius: 12px 0 0 12px; }
 .as-tool :deep(.el-radio-button:last-child .el-radio-button__inner) { border-radius: 0 12px 12px 0; }
 
-.btn-row { margin-top: 18px; display: flex; gap: 10px; }
-
-/* 体积结果 */
-.vol-result { margin-top: 18px; }
-.vr-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
+/* ===== 卡片二：体积换算布局 ===== */
+.vol-layout { display: grid; grid-template-columns: minmax(250px, 320px) 1fr; gap: 18px; align-items: start; }
+.vol-inputs { display: flex; flex-direction: column; gap: 13px; }
+.vol-outputs { display: flex; flex-direction: column; gap: 10px; }
 .vr-card {
   background: var(--bg-soft, #f6f8fa); border: 1px solid var(--border-light);
-  border-radius: 14px; padding: 14px 16px; font-size: 14px; color: var(--text);
-  display: flex; flex-direction: column; gap: 4px;
+  border-radius: 14px; padding: 14px 18px; font-size: 14px; color: var(--text);
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap;
 }
-.vr-card b { font-size: 24px; font-weight: 800; color: var(--text); line-height: 1.2; }
+.vr-label { font-size: 12.5px; color: var(--text-light); }
+.vr-val { white-space: nowrap; font-size: 13px; color: var(--text-light); }
+.vr-card b { font-size: 24px; font-weight: 800; color: var(--text); line-height: 1.2; margin-right: 2px; }
 .vr-card.main { background: rgba(37, 99, 235, 0.07); border-color: rgba(37, 99, 235, 0.25); }
-.vr-card.main b { color: var(--primary); font-size: 28px; }
-.vr-label { font-size: 12px; color: var(--text-light); }
-
-.diff-bar {
-  margin-top: 12px; padding: 11px 14px; border-radius: 12px;
-  display: flex; align-items: center; gap: 8px; font-size: 13px;
-}
-.diff-ok { background: rgba(22, 163, 74, 0.08); color: #166534; }
-.diff-warn { background: rgba(217, 119, 6, 0.08); color: #92400e; }
+.vr-card.main .vr-val, .vr-card.main b { color: var(--primary); }
+.vr-card.main b { font-size: 28px; }
 
 .steps {
   margin-top: 14px; background: var(--bg-soft, #f6f8fa);
@@ -400,20 +446,27 @@ const showExplain = ref(false);
 .steps-title { font-size: 12.5px; font-weight: 700; color: var(--text-light); margin-bottom: 8px; }
 .step-line { font-size: 12.5px; color: var(--text-light); line-height: 1.9; font-family: Consolas, Monaco, monospace; word-break: break-all; }
 
-/* 流量结果 */
-.flow-result { margin-top: 16px; }
-.fr-line {
-  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
-  font-size: 15px; color: var(--text);
-  background: rgba(37, 99, 235, 0.06); border: 1px solid rgba(37, 99, 235, 0.2);
-  border-radius: 14px; padding: 14px 18px;
+/* ===== 卡片三：设备对比隔离区 ===== */
+.compare-card { border: 1.5px dashed rgba(37, 99, 235, 0.3); background: linear-gradient(180deg, rgba(37, 99, 235, 0.03), transparent 60%), var(--white); }
+.cmp-grid { display: flex; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
+.cmp-item { min-width: 210px; flex: 1; max-width: 320px; }
+.cmp-item label { display: block; font-size: 13px; color: var(--text-light); margin-bottom: 6px; font-weight: 500; }
+.cmp-item.calc .cmp-val {
+  font-size: 22px; font-weight: 800; color: var(--primary);
+  border: 1px solid var(--border-light); background: var(--bg-soft, #f6f8fa);
+  border-radius: 12px; padding: 5px 14px; line-height: 1.4; white-space: nowrap;
 }
-.fr-arrow { color: var(--primary); }
-.fr-target b { font-size: 20px; color: var(--primary); margin: 0 2px; }
-.fr-factor { margin-top: 10px; font-size: 12.5px; color: var(--text-light); }
-.fr-note { opacity: 0.8; }
+.cmp-vs { font-size: 13px; font-weight: 800; color: var(--text-light); padding-bottom: 12px; flex: none; }
+.cmp-hint { margin-top: 12px; font-size: 12.5px; color: var(--text-light); }
 
-/* 说明 */
+.diff-bar {
+  margin-top: 14px; padding: 11px 14px; border-radius: 12px;
+  display: flex; align-items: center; gap: 8px; font-size: 13px;
+}
+.diff-ok { background: rgba(22, 163, 74, 0.08); color: #166534; }
+.diff-warn { background: rgba(217, 119, 6, 0.08); color: #92400e; }
+
+/* ===== 说明 ===== */
 .explain-head { display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none; }
 .explain-head h3 { font-size: 16px; font-weight: 700; color: var(--text); display: flex; align-items: center; gap: 8px; margin: 0; }
 .explain-head:hover h3 { color: var(--primary); }
@@ -442,13 +495,25 @@ const showExplain = ref(false);
 .fm-arrow { text-align: center; color: var(--text-light); font-size: 13px; }
 .fm-tri { font-size: 11.5px; color: var(--text-light); line-height: 1.6; margin-top: 4px; text-align: center; }
 
-/* 移动端 */
+/* ===== 移动端 ===== */
+@media (max-width: 860px) {
+  .flow-layout { grid-template-columns: 1fr; }
+  .vol-layout { grid-template-columns: 1fr; }
+}
 @media (max-width: 640px) {
   .card { padding: 16px 14px; }
-  .vol-grid, .flow-grid { grid-template-columns: 1fr 1fr; gap: 12px 10px; }
+  .convert-row { flex-direction: column; }
+  .swap-cell { transform: rotate(90deg); padding: 2px 0; }
+  .io-line { flex-wrap: wrap; }
+  .io-num { flex: 1 1 100%; }
+  .io-select { flex: 1 1 100%; width: 100%; }
+  .result-num { font-size: 20px; }
   .flow-map { grid-template-columns: 1fr; }
   .vr-card b { font-size: 20px; }
   .vr-card.main b { font-size: 23px; }
+  .cmp-grid { flex-direction: column; align-items: stretch; }
+  .cmp-item { max-width: none; }
+  .cmp-vs { padding-bottom: 0; text-align: center; }
   .head-actions { width: 100%; }
   .head-actions :deep(.el-button) { flex: 1; margin-left: 0; }
 }
