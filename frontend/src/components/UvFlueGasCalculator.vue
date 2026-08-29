@@ -162,8 +162,8 @@ const formulaTips: Record<string, { title: string; formula: string; desc: string
   },
   A4: {
     title: "NOx 浓度（以 NO₂ 计）",
-    formula: "质量：CNOx = CNO × M(NO₂)/M(NO) + CNO₂；体积：CNOx = CNOv + CNO₂v",
-    desc: "NO 摩尔质量 30.006、NO₂ 46.005；NOx 体积浓度为 NO 与 NO₂ 直接相加",
+    formula: "体积：C(NOx) = C(NO) + C(NO₂)；质量：C(NOx) = C(NO) × 46.005/30.006 + C(NO₂)",
+    desc: "NOx 以 NO₂ 计（M=46.005 g/mol）。体积浓度为 NO 与 NO₂ 直接相加；质量浓度需将 NO 按 M(NO₂)/M(NO) 折算后与 NO₂ 相加。未填写时自动按 NO+NO₂ 求和；直接填写 NOₓ 则覆盖求和值。",
   },
   A8: {
     title: "实测过剩空气系数",
@@ -270,7 +270,15 @@ const showExplain = ref(false);
           <el-input-number v-model="gases.NO2" :min="0" :precision="1" :controls="false" placeholder="6" style="width:100%" />
         </div>
         <div class="field nox-show">
-          <label>NOₓ（以 NO₂ 计，自动计算，可直接填写覆盖）</label>
+          <label>
+            NOₓ（{{ unitLabel }}）
+            <span class="q-tip" @click="toggleTip('A4')">?</span>
+            <div v-if="tipVisible.A4" class="tip-pop">
+              <div class="tip-title">{{ formulaTips.A4.title }}</div>
+              <div class="tip-formula">{{ formulaTips.A4.formula }}</div>
+              <div class="tip-desc">{{ formulaTips.A4.desc }}由 NO+NO₂ 自动求和，也可直接填写 NOₓ 值覆盖（覆盖时以填写值为准）。</div>
+            </div>
+          </label>
           <el-input-number v-model="noxInput" :min="0" :precision="1" :controls="false" :placeholder="noxPpm !== null ? noxPpm.toFixed(1) : '自动'" style="width:100%" />
           <div class="nox-hint" v-if="noxHasInput">已手动填写，覆盖 NO+NO₂ 之和</div>
           <div class="nox-hint" v-else-if="noxPpm !== null">NO+NO₂ = {{ fromPpm("NO2", noxPpm)?.toFixed(1) }} {{ unitLabel }}</div>
@@ -419,6 +427,8 @@ const showExplain = ref(false);
 
 .env-grid, .gas-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px 16px; }
 .field label { display: block; font-size: 13px; color: var(--text-light); margin-bottom: 6px; font-weight: 500; }
+.field label .q-tip { vertical-align: -3px; }
+.field label .tip-pop { left: 0; transform: none; margin-top: 6px; }
 .req { color: #ef4444; margin-left: 2px; }
 .field-err { font-size: 11.5px; color: #ef4444; margin-top: 4px; }
 .o2s-switch { margin-top: 4px; }
