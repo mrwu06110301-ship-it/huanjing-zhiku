@@ -40,6 +40,7 @@ function getToolIcon(slug: string): string {
     "air-sampling-model": "wind",
     "pollution-source-model": "chimney",
     "doas-model": "flask",
+    "rc-moisture": "waterLevel",
     "flue-sampling": "filter",
   };
   return map[slug] || "tool";

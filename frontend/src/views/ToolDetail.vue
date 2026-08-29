@@ -9,6 +9,7 @@ import AirSamplingCalculator from "@/components/AirSamplingCalculator.vue";
 import UnitConverterCalculator from "@/components/UnitConverterCalculator.vue";
 import DustSamplingCalculator from "@/components/DustSamplingCalculator.vue";
 import UvFlueGasCalculator from "@/components/UvFlueGasCalculator.vue";
+import RcMoistureCalculator from "@/components/RcMoistureCalculator.vue";
 import { useShare } from "@/composables/useShare";
 import Icon from "@/components/Icon.vue";
 
@@ -30,6 +31,7 @@ const isAirSampling = computed(() => tool.value?.slug === "air-sampling-model");
 const isUnitConverter = computed(() => tool.value?.slug === "unit-converter");
 const isDustSampling = computed(() => tool.value?.slug === "pollution-source-model");
 const isUvFlueGas = computed(() => tool.value?.slug === "doas-model");
+const isRcMoisture = computed(() => tool.value?.slug === "rc-moisture");
 
 /** 工具图标：与工具主页 Tools.vue 的 getToolIcon 保持一致 */
 const toolIcon = computed(() => {
@@ -39,6 +41,7 @@ const toolIcon = computed(() => {
     "air-sampling-model": "wind",
     "pollution-source-model": "chimney",
     "doas-model": "flask",
+    "rc-moisture": "waterLevel",
     "flue-sampling": "filter",
   };
   return map[tool.value?.slug ?? ""] || "tool";
@@ -71,6 +74,7 @@ function handleCalculate() { alert("计算功能开发中"); }
     <UnitConverterCalculator v-else-if="isUnitConverter" />
     <DustSamplingCalculator v-else-if="isDustSampling" />
     <UvFlueGasCalculator v-else-if="isUvFlueGas" />
+    <RcMoistureCalculator v-else-if="isRcMoisture" />
 
     <template v-else>
       <div class="tool-body">
