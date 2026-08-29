@@ -30,7 +30,6 @@ const commonForm = reactive({
   customFormula: "",
   value: null as number | null,
   from: "ppm" as CommonUnit,
-  to: "mgm3" as CommonUnit,
   temp: "25C" as "25C" | "0C",
 });
 
@@ -53,9 +52,7 @@ const currentGas = computed<GasDef | null>(() => {
 });
 
 function swapCommon() {
-  const t = commonForm.from;
-  commonForm.from = commonForm.to;
-  commonForm.to = t;
+  // 无目标单位后交换按钮仅做占位提示，不再交换
 }
 
 /** 全单位换算（输入即算） */
@@ -77,18 +74,11 @@ const vocForm = reactive({
   gasIdx: 3, // 默认甲苯
   value: null as number | null,
   from: "ppm" as VocUnit,
-  to: "mgm3" as VocUnit,
   temp: "25C" as "25C" | "0C",
 });
 
 const currentVocGas = computed<VocGasDef>(() => VOC_GASES[vocForm.gasIdx]);
 const vocFromInvalid = computed(() => !vocUnitAvailable(currentVocGas.value, vocForm.from));
-
-function swapVoc() {
-  const t = vocForm.from;
-  vocForm.from = vocForm.to;
-  vocForm.to = t;
-}
 
 /** 可用单位换算（输入即算） */
 const vocAll = computed(() => {
@@ -164,15 +154,8 @@ const showFormula = ref(false);
           <el-input-number v-model="commonForm.value" :controls="false" placeholder="输入后自动换算" style="width:100%" />
         </div>
         <div class="field">
-          <label>原单位</label>
+          <label>单位</label>
           <el-select v-model="commonForm.from" style="width:100%">
-            <el-option v-for="u in Object.keys(COMMON_UNIT_LABEL)" :key="u" :value="u" :label="COMMON_UNIT_LABEL[u as CommonUnit]" />
-          </el-select>
-        </div>
-        <button class="swap-btn" @click="swapCommon" title="交换单位"><Icon name="refresh" :size="16" /></button>
-        <div class="field">
-          <label>目标单位（高亮）</label>
-          <el-select v-model="commonForm.to" style="width:100%">
             <el-option v-for="u in Object.keys(COMMON_UNIT_LABEL)" :key="u" :value="u" :label="COMMON_UNIT_LABEL[u as CommonUnit]" />
           </el-select>
         </div>
@@ -188,9 +171,9 @@ const showFormula = ref(false);
           <span class="au-sub">{{ fmtResult(commonForm.value) }} {{ COMMON_UNIT_LABEL[commonForm.from] }} 时</span>
         </div>
         <div class="au-grid">
-          <div v-for="a in commonAll" :key="a.unit" :class="['au-cell', { hot: a.unit === commonForm.to, src: a.unit === commonForm.from }]">
+          <div v-for="a in commonAll" :key="a.unit" :class="['au-cell', { src: a.unit === commonForm.from }]">
             <span class="au-val">{{ fmtResult(a.value) }}</span>
-            <span class="au-unit">{{ a.label }}<template v-if="a.unit === commonForm.from"> ·输入</template><template v-if="a.unit === commonForm.to"> ·目标</template></span>
+            <span class="au-unit">{{ a.label }}<template v-if="a.unit === commonForm.from"> ·输入</template></span>
           </div>
         </div>
       </div>
@@ -226,18 +209,11 @@ const showFormula = ref(false);
           <el-input-number v-model="vocForm.value" :controls="false" placeholder="输入后自动换算" style="width:100%" />
         </div>
         <div class="field">
-          <label>原单位</label>
+          <label>单位</label>
           <el-select v-model="vocForm.from" style="width:100%">
             <el-option v-for="u in Object.keys(VOC_UNIT_LABEL)" :key="u" :value="u" :label="VOC_UNIT_LABEL[u as VocUnit]" :disabled="!vocUnitAvailable(currentVocGas, u as VocUnit)" />
           </el-select>
           <div v-if="vocFromInvalid" class="field-err">总烃不支持该单位，请选碳计/甲烷计</div>
-        </div>
-        <button class="swap-btn" @click="swapVoc" title="交换单位"><Icon name="refresh" :size="16" /></button>
-        <div class="field">
-          <label>目标单位（高亮）</label>
-          <el-select v-model="vocForm.to" style="width:100%">
-            <el-option v-for="u in Object.keys(VOC_UNIT_LABEL)" :key="u" :value="u" :label="VOC_UNIT_LABEL[u as VocUnit]" :disabled="!vocUnitAvailable(currentVocGas, u as VocUnit)" />
-          </el-select>
         </div>
       </div>
 
@@ -251,9 +227,9 @@ const showFormula = ref(false);
           <span class="au-sub">{{ fmtResult(vocForm.value) }} {{ VOC_UNIT_LABEL[vocForm.from] }} 时</span>
         </div>
         <div class="au-grid">
-          <div v-for="a in vocAll" :key="a.unit" :class="['au-cell', { hot: a.unit === vocForm.to, src: a.unit === vocForm.from }]">
+          <div v-for="a in vocAll" :key="a.unit" :class="['au-cell', { src: a.unit === vocForm.from }]">
             <span class="au-val">{{ fmtResult(a.value) }}</span>
-            <span class="au-unit">{{ a.label }}<template v-if="a.unit === vocForm.from"> ·输入</template><template v-if="a.unit === vocForm.to"> ·目标</template></span>
+            <span class="au-unit">{{ a.label }}<template v-if="a.unit === vocForm.from"> ·输入</template></span>
           </div>
         </div>
       </div>
@@ -343,7 +319,7 @@ const showFormula = ref(false);
 .au-cell.hot { background: rgba(37, 99, 235, 0.1); border-color: rgba(37, 99, 235, 0.4); }
 .au-val { font-size: 17px; font-weight: 800; color: var(--text); word-break: break-all; font-family: Consolas, Monaco, monospace; }
 .au-cell.hot .au-val { color: var(--primary); font-size: 19px; }
-.au-unit { font-size: 12px; color: var(--text-light); font-weight: 500; }
+.au-unit { font-size: 12px; color: var(--text-light); font-weight: 500; align-self: flex-end; }
 
 .thc-tip { margin-bottom: 14px; }
 

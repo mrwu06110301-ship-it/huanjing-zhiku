@@ -184,10 +184,10 @@ export type VocUnit =
 export const VOC_UNIT_LABEL: Record<VocUnit, string> = {
   ppm: "ppm",
   mgm3: "mg/m³",
-  ppmC: "ppm(C) 碳计",
-  mgm3C: "mg/m³(C) 碳计",
-  ppmCH4: "ppm(CH₄) 甲烷计",
-  mgm3CH4: "mg/m³(CH₄) 甲烷计",
+  ppmC: "ppm(C)",
+  mgm3C: "mg/m³(C)",
+  ppmCH4: "ppm(CH₄)",
+  mgm3CH4: "mg/m³(CH₄)",
 };
 
 export interface VocGasDef {

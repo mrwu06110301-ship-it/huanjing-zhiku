@@ -158,56 +158,10 @@ const settingRule = computed(() => {
         <h3><Icon name="trendUp" :size="17" /> 流量换算（入口 / 标况 / 参比 / 刻度）</h3>
       </div>
 
-      <div class="flow-layout">
-        <!-- 左：换算主区（输入 ⇆ 结果） -->
-        <div class="flow-main">
-          <div class="convert-row">
-            <div class="io-card">
-              <label><span>输入流量</span><span class="unit">L/min</span></label>
-              <div class="io-line">
-                <el-input-number v-model="flowForm.Q" :min="0" :precision="1" :controls="false" placeholder="0.5" class="io-num" />
-                <el-select v-model="flowForm.from" class="io-select">
-                  <el-option v-for="k in flowKinds" :key="k.value" :value="k.value" :label="k.label">
-                    <span>{{ k.label }}</span>
-                    <span class="opt-hint">{{ k.hint }}</span>
-                  </el-option>
-                </el-select>
-              </div>
-            </div>
-
-            <div class="swap-cell">
-              <el-button circle plain @click="swapFlow" title="交换方向">
-                <Icon name="refresh" :size="14" />
-              </el-button>
-            </div>
-
-            <div class="io-card result-card">
-              <label><span>换算结果</span><span class="unit">L/min</span></label>
-              <div class="io-line">
-                <div class="result-num">
-                  <template v-if="flowResult !== null">{{ flowResult.toFixed(2) }}</template>
-                  <span v-else>—</span>
-                </div>
-                <el-select v-model="flowForm.to" class="io-select">
-                  <el-option v-for="k in flowKinds" :key="k.value" :value="k.value" :label="k.label">
-                    <span>{{ k.label }}</span>
-                    <span class="opt-hint">{{ k.hint }}</span>
-                  </el-option>
-                </el-select>
-              </div>
-            </div>
-          </div>
-
-          <div class="fr-factor" v-if="flowFactor !== null">
-            换算系数（目标/已知）= {{ flowFactor.toFixed(5) }}
-            <span v-if="needGauge" class="fr-note">（含计前负压 {{ flowForm.gaugePressure }} kPa 修正）</span>
-            <span v-else-if="flowForm.from === flowForm.to" class="fr-note">（同类型流量，系数为 1）</span>
-          </div>
-        </div>
-
-        <!-- 右：现场条件隔离区 -->
-        <div class="env-panel">
-          <div class="panel-title"><Icon name="info" :size="14" /> 现场条件</div>
+      <!-- 上：现场条件隔离区 -->
+      <div class="env-panel">
+        <div class="panel-title"><Icon name="info" :size="14" /> 现场条件</div>
+        <div class="env-fields">
           <div class="field">
             <label>环境温度（℃）</label>
             <el-input-number v-model="flowForm.temperature" :min="-50" :max="60" :precision="1" :controls="false" placeholder="25.0" style="width:100%" />
@@ -221,6 +175,52 @@ const settingRule = computed(() => {
             <el-input-number v-model="flowForm.gaugePressure" :min="0" :max="100" :precision="2" :controls="false" placeholder="16.45" style="width:100%" />
             <div v-if="gaugeInvalid" class="field-err">需满足：大气压 − Pf &gt; 0</div>
           </div>
+        </div>
+      </div>
+
+      <!-- 下：换算主区（输入 ⇆ 结果） -->
+      <div class="flow-main">
+        <div class="convert-row">
+          <div class="io-card">
+            <label><span>输入流量</span><span class="unit">L/min</span></label>
+            <div class="io-line">
+              <el-input-number v-model="flowForm.Q" :min="0" :precision="1" :controls="false" placeholder="0.5" class="io-num" />
+              <el-select v-model="flowForm.from" class="io-select">
+                <el-option v-for="k in flowKinds" :key="k.value" :value="k.value" :label="k.label">
+                  <span>{{ k.label }}</span>
+                  <span class="opt-hint">{{ k.hint }}</span>
+                </el-option>
+              </el-select>
+            </div>
+          </div>
+
+          <div class="swap-cell">
+            <el-button circle plain @click="swapFlow" title="交换方向">
+              <Icon name="refresh" :size="14" />
+            </el-button>
+          </div>
+
+          <div class="io-card result-card">
+            <label><span>换算结果</span><span class="unit">L/min</span></label>
+            <div class="io-line">
+              <div class="result-num">
+                <template v-if="flowResult !== null">{{ flowResult.toFixed(2) }}</template>
+                <span v-else>—</span>
+              </div>
+              <el-select v-model="flowForm.to" class="io-select">
+                <el-option v-for="k in flowKinds" :key="k.value" :value="k.value" :label="k.label">
+                  <span>{{ k.label }}</span>
+                  <span class="opt-hint">{{ k.hint }}</span>
+                </el-option>
+              </el-select>
+            </div>
+          </div>
+        </div>
+
+        <div class="fr-factor" v-if="flowFactor !== null">
+          换算系数（目标/已知）= {{ flowFactor.toFixed(5) }}
+          <span v-if="needGauge" class="fr-note">（含计前负压 {{ flowForm.gaugePressure }} kPa 修正）</span>
+          <span v-else-if="flowForm.from === flowForm.to" class="fr-note">（同类型流量，系数为 1）</span>
         </div>
       </div>
     </div>
@@ -379,8 +379,7 @@ const settingRule = computed(() => {
 .rule-tip :deep(.el-alert__description) { font-size: 13px; line-height: 1.7; }
 
 /* ===== 卡片一：流量换算布局 ===== */
-.flow-layout { display: grid; grid-template-columns: 1fr 268px; gap: 16px; align-items: start; }
-.flow-main { min-width: 0; }
+.flow-main { margin-top: 16px; min-width: 0; }
 .convert-row { display: flex; gap: 10px; align-items: stretch; }
 .io-card {
   flex: 1; min-width: 0;
@@ -406,13 +405,13 @@ const settingRule = computed(() => {
 .fr-factor { margin-top: 12px; font-size: 12.5px; color: var(--text-light); }
 .fr-note { opacity: 0.8; }
 
-/* 现场条件隔离区 */
+/* 现场条件隔离区（顶部横排） */
 .env-panel {
   border: 1.5px dashed rgba(37, 99, 235, 0.35); background: rgba(37, 99, 235, 0.045);
   border-radius: 16px; padding: 14px 16px 16px;
-  display: flex; flex-direction: column; gap: 12px;
 }
-.panel-title { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; color: var(--primary); }
+.panel-title { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; color: var(--primary); margin-bottom: 12px; }
+.env-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px 16px; align-items: start; }
 .env-panel .field label { margin-bottom: 4px; }
 .field-err { font-size: 11.5px; color: #ef4444; margin-top: 4px; }
 
@@ -509,7 +508,6 @@ const settingRule = computed(() => {
 
 /* ===== 移动端 ===== */
 @media (max-width: 860px) {
-  .flow-layout { grid-template-columns: 1fr; }
   .vol-layout { grid-template-columns: 1fr; }
 }
 @media (max-width: 640px) {
