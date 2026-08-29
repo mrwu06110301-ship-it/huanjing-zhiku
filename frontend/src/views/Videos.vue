@@ -206,10 +206,10 @@ function tagColor(v: any) {
               <span class="meta-author">
                 <img v-if="v.author_avatar" :src="v.author_avatar" alt="" class="meta-avatar" />
                 <Icon v-else name="user" :size="12" />
-                {{ v.author_name || '未知' }}
+                <span class="meta-name">{{ v.author_name || '未知' }}</span>
               </span>
               <span class="meta-dot">·</span>
-              <span><Icon name="eye" :size="12" /> {{ v.view_count || 0 }}次播放</span>
+              <span class="meta-views"><Icon name="eye" :size="12" /> {{ v.view_count || 0 }}次播放</span>
             </div>
           </div>
         </div>
@@ -377,9 +377,13 @@ function tagColor(v: any) {
 }
 .card-meta { font-size: 12px; color: var(--text-muted); display: flex; gap: 4px; align-items: center; }
 .meta-avatar { width: 16px; height: 16px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
-.meta-author { display: flex; align-items: center; gap: 4px; }
+.meta-author { display: flex; align-items: center; gap: 4px; min-width: 0; } /* min-width:0 允许子元素收缩截断 */
+.meta-name {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; /* 作者名超长省略号 */
+}
 .card-meta span { display: flex; align-items: center; gap: 2px; }
-.meta-dot { color: var(--border); }
+.meta-dot { color: var(--border); flex-shrink: 0; }
+.meta-views { flex-shrink: 0; white-space: nowrap; } /* 播放次数整体不换行不折断 */
 
 @media (max-width: 768px) {
   .page-header { padding: 24px 0 16px; flex-wrap: wrap; }
@@ -388,7 +392,7 @@ function tagColor(v: any) {
   .carousel-section { height: 240px; }
   .recommend-section { height: auto; }
   .videos-page { padding: 0 12px; }
-  .video-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+  .video-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
   .slide-title { font-size: 18px; }
   .search-input { width: 140px; }
   .search-input:focus { width: 160px; }
