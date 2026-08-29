@@ -39,7 +39,7 @@ function getToolIcon(slug: string): string {
     "unit-converter": "layers",
     "air-sampling-model": "wind",
     "pollution-source-model": "chimney",
-    "doas-model": "beaker",
+    "doas-model": "flask",
     "flue-sampling": "filter",
   };
   return map[slug] || "tool";
