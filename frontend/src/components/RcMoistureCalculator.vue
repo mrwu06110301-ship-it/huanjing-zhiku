@@ -7,7 +7,7 @@
 import { ref, reactive, computed } from "vue";
 import { ElMessage } from "element-plus";
 import Icon from "@/components/Icon.vue";
-import { computeMoisture, saturationVaporPressure, MOISTURE_DEMO } from "@/utils/rc-moisture";
+import { computeMoisture, satLookup, SAT_TABLE, MOISTURE_DEMO } from "@/utils/rc-moisture";
 
 /** 方式说明（方式选择卡用） */
 const METHODS = [
@@ -59,13 +59,16 @@ const current = computed(() =>
     : null
 );
 
-/** 饱和蒸汽压速查表（当前温度 ±5℃ 及常用点） */
-const tableTemps = computed(() => {
-  const t = form.temperature;
-  const base = t === null ? 25 : Math.round(t);
-  const set = new Set<number>([0, 5, 10, 15, 20, 25, 30, 40, 50, 60, 80, 100]);
-  for (let d = -5; d <= 5; d++) if (base + d >= 0) set.add(base + d);
-  return [...set].sort((a, b) => a - b).map((tt) => ({ t: tt, p: saturationVaporPressure(tt) }));
+/** 饱和蒸汽压速查表：0~100℃ 全整数点（查表用），非整数温度线性插值 */
+const tableTemps = computed(() =>
+  SAT_TABLE.map((p, t) => ({ t, p }))
+);
+
+/** 当前温度的插值展示（如 25.3℃ 在 25~26 之间线性取值） */
+const interpInfo = computed(() => {
+  if (form.temperature === null) return null;
+  const s = satLookup(form.temperature);
+  return s.frac > 0 ? s : null;
 });
 
 function loadDemo() {
@@ -170,15 +173,20 @@ const showExplain = ref(false);
     <!-- ===== 卡片三：饱和水蒸气压速查表 ===== -->
     <div class="card">
       <div class="card-head">
-        <h3><Icon name="layers" :size="17" /> 饱和水蒸气压速查表（kPa）</h3>
+        <h3><Icon name="layers" :size="17" /> 饱和水蒸气压速查表（kPa，0~100℃ 整数点）</h3>
+      </div>
+      <div class="interp-bar" v-if="interpInfo">
+        <Icon name="info" :size="14" />
+        查表线性插值：{{ form.temperature }}℃ = P({{ interpInfo.tLow }}) + {{ interpInfo.frac }} × (P({{ interpInfo.tHigh }}) − P({{ interpInfo.tLow }})) =
+        <b>{{ interpInfo.p.toFixed(4) }}</b> kPa
       </div>
       <div class="vapor-table">
-        <div v-for="row in tableTemps" :key="row.t" :class="['vt-cell', { hot: form.temperature !== null && row.t === Math.round(form.temperature) }]">
+        <div v-for="row in tableTemps" :key="row.t" :class="['vt-cell', { hot: interpInfo !== null && (row.t === interpInfo.tLow || row.t === interpInfo.tHigh), warm: interpInfo === null && form.temperature !== null && row.t === Math.round(form.temperature) }]">
           <span class="vt-t">{{ row.t }}℃</span>
           <span class="vt-p">{{ row.p.toFixed(3) }}</span>
         </div>
       </div>
-      <p class="vt-note">Buck 公式计算（0~100℃ 精度 ±0.06%），绿色高亮为当前输入温度附近；方式1 的「查表」即用此表。</p>
+      <p class="vt-note">绿色高亮为插值所用的两个相邻整数点；计算时非整数温度在相邻整数点之间<b>线性插值取值</b>（如 25.3℃ 在 25~26 之间线性取值）。</p>
     </div>
 
     <!-- ===== 卡片四：公式说明（默认折叠） ===== -->
@@ -262,17 +270,25 @@ const showExplain = ref(false);
 .steps-title { font-size: 12.5px; font-weight: 700; color: var(--text-light); margin-bottom: 8px; }
 .step-line { font-size: 12.5px; color: var(--text-light); line-height: 1.9; font-family: Consolas, Monaco, monospace; word-break: break-all; }
 
-.vapor-table { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; }
+.vapor-table { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 6px; max-height: 320px; overflow-y: auto; padding-right: 4px; }
 .vt-cell {
   display: flex; justify-content: space-between; align-items: baseline;
   background: var(--bg-soft, #f6f8fa); border: 1px solid var(--border-light);
-  border-radius: 10px; padding: 8px 12px;
+  border-radius: 10px; padding: 7px 11px;
 }
 .vt-cell.hot { background: rgba(22, 163, 74, 0.1); border-color: rgba(22, 163, 74, 0.4); }
+.vt-cell.warm { background: rgba(22, 163, 74, 0.06); border-color: rgba(22, 163, 74, 0.25); }
 .vt-t { font-size: 12.5px; color: var(--text-light); font-weight: 600; }
-.vt-p { font-size: 13px; font-weight: 700; color: var(--text); font-family: Consolas, monospace; }
-.vt-cell.hot .vt-p { color: #166534; }
+.vt-p { font-size: 12.5px; font-weight: 700; color: var(--text); font-family: Consolas, monospace; }
+.vt-cell.hot .vt-p, .vt-cell.warm .vt-p { color: #166534; }
 .vt-note { margin: 10px 0 0; font-size: 12px; color: var(--text-light); }
+.interp-bar {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  background: rgba(22, 163, 74, 0.08); border: 1px dashed rgba(22, 163, 74, 0.35);
+  border-radius: 10px; padding: 8px 13px; margin-bottom: 12px;
+  font-size: 12.5px; color: var(--text-light);
+}
+.interp-bar b { color: #166534; font-size: 13.5px; }
 
 .explain-head { display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none; }
 .explain-head h3 { font-size: 16px; font-weight: 700; color: var(--text); display: flex; align-items: center; gap: 8px; margin: 0; }
@@ -308,8 +324,7 @@ const showExplain = ref(false);
   .rm-outputs { grid-template-columns: 1fr 1fr; }
   .vr-card b { font-size: 19px; }
   .vr-card.main b { font-size: 22px; }
-  .vapor-table { grid-template-columns: repeat(3, 1fr); }
-  .head-actions { width: 100%; }
+  .vapor-table { grid-template-columns: repeat(3, 1fr); }  .head-actions { width: 100%; }
   .head-actions :deep(.el-button) { flex: 1; margin-left: 0; }
 }
 </style>

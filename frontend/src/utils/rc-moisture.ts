@@ -6,24 +6,44 @@
  *
  * P当前 = 传感器处实际绝对压力 = 大气压 Ba + 计前压力 Pg（计前负压为负值）
  *
+ * 饱和水蒸气压「查表」逻辑：预置 0~100℃ 整数点表（Buck 公式生成，±0.06%），
+ * 非整数温度在相邻整数点之间线性插值——如 25.3℃ = P(25) + 0.3×(P(26)−P(25))。
+ *
  * 两种水蒸气分压计算路径：
  *  方式1（饱和蒸汽压法）：
- *   (1) P饱和 = f(T) —— Buck 公式：P饱和 = 0.61121 × exp((18.678 − T/234.5) × T/(257.14 + T)) kPa
- *       （0~100℃ 精度 ±0.06%，等效查饱和水蒸气压表）
+ *   (1) P饱和 = f(T) —— 查表线性插值
  *   (2) P分压 = P饱和 × RH(%)/100
  *   (3) 含湿量 Xsw(体积比%) = P分压 / P当前 × 100
  *
  *  方式2（露点法）：
- *   (1) 由 T、RH 计算露点 Td（Magnus-Tetens：Td = 243.04×α/(17.625−α)，α = ln(RH/100)+17.625T/(243.04+T)）
- *   (2) P分压 = P饱和(Td)（露点温度对应的饱和水蒸气压——即当前实际水蒸气分压）
+ *   (1) 由 T、RH 计算露点 Td（Magnus-Tetens）
+ *   (2) P分压 = 查表(Td)（露点线性插值到整数点之间）
  *   (3) 含湿量 Xsw = P分压 / P当前 × 100
- *
- * 两种方式结果一致（露点法是饱和蒸汽压法的等价变形），现场仪器多用方式1。
  */
 
-/** Buck 公式：饱和水蒸气压 kPa（0~100℃，精度 ±0.06%） */
+/** Buck 公式：饱和水蒸气压 kPa（用于生成查表整数点基准，0~100℃ 精度 ±0.06%） */
 export function saturationVaporPressure(tC: number): number {
   return 0.61121 * Math.exp(((18.678 - tC / 234.5) * tC) / (257.14 + tC));
+}
+
+/** 整数温度点饱和水蒸气压表（0~100℃，kPa，Buck 公式生成） */
+export const SAT_TABLE: number[] = Array.from({ length: 101 }, (_, t) =>
+  Number(saturationVaporPressure(t).toFixed(4))
+);
+
+/**
+ * 查表线性插值：整数温度直接取表值；小数温度在相邻整数点间线性取值。
+ * 如 25.3℃ → P(25) + 0.3 × (P(26) − P(25))
+ */
+export function satLookup(tC: number): { p: number; tLow: number; tHigh: number; frac: number; pLow: number; pHigh: number } {
+  const t = Math.min(100, Math.max(0, tC));
+  const tLow = Math.floor(t);
+  const tHigh = Math.min(100, tLow + 1);
+  const frac = t - tLow;
+  const pLow = SAT_TABLE[tLow];
+  const pHigh = SAT_TABLE[tHigh];
+  const p = pLow + frac * (pHigh - pLow);
+  return { p, tLow, tHigh, frac, pLow, pHigh };
 }
 
 /** Magnus-Tetens 露点计算（℃，RH 以 % 输入） */
@@ -43,8 +63,8 @@ export interface MoistureInput {
 
 export interface MoistureResult {
   pressure: number;    // P当前 = Ba + Pg（传感器处绝对压力 kPa）
-  pSat: number;        // T 对应饱和水蒸气压 kPa
-  pDew: number;        // 露点对应饱和水蒸气压 kPa（= 实际水蒸气分压，方式2）
+  pSat: number;        // T 查表饱和水蒸气压 kPa（线性插值）
+  pDew: number;        // 露点查表饱和水蒸气压 kPa（= 实际水蒸气分压，方式2）
   dewPoint: number;    // 露点 ℃
   pPartial: number;    // 水蒸气分压 kPa
   moisture: number;    // 含湿量 Xsw（体积比 %）
@@ -60,27 +80,30 @@ export function computeMoisture(input: MoistureInput): MoistureResult {
     `① P当前 = 大气压 + 计前压力 = ${Ba} + ${Pg} = ${P.toFixed(2)} kPa（传感器处实际绝对压力）`
   );
 
-  const pSatT = saturationVaporPressure(T);
+  // 查表线性插值（方式1 用）
+  const sat = satLookup(T);
   steps.push(
-    `② P饱和(T=${T}℃) = 0.61121 × exp((18.678 − T/234.5) × T/(257.14 + T)) = ${pSatT.toFixed(4)} kPa（查饱和水蒸气压表/Buck 公式）`
+    `② 查表 P饱和(${T}℃)：P(${sat.tLow}) = ${sat.pLow} kPa，P(${sat.tHigh}) = ${sat.pHigh} kPa，线性插值 ${sat.frac} → ${sat.p.toFixed(4)} kPa`
   );
 
+  // 露点及其查表值（方式2 用 / 交叉验证）
   const Td = dewPoint(T, RH);
-  const pDew = saturationVaporPressure(Td);
+  const dewSat = satLookup(Td);
+  const pDew = dewSat.p;
   steps.push(
-    `③ 露点 Td = 243.04×ln(RH/100×exp(17.625T/(T+243.04))) / (17.625 − …) = ${Td.toFixed(2)} ℃`
+    `③ 露点 Td = 243.04×ln(RH/100×exp(17.625T/(T+243.04))) / (17.625 − …) = ${Td.toFixed(2)} ℃（查表插值 → ${pDew.toFixed(4)} kPa）`
   );
 
   let pPartial: number;
   if (method === 1) {
-    pPartial = pSatT * (RH / 100);
+    pPartial = sat.p * (RH / 100);
     steps.push(
-      `④ 方式1：P分压 = P饱和 × RH/100 = ${pSatT.toFixed(4)} × ${RH}% = ${pPartial.toFixed(4)} kPa`
+      `④ 方式1：P分压 = P饱和 × RH/100 = ${sat.p.toFixed(4)} × ${RH}% = ${pPartial.toFixed(4)} kPa`
     );
   } else {
     pPartial = pDew;
     steps.push(
-      `④ 方式2：P分压 = P饱和(Td=${Td.toFixed(2)}℃) = ${pDew.toFixed(4)} kPa（露点对应的饱和蒸汽压即实际水蒸气分压）`
+      `④ 方式2：P分压 = 查表(Td=${Td.toFixed(2)}℃) = ${pDew.toFixed(4)} kPa（露点对应的饱和蒸汽压即实际水蒸气分压）`
     );
   }
 
@@ -89,19 +112,19 @@ export function computeMoisture(input: MoistureInput): MoistureResult {
     `⑤ 含湿量 Xsw = P分压/P当前 × 100 = ${pPartial.toFixed(4)}/${P.toFixed(2)} × 100 = ${Xsw.toFixed(3)} %`
   );
   steps.push(
-    `⑥ 露点 ${Td.toFixed(2)}℃ 交叉验证：P饱和(Td)/P = ${((pDew / P) * 100).toFixed(3)} %${Math.abs(pDew / P * 100 - Xsw) < 0.05 ? "（与方式1一致）" : ""}`
+    `⑥ 露点 ${Td.toFixed(2)}℃ 交叉验证：查表(Td)/P = ${((pDew / P) * 100).toFixed(3)} %${Math.abs(pDew / P * 100 - Xsw) < 0.05 ? "（与所选方式一致）" : ""}`
   );
 
-  return { pressure: P, pSat: pSatT, pDew, dewPoint: Td, pPartial, moisture: Xsw, steps };
+  return { pressure: P, pSat: sat.p, pDew, dewPoint: Td, pPartial, moisture: Xsw, steps };
 }
 
-/** 常用温度点饱和水蒸气压速查（kPa，Magnus 计算） */
+/** 常用温度点饱和水蒸气压速查（整数点查表值） */
 export function vaporTable(temps: number[]): { t: number; p: number }[] {
-  return temps.map((t) => ({ t, p: saturationVaporPressure(t) }));
+  return temps.map((t) => ({ t, p: SAT_TABLE[Math.min(100, Math.max(0, Math.round(t)))] }));
 }
 
 export const MOISTURE_DEMO: MoistureInput = {
-  temperature: 25.0,
+  temperature: 25.3,
   humidity: 60,
   atmospheric: 101.325,
   gauge: 0,

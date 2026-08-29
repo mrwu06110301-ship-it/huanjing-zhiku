@@ -52,8 +52,10 @@ const currentGas = computed<GasDef | null>(() => {
 });
 
 function swapCommon() {
-  // 无目标单位后交换按钮仅做占位提示，不再交换
+  // 预留：无目标单位后交换按钮已移除
 }
+// eslint-disable-next-line
+void swapCommon;
 
 /** 全单位换算（输入即算） */
 const commonAll = computed(() => {
@@ -147,33 +149,44 @@ const showFormula = ref(false);
         <template v-else>· 摩尔体积 22.414 L/mol</template>
       </div>
 
-      <!-- 输入即换算 -->
-      <div class="convert-row">
-        <div class="field val-field">
-          <label>输入数值</label>
-          <el-input-number v-model="commonForm.value" :controls="false" placeholder="输入后自动换算" style="width:100%" />
+      <!-- 左：输入区 / 右：换算结果区 -->
+      <div class="split-layout" v-if="currentGas">
+        <div class="split-left">
+          <div class="pane-title"><Icon name="flame" :size="14" /> 输入</div>
+          <div class="field val-field">
+            <label>输入数值</label>
+            <el-input-number v-model="commonForm.value" :controls="false" placeholder="输入后自动换算" style="width:100%" />
+          </div>
+          <div class="field">
+            <label>单位</label>
+            <el-select v-model="commonForm.from" style="width:100%">
+              <el-option v-for="u in Object.keys(COMMON_UNIT_LABEL)" :key="u" :value="u" :label="COMMON_UNIT_LABEL[u as CommonUnit]" />
+            </el-select>
+          </div>
+          <div class="left-hint" v-if="commonForm.value === null">
+            <Icon name="info" :size="14" /> 输入数值后，右侧自动显示全部单位换算结果
+          </div>
         </div>
-        <div class="field">
-          <label>单位</label>
-          <el-select v-model="commonForm.from" style="width:100%">
-            <el-option v-for="u in Object.keys(COMMON_UNIT_LABEL)" :key="u" :value="u" :label="COMMON_UNIT_LABEL[u as CommonUnit]" />
-          </el-select>
-        </div>
-      </div>
 
-      <div v-if="commonForm.value === null" class="empty-hint">
-        <Icon name="info" :size="15" /> 输入数值后，全部单位换算结果自动显示
-      </div>
+        <div class="split-divider"></div>
 
-      <div v-if="commonAll.length" class="all-units">
-        <div class="au-title">
-          全单位换算结果
-          <span class="au-sub">{{ fmtResult(commonForm.value) }} {{ COMMON_UNIT_LABEL[commonForm.from] }} 时</span>
-        </div>
-        <div class="au-grid">
-          <div v-for="a in commonAll" :key="a.unit" :class="['au-cell', { src: a.unit === commonForm.from }]">
-            <span class="au-val">{{ fmtResult(a.value) }}</span>
-            <span class="au-unit">{{ a.label }}<template v-if="a.unit === commonForm.from"> ·输入</template></span>
+        <div class="split-right">
+          <div class="pane-title">
+            <Icon name="layers" :size="14" /> 换算结果
+            <span class="au-sub" v-if="commonForm.value !== null">{{ fmtResult(commonForm.value) }} {{ COMMON_UNIT_LABEL[commonForm.from] }} 时</span>
+          </div>
+          <template v-if="commonAll.length">
+            <div
+              v-for="a in commonAll"
+              :key="a.unit"
+              :class="['result-row', { src: a.unit === commonForm.from }]"
+            >
+              <span class="rr-unit">{{ a.label }}<template v-if="a.unit === commonForm.from"> · 输入</template></span>
+              <span class="rr-val">{{ fmtResult(a.value) }}</span>
+            </div>
+          </template>
+          <div class="left-hint" v-else>
+            <Icon name="info" :size="14" /> 等待输入…
           </div>
         </div>
       </div>
@@ -203,33 +216,45 @@ const showFormula = ref(false);
         总烃为混合物，无确定分子式——不支持 ppm / mg/m³，仅支持以碳计与以甲烷计单位互转（比值 16.043 / 12.011）
       </el-alert>
 
-      <div class="convert-row">
-        <div class="field val-field">
-          <label>输入数值</label>
-          <el-input-number v-model="vocForm.value" :controls="false" placeholder="输入后自动换算" style="width:100%" />
+      <!-- 左：输入区 / 右：换算结果区 -->
+      <div class="split-layout">
+        <div class="split-left">
+          <div class="pane-title"><Icon name="beaker" :size="14" /> 输入</div>
+          <div class="field val-field">
+            <label>输入数值</label>
+            <el-input-number v-model="vocForm.value" :controls="false" placeholder="输入后自动换算" style="width:100%" />
+          </div>
+          <div class="field">
+            <label>单位</label>
+            <el-select v-model="vocForm.from" style="width:100%">
+              <el-option v-for="u in Object.keys(VOC_UNIT_LABEL)" :key="u" :value="u" :label="VOC_UNIT_LABEL[u as VocUnit]" :disabled="!vocUnitAvailable(currentVocGas, u as VocUnit)" />
+            </el-select>
+            <div v-if="vocFromInvalid" class="field-err">总烃不支持该单位，请选碳计/甲烷计</div>
+          </div>
+          <div class="left-hint" v-if="vocForm.value === null">
+            <Icon name="info" :size="14" /> 输入数值后，右侧自动显示全部单位换算结果
+          </div>
         </div>
-        <div class="field">
-          <label>单位</label>
-          <el-select v-model="vocForm.from" style="width:100%">
-            <el-option v-for="u in Object.keys(VOC_UNIT_LABEL)" :key="u" :value="u" :label="VOC_UNIT_LABEL[u as VocUnit]" :disabled="!vocUnitAvailable(currentVocGas, u as VocUnit)" />
-          </el-select>
-          <div v-if="vocFromInvalid" class="field-err">总烃不支持该单位，请选碳计/甲烷计</div>
-        </div>
-      </div>
 
-      <div v-if="vocForm.value === null" class="empty-hint">
-        <Icon name="info" :size="15" /> 输入数值后，全部可用单位换算结果自动显示
-      </div>
+        <div class="split-divider"></div>
 
-      <div v-if="vocAll.length" class="all-units">
-        <div class="au-title">
-          可用单位换算结果<template v-if="currentVocGas.name === '总烃'">（ppm / mg/m³ 不适用）</template>
-          <span class="au-sub">{{ fmtResult(vocForm.value) }} {{ VOC_UNIT_LABEL[vocForm.from] }} 时</span>
-        </div>
-        <div class="au-grid">
-          <div v-for="a in vocAll" :key="a.unit" :class="['au-cell', { src: a.unit === vocForm.from }]">
-            <span class="au-val">{{ fmtResult(a.value) }}</span>
-            <span class="au-unit">{{ a.label }}<template v-if="a.unit === vocForm.from"> ·输入</template></span>
+        <div class="split-right">
+          <div class="pane-title">
+            <Icon name="layers" :size="14" /> 换算结果
+            <span class="au-sub" v-if="vocForm.value !== null && !vocFromInvalid">{{ fmtResult(vocForm.value) }} {{ VOC_UNIT_LABEL[vocForm.from] }} 时</span>
+          </div>
+          <template v-if="vocAll.length">
+            <div
+              v-for="a in vocAll"
+              :key="a.unit"
+              :class="['result-row', { src: a.unit === vocForm.from }]"
+            >
+              <span class="rr-unit">{{ a.label }}<template v-if="a.unit === vocForm.from"> · 输入</template></span>
+              <span class="rr-val">{{ fmtResult(a.value) }}</span>
+            </div>
+          </template>
+          <div class="left-hint" v-else>
+            <Icon name="info" :size="14" /> 等待输入…
           </div>
         </div>
       </div>
@@ -280,6 +305,7 @@ const showFormula = ref(false);
 .field.grow { flex: 1; min-width: 220px; }
 .field label { font-size: 13px; color: var(--text-light); font-weight: 500; }
 .field-err { font-size: 11.5px; color: #ef4444; }
+.au-sub { font-size: 12px; font-weight: 400; color: var(--text-light); }
 .opt-hint { float: right; font-size: 11px; color: var(--text-light); margin-left: 10px; font-family: Consolas, monospace; }
 
 .m-bar {
@@ -289,37 +315,53 @@ const showFormula = ref(false);
 }
 .m-bar b { color: var(--primary); font-size: 14.5px; margin: 0 2px; }
 
-.convert-row { display: flex; gap: 10px; align-items: flex-start; flex-wrap: wrap; }
-.convert-row .field { flex: 1; min-width: 130px; }
-.convert-row .val-field { flex: 1.3; min-width: 160px; }
-.swap-btn {
-  width: 40px; height: 32px; border-radius: 12px; border: 1px solid var(--border-light);
-  background: var(--white); color: var(--text-light); cursor: pointer;
-  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
-  transition: all 0.25s var(--ease); margin-top: 27px;
+/* ===== 左右分区布局 ===== */
+.split-layout {
+  display: grid; grid-template-columns: minmax(260px, 340px) 1px 1fr;
+  gap: 0 22px; align-items: stretch; margin-top: 6px;
 }
-.swap-btn:hover { color: var(--primary); border-color: var(--primary); transform: rotate(180deg); }
+.split-left { display: flex; flex-direction: column; gap: 12px; }
+.split-right { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
+.split-divider {
+  background: linear-gradient(to bottom, transparent, var(--border-light) 12%, var(--border-light) 88%, transparent);
+}
+.pane-title {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 13px; font-weight: 700; color: var(--primary);
+  padding: 6px 10px; background: rgba(37, 99, 235, 0.06);
+  border-radius: 8px; margin-bottom: 4px; flex-wrap: wrap;
+}
+.pane-title .au-sub { margin-left: auto; }
+.left-hint {
+  margin-top: 4px; padding: 12px; border-radius: 12px;
+  border: 1.5px dashed var(--border-light); color: var(--text-light); font-size: 12.5px;
+  display: flex; align-items: center; gap: 8px;
+}
+
+/* 结果行：单位名左、数值右，凸显单位 */
+.result-row {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 14px;
+  background: var(--bg-soft, #f6f8fa); border: 1px solid var(--border-light);
+  border-radius: 12px; padding: 10px 16px; transition: all 0.2s var(--ease);
+}
+.result-row:hover { border-color: rgba(37, 99, 235, 0.35); }
+.result-row.src { background: rgba(6, 182, 212, 0.07); border-color: rgba(6, 182, 212, 0.45); }
+.rr-unit {
+  font-size: 13px; font-weight: 700; color: var(--text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 0;
+}
+.result-row.src .rr-unit { color: #0e7490; }
+.rr-val {
+  font-size: 17px; font-weight: 800; color: var(--text);
+  font-family: Consolas, Monaco, monospace; word-break: break-all; text-align: right;
+}
+.result-row.src .rr-val { color: var(--primary); }
 
 .empty-hint {
   margin-top: 14px; padding: 14px; border-radius: 12px;
   border: 1.5px dashed var(--border-light); color: var(--text-light); font-size: 13px;
   display: flex; align-items: center; gap: 8px;
 }
-
-.all-units { margin-top: 18px; }
-.au-title { font-size: 13.5px; font-weight: 700; color: var(--text); margin-bottom: 10px; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
-.au-sub { font-size: 12px; font-weight: 400; color: var(--text-light); }
-.au-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
-.au-cell {
-  background: var(--bg-soft, #f6f8fa); border: 1px solid var(--border-light);
-  border-radius: 14px; padding: 12px 14px; text-align: center;
-  display: flex; flex-direction: column; gap: 5px; transition: all 0.2s var(--ease);
-}
-.au-cell.src { border-color: rgba(6, 182, 212, 0.45); background: rgba(6, 182, 212, 0.06); }
-.au-cell.hot { background: rgba(37, 99, 235, 0.1); border-color: rgba(37, 99, 235, 0.4); }
-.au-val { font-size: 17px; font-weight: 800; color: var(--text); word-break: break-all; font-family: Consolas, Monaco, monospace; }
-.au-cell.hot .au-val { color: var(--primary); font-size: 19px; }
-.au-unit { font-size: 12px; color: var(--text-light); font-weight: 500; align-self: flex-end; }
 
 .thc-tip { margin-bottom: 14px; }
 
@@ -354,10 +396,12 @@ const showFormula = ref(false);
 @media (max-width: 640px) {
   .card { padding: 16px 14px; }
   .mode-row { flex-direction: column; align-items: stretch; }
-  .convert-row .field { min-width: calc(50% - 10px); }
-  .convert-row .val-field { min-width: 100%; }
-  .swap-btn { margin-top: 0; align-self: center; }
-  .au-grid { grid-template-columns: 1fr 1fr; }
+  .split-layout { grid-template-columns: 1fr; gap: 14px; }
+  .split-divider {
+    height: 1px; width: 100%;
+    background: linear-gradient(to right, transparent, var(--border-light) 12%, var(--border-light) 88%, transparent);
+  }
+  .rr-val { font-size: 15px; }
   .mode-row :deep(.el-radio-group) { width: 100%; display: flex; }
   .mode-row :deep(.el-radio-button) { flex: 1; }
 }
