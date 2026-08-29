@@ -5,7 +5,7 @@
  * SO2/NO/NO2 输入 + NOx 自动计算（以 NO2 计），μmol/mol ↔ mg/m³ 单位全表联动
  * 布局：现场参数卡 + 仪器示值→换算→折算合并比对表；公式见底部"公式依据"折叠卡
  */
-import { ref, reactive, computed } from "vue";
+import { ref, reactive, computed, watch } from "vue";
 import { ElMessage } from "element-plus";
 import Icon from "@/components/Icon.vue";
 import O2sPicker from "@/components/O2sPicker.vue";
@@ -25,13 +25,14 @@ const env = reactive({
 // ==================== 基准含氧量（O2sPicker 数值+行业组合） ====================
 const o2sInput = ref<number | null>(6);
 
-// ==================== 仪器直读浓度（单位可切换 μmol/mol ↔ mg/m³） ====================
+// ==================== 仪器示值（单位可切换 μmol/mol ↔ mg/m³） ====================
 type ConcUnit = "ppm" | "mg";
 const concUnit = ref<ConcUnit>("ppm");
-const gases = reactive({
-  SO2: null as number | null,
-  NO: null as number | null,
-  NO2: null as number | null,
+/** 每气体双值：湿基/干基（热湿法双向输入自动换算另一侧；冷干法只填干基） */
+const gases = reactive<Record<"SO2" | "NO" | "NO2", { wet: number | null; dry: number | null }>>({
+  SO2: { wet: null, dry: null },
+  NO: { wet: null, dry: null },
+  NO2: { wet: null, dry: null },
 });
 
 /** 输入值 → 统一转为体积浓度 μmol/mol 参与计算 */
@@ -48,18 +49,29 @@ function fromPpm(key: GasKey, ppm: number | null): number | null {
   const M = key === "SO2" ? MOL.SO2 : key === "NO" ? MOL.NO : MOL.NO2;
   return (M / 22.4) * ppm;
 }
-/** NOₓ 自动计算：NO + NO₂ 之和（以 NO₂ 计），无需输入 */
-const noxPpm = computed<number | null>(() => {
-  const a = toPpm("NO", gases.NO);
-  const b = toPpm("NO2", gases.NO2);
-  return a === null && b === null ? null : (a ?? 0) + (b ?? 0);
-});
 
+/** 单位切换时把已填的湿/干基值换算到新单位（显式方向，不依赖 concUnit） */
+watch(concUnit, (nu, old) => {
+  if (nu === old) return;
+  const M = (k: GasKey) => (k === "SO2" ? MOL.SO2 : k === "NO" ? MOL.NO : MOL.NO2);
+  (Object.keys(gases) as Array<"SO2" | "NO" | "NO2">).forEach((k) => {
+    const g = gases[k];
+    if (old === "ppm" && nu === "mg") {
+      // μmol/mol → mg/m³
+      if (g.wet !== null) g.wet = (M(k) / 22.4) * g.wet;
+      if (g.dry !== null) g.dry = (M(k) / 22.4) * g.dry;
+    } else if (old === "mg" && nu === "ppm") {
+      // mg/m³ → μmol/mol
+      if (g.wet !== null) g.wet = (g.wet * 22.4) / M(k);
+      if (g.dry !== null) g.dry = (g.dry * 22.4) / M(k);
+    }
+  });
+});
 const unitLabel = computed(() => (concUnit.value === "ppm" ? "μmol/mol" : "mg/m³"));
 
-// ==================== 采样方法：冷干法（读数=干基）/ 热湿法（读数=湿基） ====================
+// ==================== 采样方法：冷干法（读数=干基）/ 热湿法（读数=湿基，干/湿双向输入） ====================
 type SampleMethod = "cold-dry" | "hot-wet";
-const sampleMethod = ref<SampleMethod>("cold-dry");
+const sampleMethod = ref<SampleMethod>("hot-wet");
 const isHotWet = computed(() => sampleMethod.value === "hot-wet");
 /** 热湿法读数为湿基，必须填含湿量才能换算干基 */
 const dryReady = computed(() => {
@@ -67,39 +79,55 @@ const dryReady = computed(() => {
   return env.Xsw !== null && env.Xsw < 100;
 });
 
-// ==================== 换算链（统一体积浓度参与，显示时按当前单位转换） ====================
+// ==================== 换算链（固定四行常显；统一体积浓度参与，按当前单位显示） ====================
 interface Row {
   key: GasKey | "NOx";
   label: string;
-  ppm: number | null;     // 仪器示值（冷干=干基读数 / 热湿=湿基读数）
+  ppmWet: number | null;  // 湿基体积浓度（冷干法不适用）
   ppmDry: number | null;  // 干基体积浓度
-  ppmWet: number | null;  // 湿基体积浓度（热湿法=示值；冷干法不适用）
 }
 
-const rows = computed<Row[]>(() => {
-  const list: Row[] = [];
-  const calc = (key: GasKey | "NOx", label: string, ppm: number | null) => {
-    if (ppm === null) return;
-    if (isHotWet.value) {
-      // 热湿法：示值=湿基 → 换算干基（方向：湿基→干基，不反算）
-      if (env.Xsw === null || env.Xsw >= 100) return; // 缺含湿量不计算
-      list.push({
-        key, label, ppm,
-        ppmDry: ppm / (1 - env.Xsw / 100),
-        ppmWet: ppm,
-      });
-    } else {
-      // 冷干法：示值即干基，湿基不适用
-      list.push({ key, label, ppm, ppmDry: ppm, ppmWet: null });
+const GAS_ORDER: Array<{ key: "SO2" | "NO" | "NO2" | "NOx"; label: string }> = [
+  { key: "SO2", label: "SO₂" },
+  { key: "NO", label: "NO" },
+  { key: "NO2", label: "NO₂" },
+  { key: "NOx", label: "NOₓ（以 NO₂ 计）" },
+];
+
+/** 气体湿基体积浓度（热湿法：湿基直取 / 干基×(1−Xsw/100)；冷干法 null） */
+function gasWetPpm(key: "SO2" | "NO" | "NO2"): number | null {
+  if (!isHotWet.value) return null;
+  const g = gases[key];
+  if (g.wet !== null) return toPpm(key, g.wet);
+  if (g.dry !== null && env.Xsw !== null && env.Xsw < 100) return toPpm(key, g.dry * (1 - env.Xsw / 100));
+  return null;
+}
+/** 气体干基体积浓度（热湿法：干基直取 / 湿基÷(1−Xsw/100)；冷干法干基直取） */
+function gasDryPpm(key: "SO2" | "NO" | "NO2"): number | null {
+  const g = gases[key];
+  if (isHotWet.value) {
+    if (g.dry !== null) return toPpm(key, g.dry);
+    if (g.wet !== null && env.Xsw !== null && env.Xsw < 100) return toPpm(key, g.wet / (1 - env.Xsw / 100));
+    return null;
+  }
+  return g.dry !== null ? toPpm(key, g.dry) : null;
+}
+
+const rows = computed<Row[]>(() =>
+  GAS_ORDER.map(({ key, label }) => {
+    if (key === "NOx") {
+      // NOₓ 分侧求和（NO + NO₂）
+      const nw = gasWetPpm("NO"), nw2 = gasWetPpm("NO2");
+      const nd = gasDryPpm("NO"), nd2 = gasDryPpm("NO2");
+      return {
+        key, label,
+        ppmWet: nw === null && nw2 === null ? null : (nw ?? 0) + (nw2 ?? 0),
+        ppmDry: nd === null && nd2 === null ? null : (nd ?? 0) + (nd2 ?? 0),
+      };
     }
-  };
-  calc("SO2", "SO₂", toPpm("SO2", gases.SO2));
-  calc("NO", "NO", toPpm("NO", gases.NO));
-  calc("NO2", "NO₂", toPpm("NO2", gases.NO2));
-  // NOx 放最后（以 NO2 计）
-  calc("NOx", "NOₓ（以 NO₂ 计）", noxPpm.value);
-  return list;
-});
+    return { key, label, ppmWet: gasWetPpm(key), ppmDry: gasDryPpm(key) };
+  }),
+);
 
 /** 按当前显示单位格式化（NOₓ 以 NO₂ 计） */
 function dispPpm(key: GasKey | "NOx", ppm: number | null): number | null {
@@ -125,7 +153,10 @@ const adjustRatio = computed(() => {
 function loadDemo() {
   Object.assign(env, { Xsw: UV_DEMO.Xsw, O2dry: UV_DEMO.O2dry, o2s: UV_DEMO.o2s });
   o2sInput.value = UV_DEMO.o2s;
-  Object.assign(gases, { SO2: UV_DEMO.so2_ppm, NO: UV_DEMO.no_ppm, NO2: UV_DEMO.no2_ppm });
+  // 示例为干基读数（冷干法直读）；默认热湿法时填入干基侧
+  gases.SO2 = { wet: null, dry: UV_DEMO.so2_ppm };
+  gases.NO = { wet: null, dry: UV_DEMO.no_ppm };
+  gases.NO2 = { wet: null, dry: UV_DEMO.no2_ppm };
   concUnit.value = "ppm";
   ElMessage.success("已填入示例数据");
 }
@@ -152,7 +183,7 @@ const showExplain = ref(false);
       </div>
 
       <el-alert type="info" :closable="false" show-icon class="rule-tip">
-        依据 HJ 75 / HJ 1045 附录 A 公式链：仪器示值 → 干湿基换算 → 基准含氧量折算。支持<b>冷干法（示值即干基）</b>与<b>热湿法（示值为湿基，需含湿量换算干基）</b>；NOₓ 由 NO+NO₂ 自动计算（以 NO₂ 计）。结果单位跟随示值单位自动切换，公式见底部"公式依据"。
+        依据 HJ 75 / HJ 1045 附录 A 公式链：仪器示值 → 干湿基换算 → 基准含氧量折算。<b>热湿法</b>：湿基/干基任填一侧自动换算另一侧（需含湿量）；<b>冷干法</b>：示值即干基。NOₓ 由 NO+NO₂ 自动计算（以 NO₂ 计）。结果单位跟随示值单位自动切换，公式见底部"公式依据"。
       </el-alert>
 
       <div class="grp-title">
@@ -210,7 +241,7 @@ const showExplain = ref(false);
                 湿基<small>（{{ isHotWet ? "仪器示值" : "不适用" }}，{{ unitLabel }}）</small>
               </th>
               <th :class="{ 'hot-col': !isHotWet }">
-                干基<small>（{{ isHotWet ? "换算值" : "仪器示值" }}，{{ unitLabel }}）</small>
+                干基<small>（{{ isHotWet ? "可输入/自动换算" : "仪器示值" }}，{{ unitLabel }}）</small>
               </th>
               <th>
                 折算浓度 <small>{{ unitLabel }}（O₂s={{ o2sInput ?? "—" }}%）</small>
@@ -220,44 +251,38 @@ const showExplain = ref(false);
           <tbody>
             <tr v-for="r in rows" :key="r.key">
               <td class="gas-name">{{ r.label }}</td>
-              <!-- 湿基：热湿法=仪器示值（输入/NOₓ自动）；冷干法显示 — -->
+              <!-- 湿基：热湿法可输入（另一侧自动换算）/ NOₓ 自动；冷干法显示 — -->
               <td v-if="isHotWet" class="input-cell">
                 <el-input-number
                   v-if="r.key !== 'NOx'"
-                  v-model="gases[r.key]"
+                  v-model="gases[r.key].wet"
                   :min="0" :precision="1" :controls="false"
-                  :placeholder="r.key === 'SO2' ? '86' : r.key === 'NO' ? '92' : '6'"
+                  placeholder="湿基示值"
                   class="cell-input"
                 />
-                <span v-else class="nox-val">{{ noxPpm !== null ? disp("NOx", noxPpm) : "—" }}</span>
+                <span v-else class="nox-val">{{ r.ppmWet !== null ? disp(r.key, r.ppmWet) : "—" }}</span>
               </td>
               <td v-else class="dim">—</td>
-              <!-- 干基：冷干法=仪器示值（输入/NOₓ自动）；热湿法=换算结果 -->
-              <td v-if="!isHotWet" class="input-cell">
+              <!-- 干基：均可输入；未填时显示换算结果 -->
+              <td class="input-cell" :class="{ 'hot-col': isHotWet }">
                 <el-input-number
                   v-if="r.key !== 'NOx'"
-                  v-model="gases[r.key]"
+                  v-model="gases[r.key].dry"
                   :min="0" :precision="1" :controls="false"
-                  :placeholder="r.key === 'SO2' ? '86' : r.key === 'NO' ? '92' : '6'"
+                  placeholder="干基示值"
                   class="cell-input"
                 />
-                <span v-else class="nox-val">{{ noxPpm !== null ? disp("NOx", noxPpm) : "—" }}</span>
+                <span v-else class="nox-val">{{ r.ppmDry !== null ? disp(r.key, r.ppmDry) : "—" }}</span>
               </td>
-              <td v-else class="hot-col"><b>{{ disp(r.key, r.ppmDry) }}</b></td>
-              <!-- 折算 -->
+              <!-- 折算（始终按干基） -->
               <td><b class="adj-val">{{ fmtAdj(r) }}</b></td>
-            </tr>
-            <tr v-if="!rows.length">
-              <td colspan="4" class="empty-row">
-                {{ isHotWet ? "填写湿基示值与含湿量 Xsw 后自动计算" : "填写干基示值后自动计算" }}
-              </td>
             </tr>
           </tbody>
         </table>
       </div>
       <p class="matrix-note">
         {{ isHotWet
-          ? "热湿法：湿基列 = 仪器示值；干基 = 湿基示值 /(1−Xsw/100)；折算 = 干基 × (21−O₂s)/(21−O₂干)"
+          ? "热湿法：湿基/干基任填一侧自动换算另一侧（C干 = C湿/(1−Xsw/100)，需含湿量）；折算 = 干基 × (21−O₂s)/(21−O₂干)"
           : "冷干法：干基列 = 仪器示值（无需含湿量换算）；折算 = 干基 × (21−O₂s)/(21−O₂干)" }}；NOₓ 由 NO+NO₂ 自动计算（以 NO₂ 计）。
       </p>
     </div>
@@ -270,7 +295,7 @@ const showExplain = ref(false);
       </div>
       <div v-show="showExplain" class="explain-body">
         <h4>采样方法（冷干法 / 热湿法）</h4>
-        <div class="formula">冷干法：仪器示值即干基，直接计算；热湿法：C干 = C湿 / (1 − Xsw/100) 后再计算</div>
+        <div class="formula">冷干法：仪器示值即干基，直接计算；热湿法：湿基/干基任填一侧，C干 = C湿 / (1 − Xsw/100)、C湿 = C干 × (1 − Xsw/100)</div>
         <h4>干基 ← 湿基（计算方向：湿基 → 干基）</h4>
         <div class="formula">C干 = C湿 / (1 − Xsw/100)　（体积浓度与质量浓度算法相同）</div>
         <h4>体积浓度 ↔ 标态质量浓度</h4>
@@ -341,7 +366,6 @@ const showExplain = ref(false);
 }
 .adj-val { color: var(--primary); font-size: 14.5px; }
 .dim { color: var(--text-light); opacity: 0.55; }
-.empty-row { text-align: center; color: var(--text-light); font-size: 12.5px; padding: 18px 10px !important; }
 
 .matrix-wrap { overflow-x: auto; }
 .matrix { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13.5px; }
