@@ -14,4 +14,4 @@ class AboutContent(Base):
     content: Mapped[str] = mapped_column(Text, default="")
     images: Mapped[str] = mapped_column(Text, default="[]")  # JSON 字符串，存储图片 URL 列表
     auto_reply_text: Mapped[str] = mapped_column(Text, default="您的留言已收到，感谢您的支持与反馈！管理员将尽快回复您。")
-    updated_at = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at = mapped_column(DateTime, default=datetime.now)

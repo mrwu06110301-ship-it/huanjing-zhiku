@@ -1,6 +1,7 @@
 """留言模型 — 用户留言，需审核后公开，支持点赞和回复"""
 
-from sqlalchemy import Integer, String, Text, DateTime, ForeignKey, func, Boolean
+from datetime import datetime
+from sqlalchemy import Integer, String, Text, DateTime, ForeignKey, Boolean
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -28,7 +29,7 @@ class Message(Base):
     parent_id: Mapped[int] = mapped_column(Integer, ForeignKey("messages.id"), nullable=True)
 
     is_read: Mapped[bool] = mapped_column(default=False)
-    created_at = mapped_column(DateTime, server_default=func.now())
+    created_at = mapped_column(DateTime, default=datetime.now)
 
     author = relationship("User", lazy="noload")
     replies = relationship("Message", backref="parent", remote_side=[id], lazy="noload")

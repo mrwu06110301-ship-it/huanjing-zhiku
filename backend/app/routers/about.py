@@ -69,6 +69,6 @@ async def update_about(
         about.content = data.content
         about.images = data.images
         about.auto_reply_text = data.auto_reply_text
-        about.updated_at = datetime.utcnow()
+        about.updated_at = datetime.now()
     await db.flush()
     return AboutOut.from_orm_with_format(about)

@@ -1,6 +1,7 @@
 """学习视频模型"""
 
-from sqlalchemy import String, Integer, Text, Boolean, DateTime, ForeignKey, JSON, func
+from datetime import datetime
+from sqlalchemy import String, Integer, Text, Boolean, DateTime, ForeignKey, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -24,8 +25,8 @@ class Video(Base):
     is_featured: Mapped[bool] = mapped_column(Boolean, default=False)  # 轮播推荐
     view_count: Mapped[int] = mapped_column(Integer, default=0)
     author_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
-    created_at = mapped_column(DateTime, server_default=func.now())
-    updated_at = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+    created_at = mapped_column(DateTime, default=datetime.now)
+    updated_at = mapped_column(DateTime, default=datetime.now, onupdate=datetime.now)
 
     author = relationship("User", lazy="noload")
     category = relationship("Category", lazy="noload")

@@ -1,6 +1,7 @@
 """评论模型"""
 
-from sqlalchemy import String, Integer, Text, DateTime, ForeignKey, func
+from datetime import datetime
+from sqlalchemy import String, Integer, Text, DateTime, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -14,7 +15,7 @@ class Comment(Base):
     article_id: Mapped[int] = mapped_column(Integer, ForeignKey("articles.id"), nullable=False)
     author_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
     parent_id: Mapped[int] = mapped_column(Integer, ForeignKey("comments.id"), nullable=True)
-    created_at = mapped_column(DateTime, server_default=func.now())
+    created_at = mapped_column(DateTime, default=datetime.now)
 
     # 关联
     author = relationship("User", back_populates="comments", lazy="noload")

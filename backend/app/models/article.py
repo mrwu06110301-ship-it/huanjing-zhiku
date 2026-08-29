@@ -1,6 +1,7 @@
 """文章/帖子模型 — 覆盖论坛帖子、标准解读等"""
 
-from sqlalchemy import String, Integer, Boolean, Text, DateTime, ForeignKey, JSON, func
+from datetime import datetime
+from sqlalchemy import String, Integer, Boolean, Text, DateTime, ForeignKey, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -25,8 +26,8 @@ class Article(Base):
     view_count: Mapped[int] = mapped_column(Integer, default=0)
     like_count: Mapped[int] = mapped_column(Integer, default=0)
     author_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
-    created_at = mapped_column(DateTime, server_default=func.now())
-    updated_at = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+    created_at = mapped_column(DateTime, default=datetime.now)
+    updated_at = mapped_column(DateTime, default=datetime.now, onupdate=datetime.now)
 
     # 关联 — 使用 noload 避免异步 MissingGreenlet 错误，关联数据在路由中手动查询
     author = relationship("User", back_populates="articles", lazy="noload")

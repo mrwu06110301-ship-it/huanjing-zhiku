@@ -1,6 +1,7 @@
 """轮播图模型"""
 
-from sqlalchemy import String, Integer, Boolean, DateTime, func
+from datetime import datetime
+from sqlalchemy import String, Integer, Boolean, DateTime
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -15,4 +16,4 @@ class CarouselSlide(Base):
     link_video_id: Mapped[int] = mapped_column(Integer, nullable=True)  # 关联视频ID
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at = mapped_column(DateTime, server_default=func.now())
+    created_at = mapped_column(DateTime, default=datetime.now)
