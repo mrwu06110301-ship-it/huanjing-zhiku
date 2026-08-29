@@ -1,12 +1,16 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, computed, watch } from "vue";
-import { getStandards } from "@/api/standard";
+import { getStandards, uploadStandardsBatch, deleteStandard } from "@/api/standard";
 import { getCategories } from "@/api/category";
+import { checkUploadPermission } from "@/api/video";
 import type { StandardOut, CategoryOut } from "@/types";
 import { useShare } from "@/composables/useShare";
+import { useAuthStore } from "@/stores/auth";
+import { ElMessage, ElMessageBox } from "element-plus";
 import Icon from "@/components/Icon.vue";
 
 const { share } = useShare();
+const auth = useAuthStore();
 const standards = ref<StandardOut[]>([]);
 const categories = ref<CategoryOut[]>([]);
 const activeCat = ref<number | null>(null);
@@ -16,6 +20,91 @@ const page = ref(1);
 const pageSize = 24;
 const total = ref(0);
 const loadingMore = ref(false);
+
+/** 上传权限：与管理员用户管理的上传权限挂钩（同视频/论坛/FAQ 口径） */
+const canUpload = ref(false);
+
+// ---------- 批量上传 ----------
+const uploadVisible = ref(false);
+const uploadCategoryId = ref<number | null>(null);
+const uploadFiles = ref<File[]>([]);
+const uploading = ref(false);
+
+function onFileChange(e: Event) {
+  const input = e.target as HTMLInputElement;
+  if (!input.files) return;
+  const allowed = [".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx"];
+  for (const f of Array.from(input.files)) {
+    const ext = f.name.slice(f.name.lastIndexOf(".")).toLowerCase();
+    if (!allowed.includes(ext)) {
+      ElMessage.warning(`跳过不支持的文件：${f.name}（仅支持 PDF/Word/Excel/PPT）`);
+      continue;
+    }
+    uploadFiles.value.push(f);
+  }
+  input.value = ""; // 允许重复选择同一文件
+}
+
+function removeFile(idx: number) {
+  uploadFiles.value.splice(idx, 1);
+}
+
+function openUploadDialog() {
+  if (categories.value.length === 0) {
+    ElMessage.warning("暂无标准分类，请先在分类管理中创建");
+    return;
+  }
+  uploadCategoryId.value = activeCat.value ?? categories.value[0].id;
+  uploadFiles.value = [];
+  uploadVisible.value = true;
+}
+
+function fmtSize(n: number) {
+  return n > 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`;
+}
+
+async function submitUpload() {
+  if (!uploadCategoryId.value) { ElMessage.warning("请选择分类"); return; }
+  if (uploadFiles.value.length === 0) { ElMessage.warning("请选择要上传的文件"); return; }
+  uploading.value = true;
+  try {
+    const res = await uploadStandardsBatch(uploadFiles.value, uploadCategoryId.value);
+    const { success_count, fail_count, failed } = res.data;
+    if (fail_count === 0) {
+      ElMessage.success(`成功上传 ${success_count} 个标准`);
+    } else {
+      const reasons = failed.map((f) => `${f.file}：${f.reason}`).join("；");
+      ElMessage.warning(`成功 ${success_count} 个，失败 ${fail_count} 个（${reasons}）`);
+    }
+    uploadVisible.value = false;
+    if (activeCat.value && activeCat.value !== uploadCategoryId.value) {
+      switchCat(uploadCategoryId.value); // 切到刚上传的分类方便查看
+    } else {
+      page.value = 1;
+      loadStandards();
+    }
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.detail || "上传失败，请重试");
+  } finally {
+    uploading.value = false;
+  }
+}
+
+// ---------- 管理员删除 ----------
+async function handleDelete(s: StandardOut) {
+  try {
+    await ElMessageBox.confirm(`确定删除「${s.title}」吗？文件将一并删除，不可恢复。`, "删除标准", {
+      type: "warning", confirmButtonText: "删除", cancelButtonText: "取消",
+    });
+  } catch { return; }
+  try {
+    await deleteStandard(s.id);
+    ElMessage.success("已删除");
+    loadStandards();
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.detail || "删除失败");
+  }
+}
 
 const hasMore = computed(() => standards.value.length < total.value);
 
@@ -69,6 +158,12 @@ onMounted(async () => {
   const catRes = await getCategories("standard");
   categories.value = catRes.data;
   loadStandards();
+  if (auth.isLoggedIn()) {
+    try {
+      const res = await checkUploadPermission();
+      canUpload.value = res.data.can_upload;
+    } catch { /* ignore */ }
+  }
 });
 
 function switchCat(id: number | null) {
@@ -98,9 +193,14 @@ function openPdf(s: StandardOut) {
         </div>
         <p class="page-header-sub">环境标准 · 职业卫生标准 · EPA标准（共 {{ total }} 项）</p>
       </div>
-      <el-button plain size="small" class="share-btn" @click="share('方法标准', '环境标准 · 职业卫生标准 · EPA标准')">
-        <Icon name="share" :size="14" style="margin-right:6px" /> 分享
-      </el-button>
+      <div class="header-actions">
+        <el-button v-if="canUpload" type="primary" size="small" @click="openUploadDialog">
+          <Icon name="plus" :size="14" style="margin-right:6px" /> 上传标准
+        </el-button>
+        <el-button plain size="small" class="share-btn" @click="share('方法标准', '环境标准 · 职业卫生标准 · EPA标准')">
+          <Icon name="share" :size="14" style="margin-right:6px" /> 分享
+        </el-button>
+      </div>
     </div>
 
     <div class="cat-pills category-tabs">
@@ -139,6 +239,9 @@ function openPdf(s: StandardOut) {
           <Icon name="eye" :size="14" />
           <span>预览</span>
         </div>
+        <button v-if="auth.isAdmin()" class="std-delete-btn" title="删除标准" @click.stop="handleDelete(s)">
+          <Icon name="close" :size="13" />
+        </button>
       </div>
       <el-empty v-if="!loading && standards.length === 0" description="暂无标准文档" />
     </div>
@@ -151,6 +254,43 @@ function openPdf(s: StandardOut) {
         </template>
       </button>
     </div>
+
+    <!-- 批量上传弹窗 -->
+    <el-dialog v-model="uploadVisible" title="批量上传标准" width="560px" :close-on-click-modal="!uploading">
+      <div class="upload-form">
+        <div class="upload-field">
+          <label class="upload-label">所属分类 <span class="req">*</span></label>
+          <el-select v-model="uploadCategoryId" placeholder="选择标准分类" style="width: 100%" :disabled="uploading">
+            <el-option v-for="c in categories" :key="c.id" :label="c.name" :value="c.id" />
+          </el-select>
+        </div>
+        <div class="upload-field">
+          <label class="upload-label">选择文件 <span class="req">*</span></label>
+          <div class="upload-drop">
+            <label class="upload-pick">
+              <Icon name="plus" :size="20" />
+              <span>点击选择文件</span>
+              <span class="upload-hint">支持 PDF / Word / Excel / PPT，单文件 ≤ 200MB，可多选</span>
+              <input type="file" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx" hidden @change="onFileChange" />
+            </label>
+          </div>
+          <ul v-if="uploadFiles.length" class="upload-list">
+            <li v-for="(f, i) in uploadFiles" :key="i">
+              <Icon name="doc" :size="14" />
+              <span class="upload-name">{{ f.name }}</span>
+              <span class="upload-size">{{ fmtSize(f.size) }}</span>
+              <span class="upload-remove" @click="removeFile(i)">×</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="uploadVisible = false" :disabled="uploading">取消</el-button>
+        <el-button type="primary" :loading="uploading" @click="submitUpload">
+          {{ uploading ? "上传中..." : `上传${uploadFiles.length ? `（${uploadFiles.length} 个文件）` : ""}` }}
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -212,6 +352,52 @@ function openPdf(s: StandardOut) {
 .std-card:hover .std-pdf-badge {
   opacity: 1; color: var(--primary); background: var(--primary-light);
 }
+.std-delete-btn {
+  position: absolute; right: 14px; top: 12px;
+  width: 24px; height: 24px; display: none;
+  align-items: center; justify-content: center;
+  border: none; border-radius: 6px; cursor: pointer;
+  background: transparent; color: var(--text-muted);
+  transition: all 0.2s var(--ease);
+}
+.std-card:hover .std-delete-btn { display: flex; }
+.std-delete-btn:hover { background: #fee2e2; color: #dc2626; }
+/* 管理员卡片：预览徽标让位删除按钮 */
+.std-card:has(.std-delete-btn):hover .std-pdf-badge { right: 46px; }
+
+.header-actions { display: flex; gap: 8px; align-items: center; }
+
+/* 上传弹窗 */
+.upload-form { display: flex; flex-direction: column; gap: 16px; }
+.upload-field { display: flex; flex-direction: column; gap: 8px; }
+.upload-label { font-size: 13px; font-weight: 600; color: var(--text); }
+.req { color: #dc2626; }
+.upload-drop { display: flex; }
+.upload-pick {
+  flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 24px 16px; border: 1.5px dashed var(--border); border-radius: 10px;
+  color: var(--text-muted); cursor: pointer; transition: all 0.2s var(--ease);
+  background: var(--bg-soft);
+}
+.upload-pick:hover { border-color: var(--primary); color: var(--primary); background: var(--primary-light); }
+.upload-pick span { font-size: 13px; }
+.upload-hint { font-size: 11px !important; color: var(--text-muted); }
+.upload-list {
+  list-style: none; margin: 0; padding: 0; max-height: 180px; overflow-y: auto;
+  border: 1px solid var(--border-light); border-radius: 8px;
+}
+.upload-list li {
+  display: flex; align-items: center; gap: 8px; padding: 7px 12px;
+  font-size: 12px; color: var(--text); border-bottom: 1px solid var(--border-light);
+}
+.upload-list li:last-child { border-bottom: none; }
+.upload-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.upload-size { color: var(--text-muted); flex-shrink: 0; }
+.upload-remove {
+  cursor: pointer; font-size: 16px; line-height: 1; color: var(--text-muted);
+  padding: 0 2px; flex-shrink: 0;
+}
+.upload-remove:hover { color: #dc2626; }
 
 .load-more-wrap { display: flex; justify-content: center; padding: 32px 0 8px; }
 .load-more-btn {
@@ -231,5 +417,6 @@ function openPdf(s: StandardOut) {
   .local-search { width: 100%; }
   .local-search:focus { width: 100%; }
   .std-pdf-badge { opacity: 1; }
+  .std-delete-btn { display: flex; }
 }
 </style>

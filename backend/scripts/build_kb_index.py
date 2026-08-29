@@ -46,6 +46,25 @@ MAX_PDF_PAGES = 120
 
 
 # ---------------- 基础函数 ----------------
+_BLOCK_TAGS = re.compile(r"</?(?:p|div|br|li|tr|h[1-6]|blockquote|section|article)[^>]*>",
+                         re.IGNORECASE)
+_HTML_TAG = re.compile(r"<[^>]+>")
+_HTML_ENTITY = {"&nbsp;": " ", "&lt;": "<", "&gt;": ">", "&amp;": "&",
+                "&quot;": '"', "&#39;": "'", "&ldquo;": "“", "&rdquo;": "”",
+                "&mdash;": "—", "&hellip;": "…"}
+
+
+def html_to_text(html: str) -> str:
+    r"""富文本 HTML 转纯文本：块级标签转换行（保留段落结构），去其余标签与实体。"""
+    for k, v in _HTML_ENTITY.items():
+        html = html.replace(k, v)
+    text = _BLOCK_TAGS.sub("\n", html)
+    text = _HTML_TAG.sub("", text)
+    text = re.sub(r"[ \t\u3000]+", " ", text)
+    text = re.sub(r"\n\s*\n+", "\n", text)
+    return text.strip()
+
+
 def split_text(text: str, size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP) -> list[str]:
     text = re.sub(r"[ \t]+", " ", text).strip()
     if len(text) <= size:
@@ -137,12 +156,12 @@ def collect_chunks(db: sqlite3.Connection, with_pdf: bool = True, workers: int =
     chunks: list[dict] = []
     live_keys: set = set()
 
-    # 文章（含论坛文章）
+    # 文章（含论坛文章）——富文本 HTML 先转纯文本（块级标签转换行保留段落）
     for aid, title, content in cur.execute(
         "SELECT id, title, content FROM articles WHERE is_public = 1"
     ):
         live_keys.add(("article", aid))
-        for idx, c in enumerate(split_text(content)):
+        for idx, c in enumerate(split_text(html_to_text(content))):
             chunks.append({"source_type": "article", "source_id": aid, "chunk_idx": idx,
                            "title": title, "content": c, "url": f"/article/{aid}"})
 
@@ -264,8 +283,7 @@ def collect_chunks(db: sqlite3.Connection, with_pdf: bool = True, workers: int =
     if about_row and about_row[1].strip():
         aid_, html = about_row
         live_keys.add(("about", aid_))
-        plain = re.sub(r"<[^>]+>", " ", html)
-        plain = re.sub(r"\s+", " ", plain).strip()
+        plain = html_to_text(html)
         for idx, c in enumerate(split_text(plain, size=500, overlap=50)):
             chunks.append({"source_type": "about", "source_id": aid_, "chunk_idx": idx,
                            "title": "关于作者", "content": f"关于作者：{c}",
