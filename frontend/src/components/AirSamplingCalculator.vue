@@ -134,8 +134,20 @@ function loadDemo(demo: "inlet" | "scale") {
   ElMessage.success("已填入示例数据，结果自动换算");
 }
 
-// ====================== 计算说明 ======================
+// ====================== 计算说明（默认折叠） ======================
 const showExplain = ref(false);
+
+/** 随流量设置方式动态变化的规则提示 */
+const settingRule = computed(() => {
+  switch (volForm.flowSetting) {
+    case "inlet":
+      return "累计体积为入口流量体积（环境温度、实测大气压下），按 V标 = V入 × P/101.325 × 273.15/(T+273.15) 换算";
+    case "normal":
+      return "累计体积即为标况体积（0℃、101.325 kPa），V标 = 累计值，同时反推入口体积供校验";
+    case "scale":
+      return "累计体积为刻度流量体积（20℃、实测大气压扣计前负压），需先反推入口体积再换算标况";
+  }
+});
 </script>
 
 <template>
@@ -224,7 +236,7 @@ const showExplain = ref(false);
       </div>
 
       <el-alert type="warning" :closable="false" show-icon class="rule-tip">
-        <b>关键规则</b>：流量设置为「刻度」时累计体积为刻度流量体积（需先反推入口体积）；设置为「入口」时为入口体积；设置为「标况」时累计体积仍为<b>入口流量体积</b>（设备按入口控制采样）。
+        <b>当前规则（{{ volForm.flowSetting === "inlet" ? "入口" : volForm.flowSetting === "normal" ? "标况" : "刻度" }}）</b>：{{ settingRule }}
       </el-alert>
 
       <div class="vol-layout">
@@ -347,7 +359,7 @@ const showExplain = ref(false);
           <li><b>Q标</b> 标况流量（0℃、1 个标准大气压）；<b>Q参比</b> 参比流量（25℃、1 个标准大气压）</li>
           <li><b>P</b> 实测大气压 kPa；<b>T</b> 实测环境温度 ℃；<b>P_f</b> 管路计前负压 kPa（刻度流量参与）</li>
           <li><b>P_s</b> 标准状态大气压 101.325 kPa；刻度状态热力学温度取 (273.15+20) K</li>
-          <li>累计体积归属：刻流设置 → 刻度体积（先反推入口体积）；入口设置 → 入口体积；<b>标况设置 → 仍为入口体积</b></li>
+          <li>累计体积归属：刻流设置 → 刻度体积（先反推入口体积）；入口设置 → 入口体积；<b>标况设置 → 累计值即为标况体积</b>（反推入口体积供校验）</li>
         </ul>
       </div>
     </div>

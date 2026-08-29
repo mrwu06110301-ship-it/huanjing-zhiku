@@ -14,7 +14,7 @@
  * 采样体积换算核心规则（设备累计体积的归属）：
  *  (1) 流量设置为「刻度」时 → 累计体积为刻度流量体积
  *  (2) 流量设置为「入口」时 → 累计体积为入口流量体积
- *  (3) 流量设置为「标况」时 → 累计体积仍为【入口流量体积】（设备内部按入口控制）
+ *  (3) 流量设置为「标况」时 → 累计体积为【标况体积】（V标=累计值，反推入口体积供参考）
  */
 
 // kPa → Pa
@@ -121,7 +121,7 @@ export interface VolumeConvertResult {
  * 规则（来自设备采样逻辑）：
  *  - 流量设置为「刻度」：累计体积=刻度流量体积，需先反推入口体积
  *  - 流量设置为「入口」：累计体积=入口流量体积，直接换算
- *  - 流量设置为「标况」：累计体积仍为【入口流量体积】，直接换算
+ *  - 流量设置为「标况」：累计体积=标况体积，V标=累计值（反推入口体积供参考）
  */
 export function convertVolume(input: VolumeConvertInput): VolumeConvertResult {
   const { flowSetting, accumulatedVolume: V, temperature, pressure } = input;
@@ -132,23 +132,26 @@ export function convertVolume(input: VolumeConvertInput): VolumeConvertResult {
 
   let Vin: number;
   if (flowSetting === "scale") {
-    // 刻流模式：V刻 × √(Ps×(P−Pf))/P × √(T/(273.15+20)) = V入
+    // 刻流模式：V刻 ÷ [P/√(Ps(P−Pf)) × √(293.15/T)] = V入
     const Pf = Math.abs(input.gaugePressure ?? 0);
-    const factor = Math.sqrt(Ps * (P - Pf)) / P / Math.sqrt(toK(20) / T);
-    // 等价写法：V入 = V刻 / [P/√(Ps(P−Pf)) × √(293.15/T)]
-    Vin = V / ((P / Math.sqrt(Ps * (P - Pf))) * Math.sqrt(toK(20) / T));
+    const factor = (P / Math.sqrt(Ps * (P - Pf))) * Math.sqrt(toK(20) / T);
+    Vin = V / factor;
     steps.push(
       `流量设置为刻度：累计体积 ${V} L 为刻度流量体积，先反推入口体积`,
-      `V入 = V刻 ÷ [P/√(Ps×(P−Pf)) × √((273.15+20)/T)] = ${V} ÷ ${(P / Math.sqrt(Ps * (P - Pf))).toFixed(4)} × √(${toK(20).toFixed(2)}/${T.toFixed(2)}) 分项 = ${Vin.toFixed(4)} L`
+      `V入 = V刻 ÷ [P/√(Ps×(P−Pf)) × √((273.15+20)/T)] = ${V} ÷ ${factor.toFixed(5)} = ${Vin.toFixed(4)} L`
+    );
+  } else if (flowSetting === "normal") {
+    // 标况设置：累计体积即为标况体积，反推入口体积（用于展示与参比换算）
+    const f = (P / Ps) * (273.15 / T);
+    Vin = V / f;
+    steps.push(
+      `流量设置为标况：累计体积 ${V} L 即为标况体积（V标 = ${V} L）`,
+      `反推入口体积 V入 = V标 ÷ [P/101.325 × 273.15/(T+273.15)] = ${V} ÷ ${f.toFixed(5)} = ${Vin.toFixed(4)} L`
     );
   } else {
-    // 入口 / 标况设置：累计体积均为入口流量体积
+    // 入口设置：累计体积即为入口流量体积
     Vin = V;
-    steps.push(
-      flowSetting === "normal"
-        ? `流量设置为标况：累计体积仍为入口流量体积（设备按入口控制采样），V入 = ${V} L`
-        : `流量设置为入口：累计体积即为入口流量体积，V入 = ${V} L`
-    );
+    steps.push(`流量设置为入口：累计体积即为入口流量体积，V入 = ${V} L`);
   }
 
   // V标 = V入 × P/101.325 × 273.15/(T+273.15)
