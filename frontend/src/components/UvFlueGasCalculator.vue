@@ -294,7 +294,6 @@ const showExplain = ref(false);
                   v-if="r.key !== 'NOx'"
                   :model-value="gases[r.key].wet"
                   :min="0" :precision="1" :controls="false"
-                  :disabled="gases[r.key].edited === 'dry'"
                   placeholder="湿基示值"
                   class="cell-input"
                   @update:model-value="(v: number | null) => onWetInput(r.key as 'SO2'|'NO'|'NO2', v)"
