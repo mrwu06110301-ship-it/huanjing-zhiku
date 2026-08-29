@@ -5,6 +5,7 @@ import { getToolBySlug } from "@/api/tool";
 import type { ToolOut } from "@/types";
 import FlueSamplingCalculator from "@/components/FlueSamplingCalculator.vue";
 import AtmosphericStabilityCalculator from "@/components/AtmosphericStabilityCalculator.vue";
+import AirSamplingCalculator from "@/components/AirSamplingCalculator.vue";
 import { useShare } from "@/composables/useShare";
 import Icon from "@/components/Icon.vue";
 
@@ -22,6 +23,7 @@ onMounted(async () => {
 
 const isFlueSampling = computed(() => tool.value?.slug === "flue-sampling");
 const isAtmosphericStability = computed(() => tool.value?.slug === "atmospheric-stability");
+const isAirSampling = computed(() => tool.value?.slug === "air-sampling-model");
 
 /** 工具图标：与工具主页 Tools.vue 的 getToolIcon 保持一致 */
 const toolIcon = computed(() => {
@@ -59,6 +61,7 @@ function handleCalculate() { alert("计算功能开发中"); }
 
     <FlueSamplingCalculator v-if="isFlueSampling" />
     <AtmosphericStabilityCalculator v-else-if="isAtmosphericStability" />
+    <AirSamplingCalculator v-else-if="isAirSampling" />
 
     <template v-else>
       <div class="tool-body">
