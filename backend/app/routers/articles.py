@@ -257,6 +257,38 @@ async def update_article(
     )
 
 
+@router.put("/{article_id}/approve")
+async def approve_article(
+    article_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """管理员审核通过"""
+    result = await db.execute(select(Article).where(Article.id == article_id))
+    article = result.scalars().first()
+    if not article:
+        raise HTTPException(status_code=404, detail="文章不存在")
+    article.status = "approved"
+    await db.flush()
+    return {"detail": "审核通过", "id": article_id, "status": "approved"}
+
+
+@router.put("/{article_id}/reject")
+async def reject_article(
+    article_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """管理员审核拒绝"""
+    result = await db.execute(select(Article).where(Article.id == article_id))
+    article = result.scalars().first()
+    if not article:
+        raise HTTPException(status_code=404, detail="文章不存在")
+    article.status = "rejected"
+    await db.flush()
+    return {"detail": "已拒绝", "id": article_id, "status": "rejected"}
+
+
 @router.delete("/{article_id}")
 async def delete_article(
     article_id: int,
