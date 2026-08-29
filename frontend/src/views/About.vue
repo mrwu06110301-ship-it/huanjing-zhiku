@@ -3,6 +3,7 @@ import { ref, onMounted } from "vue";
 import { useAuthStore } from "@/stores/auth";
 import { getAbout, updateAbout, type AboutOut } from "@/api/about";
 import { ElMessage } from "element-plus";
+import { ElImageViewer } from "element-plus";
 import RichEditor from "@/components/RichEditor.vue";
 import Icon from "@/components/Icon.vue";
 
@@ -13,6 +14,23 @@ const editContent = ref("");
 const editAutoReply = ref("");
 const loading = ref(false);
 const saving = ref(false);
+
+// ==================== 图片点击预览 ====================
+const previewVisible = ref(false);
+const previewUrlList = ref<string[]>([]);
+const previewIndex = ref(0);
+const contentRef = ref<HTMLDivElement>();
+
+function onContentClick(e: MouseEvent) {
+  const target = e.target as HTMLElement;
+  if (target.tagName === "IMG") {
+    const imgs = Array.from(contentRef.value?.querySelectorAll("img") || []);
+    const idx = imgs.indexOf(target as HTMLImageElement);
+    previewUrlList.value = imgs.map(img => img.currentSrc || img.src);
+    previewIndex.value = idx >= 0 ? idx : 0;
+    previewVisible.value = true;
+  }
+}
 
 onMounted(async () => {
   loading.value = true;
@@ -90,7 +108,7 @@ async function saveAbout() {
     <div v-else class="about-card">
       <div v-if="loading" class="loading-state">加载中...</div>
       <template v-else>
-        <div class="author-content" v-html="about?.content || '<p style=color:var(--text-muted);text-align:center>暂无内容，管理员可点击下方编辑</p>'"></div>
+        <div class="author-content" ref="contentRef" v-html="about?.content || '<p style=color:var(--text-muted);text-align:center>暂无内容，管理员可点击下方编辑</p>'" @click="onContentClick"></div>
 
         <div v-if="auth.isAdmin()" class="edit-entry">
           <el-button type="primary" plain @click="startEdit">
@@ -98,6 +116,15 @@ async function saveAbout() {
           </el-button>
         </div>
       </template>
+
+      <!-- 图片全屏预览 -->
+      <el-image-viewer
+        v-if="previewVisible"
+        :url-list="previewUrlList"
+        :initial-index="previewIndex"
+        teleported
+        @close="previewVisible = false"
+      />
     </div>
   </div>
 </template>
@@ -175,7 +202,10 @@ async function saveAbout() {
   margin: 16px auto;
   display: block;
   box-shadow: var(--shadow-md);
+  cursor: zoom-in;            /* 提示可点击放大预览 */
+  transition: opacity 0.2s;
 }
+.author-content :deep(img:hover) { opacity: 0.92; }
 
 .author-content :deep(h1),
 .author-content :deep(h2),

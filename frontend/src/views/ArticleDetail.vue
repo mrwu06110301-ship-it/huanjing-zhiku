@@ -6,6 +6,8 @@ import { getArticle, deleteArticle, approveArticle, rejectArticle } from "@/api/
 import { getComments, addComment, deleteComment } from "@/api/comment";
 import type { ArticleOut, CommentOut } from "@/types";
 import { ElMessage, ElMessageBox } from "element-plus";
+// 图片预览组件按需引入（避免全量注册）
+import { ElImageViewer } from "element-plus";
 import { useShare } from "@/composables/useShare";
 import Icon from "@/components/Icon.vue";
 
@@ -54,6 +56,24 @@ const rendered_content = computed(() => {
   if (/<[a-z][\s\S]*>/i.test(content)) return content;
   return content.split("\n").map((line: string) => `<p>${line || "<br>"}</p>`).join("");
 });
+
+// ==================== 正文图片点击预览 ====================
+const previewVisible = ref(false);
+const previewUrlList = ref<string[]>([]);
+const previewIndex = ref(0);
+const contentRef = ref<HTMLDivElement>();
+
+/** 点击正文任意图片 → 全屏大图预览（可缩放/切换） */
+function onContentClick(e: MouseEvent) {
+  const target = e.target as HTMLElement;
+  if (target.tagName === "IMG") {
+    const imgs = Array.from(contentRef.value?.querySelectorAll("img") || []);
+    const idx = imgs.indexOf(target as HTMLImageElement);
+    previewUrlList.value = imgs.map(img => img.currentSrc || img.src);
+    previewIndex.value = idx >= 0 ? idx : 0;
+    previewVisible.value = true;
+  }
+}
 
 onMounted(async () => {
   if (!route.params.id) return;
@@ -134,7 +154,12 @@ function formatTime(dateStr: string) {
         </div>
       </div>
 
-      <div class="detail-content rich-text" v-html="rendered_content"></div>
+      <div
+        class="detail-content rich-text"
+        ref="contentRef"
+        v-html="rendered_content"
+        @click="onContentClick"
+      ></div>
 
       <div class="detail-actions">
         <template v-if="can_review">
@@ -180,6 +205,15 @@ function formatTime(dateStr: string) {
           <el-empty v-if="comments.length === 0" description="暂无留言，来说两句吧~" :image-size="80" />
         </div>
       </div>
+
+      <!-- 正文图片全屏预览（滚轮/双指缩放、左右切换） -->
+      <el-image-viewer
+        v-if="previewVisible"
+        :url-list="previewUrlList"
+        :initial-index="previewIndex"
+        teleported
+        @close="previewVisible = false"
+      />
     </template>
   </div>
 </template>
@@ -235,7 +269,10 @@ function formatTime(dateStr: string) {
   height: auto !important;     /* 等比例：高度跟随宽度按原图比例缩放 */
   object-fit: contain;
   border-radius: 8px; margin: 12px 0;
+  cursor: zoom-in;             /* 提示可点击放大预览 */
+  transition: opacity 0.2s;
 }
+.detail-content :deep(img:hover) { opacity: 0.92; }
 .detail-content :deep(a) { color: var(--primary); text-decoration: none; }
 .detail-content :deep(table) { width: 100%; border-collapse: collapse; margin: 12px 0; }
 .detail-content :deep(th), .detail-content :deep(td) { border: 1px solid var(--card-border); padding: 8px 12px; text-align: left; font-size: 14px; }
