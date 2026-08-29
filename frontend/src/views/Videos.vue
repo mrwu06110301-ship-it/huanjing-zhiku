@@ -22,13 +22,8 @@ const selectedCategoryId = ref<number | null>(null);
 let slideTimer: ReturnType<typeof setInterval> | null = null;
 
 const filteredVideos = computed(() => {
+  // 搜索已改后端 keyword 全量查询，这里只做分类过滤兜底
   let list = allVideos.value;
-  if (searchQuery.value.trim()) {
-    const q = searchQuery.value.trim().toLowerCase();
-    list = list.filter(v =>
-      v.title.toLowerCase().includes(q) || (v.description || "").toLowerCase().includes(q)
-    );
-  }
   if (selectedCategoryId.value) {
     list = list.filter(v => v.category_id === selectedCategoryId.value);
   }
@@ -63,9 +58,18 @@ async function loadRecommended() {
 async function loadAll() {
   loading.value = true;
   try {
-    const res = await getVideos({ page: 1, page_size: 50 });
+    const params: Record<string, unknown> = { page: 1, page_size: 50 };
+    if (searchQuery.value.trim()) params.keyword = searchQuery.value.trim();
+    const res = await getVideos(params as any);
     allVideos.value = res.data.items || [];
   } finally { loading.value = false; }
+}
+
+/** 搜索输入防抖：后端全量模糊搜索（标题/简介） */
+let searchTimer: ReturnType<typeof setTimeout> | null = null;
+function onSearchInput() {
+  if (searchTimer) clearTimeout(searchTimer);
+  searchTimer = setTimeout(loadAll, 400);
 }
 async function loadCategories() {
   try {
@@ -121,7 +125,7 @@ function tagColor(v: any) {
       <div class="header-actions">
         <div class="search-wrap">
           <Icon name="search" :size="15" class="search-ic" />
-          <input v-model="searchQuery" placeholder="搜索视频..." class="search-input" />
+          <input v-model="searchQuery" placeholder="搜索视频..." class="search-input" @input="onSearchInput" />
         </div>
         <button v-if="canUpload" class="btn-upload" @click="goUpload">
           <Icon name="upload" :size="15" />

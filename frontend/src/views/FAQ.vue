@@ -23,11 +23,8 @@ const activeNames = ref<string | number | undefined>(undefined);
 const canUpload = ref(false);
 
 const filtered = computed(() => {
-  if (!searchQuery.value.trim()) return faqs.value;
-  const q = searchQuery.value.trim().toLowerCase();
-  return faqs.value.filter(f =>
-    f.question.toLowerCase().includes(q) || (f.answer || "").toLowerCase().includes(q)
-  );
+  // 搜索已改后端 keyword 全量查询，此处直接返回列表
+  return faqs.value;
 });
 
 async function loadFAQs() {
@@ -35,11 +32,19 @@ async function loadFAQs() {
   try {
     const params: Record<string, unknown> = { page: 1, page_size: 50 };
     if (activeCategory.value) params.category_id = activeCategory.value;
+    if (searchQuery.value.trim()) params.keyword = searchQuery.value.trim();
     const res = await getFAQs(params as any);
     faqs.value = res.data.items || [];
   } finally {
     loading.value = false;
   }
+}
+
+/** 搜索输入防抖：后端全量模糊搜索（问题/答案） */
+let searchTimer: ReturnType<typeof setTimeout> | null = null;
+function onSearchInput() {
+  if (searchTimer) clearTimeout(searchTimer);
+  searchTimer = setTimeout(loadFAQs, 400);
 }
 
 onMounted(async () => {
@@ -192,7 +197,7 @@ function handleDelete(id: number) {
       </div>
       <div class="search-wrap">
         <Icon name="search" :size="15" class="search-ic" />
-        <input v-model="searchQuery" placeholder="搜索问题..." class="local-search" />
+        <input v-model="searchQuery" placeholder="搜索问题..." class="local-search" @input="onSearchInput" />
       </div>
     </div>
 

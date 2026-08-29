@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, or_
 
 from app.database import get_db
 from app.models.article import Article
@@ -51,9 +51,10 @@ async def list_articles(
     module: str | None = None,
     category_id: int | None = None,
     status: str | None = None,
+    keyword: str | None = None,
     db: AsyncSession = Depends(get_db),
 ):
-    """文章列表（公开的已审核文章 + 管理员可看全部）"""
+    """文章列表（公开的已审核文章 + 管理员可看全部；keyword 全量模糊搜索标题/摘要）"""
     query = select(Article)
     count_query = select(func.count(Article.id))
 
@@ -67,12 +68,26 @@ async def list_articles(
         query = query.where(Article.module == module)
     if category_id:
         query = query.where(Article.category_id == category_id)
+    if keyword and keyword.strip():
+        kw = f"%{keyword.strip()}%"
+        cond = or_(Article.title.like(kw), Article.summary.like(kw))
+        query = query.where(cond)
+        count_query = count_query.where(cond)
 
     query = query.where(Article.is_public == True)
     query = query.order_by(Article.is_pinned.desc(), Article.created_at.desc())
 
-    # 总数
-    total_result = await db.execute(count_query.where(Article.is_public == True))
+    # 总数（与列表同条件，keyword/category/status 过滤后）
+    count_query = count_query.where(Article.is_public == True)
+    if status:
+        count_query = count_query.where(Article.status == status)
+    else:
+        count_query = count_query.where(Article.status == "approved")
+    if module:
+        count_query = count_query.where(Article.module == module)
+    if category_id:
+        count_query = count_query.where(Article.category_id == category_id)
+    total_result = await db.execute(count_query)
     total = total_result.scalar() or 0
 
     # 分页

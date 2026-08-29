@@ -15,7 +15,7 @@ const articles = ref<ArticleListOut[]>([]);
 const categories = ref<CategoryOut[]>([]);
 const activeCategory = ref<number | null>(null);
 const searchQuery = ref("");
-const localFiltered = ref<ArticleListOut[] | null>(null);
+const localFiltered = ref<ArticleListOut[] | null>(null); // 已废弃：搜索改后端全量，保留声明避免引用报错
 const loading = ref(false);
 const total = ref(0);
 const page = ref(1);
@@ -46,6 +46,7 @@ async function loadArticles() {
     };
     if (activeCategory.value) params.category_id = activeCategory.value;
     if (showPending.value) params.status = "pending";
+    if (searchQuery.value.trim()) params.keyword = searchQuery.value.trim();
     const res = await getArticles(params as any);
     articles.value = res.data.items || [];
     total.value = res.data.total;
@@ -149,12 +150,14 @@ async function handleReject(id: number) {
   } catch { /* 失败 */ }
 }
 
+/** 搜索输入防抖：走后端全量模糊搜索（标题/摘要），清空恢复列表 */
+let searchTimer: ReturnType<typeof setTimeout> | null = null;
 function filterLocal() {
-  if (!searchQuery.value.trim()) { localFiltered.value = null; return; }
-  const q = searchQuery.value.trim().toLowerCase();
-  localFiltered.value = articles.value.filter(a =>
-    a.title.toLowerCase().includes(q) || (a.summary || "").toLowerCase().includes(q)
-  );
+  if (searchTimer) clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => {
+    page.value = 1;
+    loadArticles();
+  }, 400);
 }
 
 function formatDate(dateStr: string) {
@@ -309,7 +312,7 @@ onMounted(async () => {
       <template v-else>
       <div v-loading="loading" class="article-list">
         <div
-          v-for="article in (localFiltered || articles)"
+          v-for="article in articles"
           :key="article.id"
           class="article-card"
           @click="router.push(`/article/${article.id}`)"

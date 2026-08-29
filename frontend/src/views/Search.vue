@@ -18,6 +18,14 @@ onMounted(() => {
   if (q) { query.value = q; doSearch(); }
 });
 
+// 顶栏搜索在搜索页内再次触发时，路由 query 变化但组件不重挂载——这里监听补执行
+watch(() => route.query.q, (newQ) => {
+  if (newQ && typeof newQ === "string") {
+    query.value = newQ;
+    doSearch();
+  }
+});
+
 function doSearch() {
   if (!query.value.trim()) { results.value = []; searched.value = false; return; }
   searching.value = true; searched.value = true;
@@ -35,12 +43,12 @@ watch(query, () => {
 function goResult(item: SearchResultItem) { router.push(item.url); }
 
 function typeIcon(type: string): string {
-  const map: Record<string, string> = { article: "doc", tool: "tools", standard: "standard", faq: "faq" };
+  const map: Record<string, string> = { article: "doc", tool: "tool", standard: "standard", faq: "faq", video: "video" };
   return map[type] || "pin";
 }
 
 function typeLabel(type: string) {
-  const map: Record<string, string> = { article: "文章", tool: "工具", standard: "标准", faq: "问答" };
+  const map: Record<string, string> = { article: "文章", tool: "工具", standard: "标准", faq: "问答", video: "视频" };
   return map[type] || type;
 }
 </script>
@@ -49,7 +57,7 @@ function typeLabel(type: string) {
   <div class="search-page">
     <div class="search-header">
       <h1 class="search-title"><Icon name="search" :size="34" /> 全局检索</h1>
-      <p class="search-subtitle">搜索文章、工具、标准和问答</p>
+      <p class="search-subtitle">搜索文章、视频、工具、标准和问答</p>
     </div>
 
     <div class="search-box">

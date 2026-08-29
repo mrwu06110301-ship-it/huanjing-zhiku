@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, or_
 
 from app.database import get_db
 from app.models.video import Video
@@ -54,9 +54,10 @@ async def list_videos(
     page_size: int = Query(20, ge=1, le=50),
     video_type: str | None = None,
     category_id: int | None = None,
+    keyword: str | None = None,
     db: AsyncSession = Depends(get_db),
 ):
-    """获取视频列表"""
+    """获取视频列表（keyword 全量模糊搜索标题/简介）"""
     query = select(Video).where(Video.is_public == True)
     count_query = select(func.count(Video.id)).where(Video.is_public == True)
 
@@ -66,6 +67,11 @@ async def list_videos(
     if category_id:
         query = query.where(Video.category_id == category_id)
         count_query = count_query.where(Video.category_id == category_id)
+    if keyword and keyword.strip():
+        kw = f"%{keyword.strip()}%"
+        cond = or_(Video.title.like(kw), Video.description.like(kw))
+        query = query.where(cond)
+        count_query = count_query.where(cond)
 
     total_result = await db.execute(count_query)
     total = total_result.scalar() or 0

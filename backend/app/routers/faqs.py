@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, or_
 
 from app.database import get_db
 from app.models.faq import FAQ
@@ -43,6 +43,7 @@ async def list_faqs(
     page_size: int = Query(10, ge=1, le=50),
     faq_type: str | None = None,
     category_id: int | None = None,
+    keyword: str | None = None,
     db: AsyncSession = Depends(get_db),
 ):
     query = select(FAQ).where(FAQ.is_public == True)
@@ -54,6 +55,11 @@ async def list_faqs(
     if category_id:
         query = query.where(FAQ.category_id == category_id)
         count_query = count_query.where(FAQ.category_id == category_id)
+    if keyword and keyword.strip():
+        kw = f"%{keyword.strip()}%"
+        cond = or_(FAQ.question.like(kw), FAQ.answer.like(kw))
+        query = query.where(cond)
+        count_query = count_query.where(cond)
 
     total_result = await db.execute(count_query)
     total = total_result.scalar() or 0
