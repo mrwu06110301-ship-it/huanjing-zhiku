@@ -167,7 +167,7 @@ const embedSrc = computed(() => {
 .video-title { font-size: 24px; font-weight: 800; color: var(--text); margin-bottom: 12px; }
 .video-meta { display: flex; flex-wrap: wrap; gap: 14px; font-size: 13px; color: var(--text-light); align-items: center; margin-bottom: 14px; }
 .video-meta span { display: flex; align-items: center; gap: 4px; }
-.meta-tag { padding: 3px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; }
+.meta-tag { padding: 3px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; color: #fff; }
 .video-desc { font-size: 15px; line-height: 1.8; color: var(--text); margin-bottom: 16px; }
 .admin-actions { padding-top: 16px; border-top: 1px solid var(--card-border); }
 .comments-section {
