@@ -2,37 +2,62 @@
 /**
  * RcMoistureCalculator.vue — 阻容含湿量模型
  * 阻容法：电阻测温度 + 电容测相对湿度 → 水蒸气分压 → 含湿量（体积比）
- * 方式1 饱和蒸汽压法 / 方式2 露点法，双路径对照；输入即算
+ * 方式1 饱和蒸汽压法 / 方式2 露点法（先选方式再计算）；P当前 = 大气压 + 计前压力
  */
-import { ref, reactive, computed, watch } from "vue";
+import { ref, reactive, computed } from "vue";
 import { ElMessage } from "element-plus";
 import Icon from "@/components/Icon.vue";
 import { computeMoisture, saturationVaporPressure, MOISTURE_DEMO } from "@/utils/rc-moisture";
 
+/** 方式说明（方式选择卡用） */
+const METHODS = [
+  {
+    id: 1 as 1 | 2,
+    name: "方式1 饱和蒸汽压法",
+    path: "T → 查饱和蒸汽压 → ×RH → 分压",
+    desc: "由当前温度查饱和水蒸气压（表/Buck 公式），乘以相对湿度得水蒸气分压",
+  },
+  {
+    id: 2 as 1 | 2,
+    name: "方式2 露点法",
+    path: "T+RH → 露点 Td → 查蒸汽压 → 分压",
+    desc: "先由 T、RH 计算露点，再由露点查饱和蒸汽压即实际水蒸气分压",
+  },
+];
+
 const form = reactive({
   temperature: null as number | null, // 传感器温度 ℃
   humidity: null as number | null,    // 相对湿度 %
-  pressure: 101.325 as number | null, // 当前气压 kPa
+  atmospheric: 101.325 as number | null, // 大气压 kPa
+  gauge: 0 as number | null,              // 计前压力（表压 kPa，负压为负值）
   method: 1 as 1 | 2,
 });
 
 const rhInvalid = computed(() => form.humidity !== null && (form.humidity <= 0 || form.humidity > 100));
+const pCurrent = computed(() =>
+  form.atmospheric !== null && form.gauge !== null ? form.atmospheric + form.gauge : null
+);
 const formValid = computed(
-  () => form.temperature !== null && form.humidity !== null && form.pressure !== null && form.pressure > 0 && !rhInvalid.value
+  () =>
+    form.temperature !== null &&
+    form.humidity !== null &&
+    pCurrent.value !== null &&
+    pCurrent.value > 0 &&
+    !rhInvalid.value
 );
 
-/** 双方式同时计算对照 */
-const result1 = computed(() =>
+/** 所选方式结果 */
+const current = computed(() =>
   formValid.value
-    ? computeMoisture({ temperature: form.temperature!, humidity: form.humidity!, pressure: form.pressure!, method: 1 })
+    ? computeMoisture({
+        temperature: form.temperature!,
+        humidity: form.humidity!,
+        atmospheric: form.atmospheric!,
+        gauge: form.gauge!,
+        method: form.method,
+      })
     : null
 );
-const result2 = computed(() =>
-  formValid.value
-    ? computeMoisture({ temperature: form.temperature!, humidity: form.humidity!, pressure: form.pressure!, method: 2 })
-    : null
-);
-const current = computed(() => (form.method === 1 ? result1.value : result2.value));
 
 /** 饱和蒸汽压速查表（当前温度 ±5℃ 及常用点） */
 const tableTemps = computed(() => {
@@ -45,7 +70,7 @@ const tableTemps = computed(() => {
 
 function loadDemo() {
   Object.assign(form, MOISTURE_DEMO);
-  ElMessage.success("已填入示例：25℃ / 60%RH / 101.325 kPa");
+  ElMessage.success("已填入示例：25℃ / 60%RH / 大气压 101.325 kPa / 计前 0 kPa");
 }
 
 const showExplain = ref(false);
@@ -53,17 +78,36 @@ const showExplain = ref(false);
 
 <template>
   <div class="rm-tool">
-    <!-- ===== 卡片一：含湿量计算 ===== -->
+    <!-- ===== 卡片一：方式选择（前置） ===== -->
     <div class="card">
       <div class="card-head">
-        <h3><Icon name="waterLevel" :size="17" /> 阻容含湿量模型（温度 + 相对湿度 → 含湿量）</h3>
+        <h3><Icon name="waterLevel" :size="17" /> 计算方式</h3>
+      </div>
+      <div class="method-grid">
+        <div
+          v-for="m in METHODS"
+          :key="m.id"
+          :class="['method-card', { active: form.method === m.id }]"
+          @click="form.method = m.id"
+        >
+          <div class="method-name">{{ m.name }}</div>
+          <div class="method-path">{{ m.path }}</div>
+          <div class="method-desc">{{ m.desc }}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 卡片二：含湿量计算 ===== -->
+    <div class="card">
+      <div class="card-head">
+        <h3><Icon name="filter" :size="17" /> 含湿量计算</h3>
         <div class="head-actions">
           <el-button size="small" plain @click="loadDemo">填入示例</el-button>
         </div>
       </div>
 
       <el-alert type="info" :closable="false" show-icon class="rule-tip">
-        阻容法传感器：电阻测温度 T、电容测相对湿度 RH。<b>方式1</b> 由 T 查饱和水蒸气压 → 分压 = P饱和×RH；<b>方式2</b> 先算露点，由露点查饱和蒸汽压即水蒸气分压。两种方式结果一致，双路径自动对照。
+        P当前 为<b>传感器处实际绝对压力</b> = 大气压 + 计前压力（计前负压表读数为负值，直接填负数；常压扩散测量计前压力填 0）。
       </el-alert>
 
       <div class="rm-layout">
@@ -79,15 +123,16 @@ const showExplain = ref(false);
             <div v-if="rhInvalid" class="field-err">RH 需在 0~100% 之间</div>
           </div>
           <div class="field">
-            <label>当前气压（kPa）<span class="req">*</span></label>
-            <el-input-number v-model="form.pressure" :min="30" :max="120" :precision="2" :controls="false" placeholder="101.325" style="width:100%" />
+            <label>大气压 Ba（kPa）<span class="req">*</span></label>
+            <el-input-number v-model="form.atmospheric" :min="30" :max="120" :precision="2" :controls="false" placeholder="101.325" style="width:100%" />
           </div>
           <div class="field">
-            <label>计算方式</label>
-            <el-radio-group v-model="form.method">
-              <el-radio-button :value="1">方式1 饱和蒸汽压法</el-radio-button>
-              <el-radio-button :value="2">方式2 露点法</el-radio-button>
-            </el-radio-group>
+            <label>计前压力 Pg（表压 kPa，负压填负数）<span class="req">*</span></label>
+            <el-input-number v-model="form.gauge" :min="-95" :max="50" :precision="2" :controls="false" placeholder="0" style="width:100%" />
+          </div>
+          <div class="p-current">
+            P当前 = {{ form.atmospheric ?? "—" }} + {{ form.gauge ?? "—" }} =
+            <b>{{ pCurrent !== null ? pCurrent.toFixed(2) : "—" }}</b> kPa
           </div>
         </div>
 
@@ -96,6 +141,10 @@ const showExplain = ref(false);
           <div class="vr-card main">
             <span class="vr-label">含湿量 Xsw（体积比）</span>
             <div class="vr-val"><b>{{ current ? current.moisture.toFixed(3) : "—" }}</b> %</div>
+          </div>
+          <div class="vr-card">
+            <span class="vr-label">P当前（绝对压力）</span>
+            <div class="vr-val"><b>{{ current ? current.pressure.toFixed(2) : "—" }}</b> kPa</div>
           </div>
           <div class="vr-card">
             <span class="vr-label">水蒸气分压</span>
@@ -109,12 +158,6 @@ const showExplain = ref(false);
             <span class="vr-label">T 对应饱和蒸汽压</span>
             <div class="vr-val"><b>{{ current ? current.pSat.toFixed(4) : "—" }}</b> kPa</div>
           </div>
-          <div class="vr-card compare" v-if="result1 && result2">
-            <span class="vr-label">双方式对照</span>
-            <div class="cmp-line">方式1：{{ result1.moisture.toFixed(3) }} %</div>
-            <div class="cmp-line">方式2：{{ result2.moisture.toFixed(3) }} %</div>
-            <div class="cmp-diff">偏差 {{ Math.abs(result1.moisture - result2.moisture).toFixed(4) }} 个百分点</div>
-          </div>
         </div>
       </div>
 
@@ -124,7 +167,7 @@ const showExplain = ref(false);
       </div>
     </div>
 
-    <!-- ===== 卡片二：饱和水蒸气压速查表 ===== -->
+    <!-- ===== 卡片三：饱和水蒸气压速查表 ===== -->
     <div class="card">
       <div class="card-head">
         <h3><Icon name="layers" :size="17" /> 饱和水蒸气压速查表（kPa）</h3>
@@ -138,7 +181,7 @@ const showExplain = ref(false);
       <p class="vt-note">Buck 公式计算（0~100℃ 精度 ±0.06%），绿色高亮为当前输入温度附近；方式1 的「查表」即用此表。</p>
     </div>
 
-    <!-- ===== 卡片三：公式说明（默认折叠） ===== -->
+    <!-- ===== 卡片四：公式说明（默认折叠） ===== -->
     <div class="card">
       <div class="explain-head" @click="showExplain = !showExplain">
         <h3><Icon name="question" :size="17" /> 原理与公式说明</h3>
@@ -153,9 +196,10 @@ const showExplain = ref(false);
         <div class="formula">α = ln(RH/100) + 17.625T/(243.04+T)；Td = 243.04α/(17.625 − α)　（Magnus-Tetens 露点）</div>
         <div class="formula">P分压 = P饱和(Td)；Xsw = P分压/P当前 × 100</div>
         <ul>
+          <li>P当前 = 传感器处实际绝对压力 = 大气压 Ba + 计前压力 Pg（计前负压表读数为负值）；抽取式测量取计前负压，常压扩散式测量 Pg 填 0</li>
           <li>露点定义：气体冷却到该温度时水蒸气达到饱和，故<b>露点对应的饱和蒸汽压 = 当前实际水蒸气分压</b>，两方式数学等价</li>
           <li>阻容传感器：高分子电容感湿（RH）+ 热敏电阻测温（T），烟气测量时传感器处温度不应超过 180℃</li>
-          <li>烟气测量中 P当前 取烟道绝对压（烟道静压表压 + 大气压）；含湿量用于颗粒物/气态污染物干基浓度换算</li>
+          <li>含湿量用于颗粒物/气态污染物干基浓度换算</li>
         </ul>
       </div>
     </div>
@@ -173,11 +217,33 @@ const showExplain = ref(false);
 .rule-tip { margin-bottom: 18px; }
 .rule-tip :deep(.el-alert__description) { font-size: 13px; line-height: 1.7; }
 
+/* 方式选择卡 */
+.method-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.method-card {
+  border: 1.5px solid var(--border-light); border-radius: 14px;
+  padding: 16px 18px; cursor: pointer; user-select: none;
+  transition: all 0.2s var(--ease, ease); background: var(--bg-soft, #f6f8fa);
+}
+.method-card:hover { border-color: rgba(37, 99, 235, 0.45); }
+.method-card.active {
+  border-color: var(--primary); background: rgba(37, 99, 235, 0.06);
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.12);
+}
+.method-name { font-size: 14.5px; font-weight: 700; color: var(--text); margin-bottom: 6px; }
+.method-card.active .method-name { color: var(--primary); }
+.method-path { font-size: 12.5px; color: var(--primary); font-family: Consolas, monospace; margin-bottom: 6px; }
+.method-desc { font-size: 12.5px; color: var(--text-light); line-height: 1.6; }
+
 .rm-layout { display: grid; grid-template-columns: minmax(280px, 400px) 1fr; gap: 20px; align-items: start; }
 .rm-inputs { display: flex; flex-direction: column; gap: 12px; }
 .field label { display: block; font-size: 13px; color: var(--text-light); margin-bottom: 6px; font-weight: 500; }
 .req { color: #ef4444; margin-left: 2px; }
 .field-err { font-size: 11.5px; color: #ef4444; margin-top: 4px; }
+.p-current {
+  font-size: 13px; color: var(--text-light); background: var(--bg-soft, #f6f8fa);
+  border-radius: 10px; padding: 9px 13px; border: 1px dashed var(--border-light);
+}
+.p-current b { color: var(--text); font-size: 14px; }
 
 .rm-outputs { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; align-content: start; }
 .vr-card {
@@ -191,9 +257,6 @@ const showExplain = ref(false);
 .vr-card.main { background: rgba(37, 99, 235, 0.07); border-color: rgba(37, 99, 235, 0.25); }
 .vr-card.main .vr-val, .vr-card.main b { color: var(--primary); }
 .vr-card.main b { font-size: 26px; }
-.vr-card.compare { grid-column: 1 / -1; background: rgba(6, 182, 212, 0.05); border-color: rgba(6, 182, 212, 0.3); }
-.cmp-line { font-size: 13px; color: var(--text); }
-.cmp-diff { font-size: 12px; color: var(--text-light); margin-top: 2px; }
 
 .steps { margin-top: 16px; background: var(--bg-soft, #f6f8fa); border-radius: 12px; padding: 14px 16px; }
 .steps-title { font-size: 12.5px; font-weight: 700; color: var(--text-light); margin-bottom: 8px; }
@@ -235,10 +298,11 @@ const showExplain = ref(false);
   box-shadow: 0 0 0 1px var(--primary) inset, 0 4px 14px rgba(37, 99, 235, 0.12);
 }
 .rm-tool :deep(.el-button:not(.is-text):not(.is-link)) { border-radius: 12px; }
-.rm-tool :deep(.el-radio-button:first-child .el-radio-button__inner) { border-radius: 12px 0 0 12px; }
-.rm-tool :deep(.el-radio-button:last-child .el-radio-button__inner) { border-radius: 0 12px 12px 0; }
 
-@media (max-width: 860px) { .rm-layout { grid-template-columns: 1fr; } }
+@media (max-width: 860px) {
+  .rm-layout { grid-template-columns: 1fr; }
+  .method-grid { grid-template-columns: 1fr; }
+}
 @media (max-width: 640px) {
   .card { padding: 16px 14px; }
   .rm-outputs { grid-template-columns: 1fr 1fr; }
