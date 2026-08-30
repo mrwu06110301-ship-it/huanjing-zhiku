@@ -88,6 +88,21 @@ function switchCategory(catId: number | null) {
   loadFAQs();
 }
 
+/** 分类徽标颜色：按分类管理里配置的 color（淡底+同色文字），未配置回退默认 */
+const catColorStyle = (name: string) => {
+  const cat = categories.value.find((c) => c.name === name);
+  if (!cat?.color) return undefined;
+  return { color: cat.color, background: hexToRgba(cat.color, 0.1) };
+};
+
+function hexToRgba(hex: string, alpha: number) {
+  const m = hex.replace("#", "");
+  const r = parseInt(m.substring(0, 2), 16);
+  const g = parseInt(m.substring(2, 4), 16);
+  const b = parseInt(m.substring(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 // ==================== 新增 FAQ ====================
 const dialogVisible = ref(false);
 const submitting = ref(false);
@@ -274,7 +289,11 @@ function handleDelete(id: number) {
             <span class="faq-title-line">
               <span class="faq-q-badge">Q</span>
               <span class="faq-question">{{ f.question }}</span>
-              <span v-if="f.category_name" class="faq-cat-badge">{{ f.category_name }}</span>
+              <span
+                v-if="f.category_name"
+                class="faq-cat-badge"
+                :style="catColorStyle(f.category_name)"
+              >{{ f.category_name }}</span>
               <span v-if="auth.isAdmin()" class="faq-edit" @click.stop="openEdit(f)">编辑</span>
             </span>
           </template>
@@ -434,8 +453,9 @@ function handleDelete(id: number) {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .faq-cat-badge {
-  font-size: 11.5px; font-weight: 500; color: var(--primary);
-  background: rgba(37, 99, 235, 0.08); border-radius: 10px; padding: 2px 10px; flex-shrink: 0;
+  font-size: 11px; font-weight: 500; line-height: 1;
+  border-radius: 8px; padding: 3px 8px; flex-shrink: 0;
+  color: var(--primary); background: rgba(37, 99, 235, 0.08);
 }
 .faq-edit {
   margin-left: auto; flex-shrink: 0;
