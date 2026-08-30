@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed } from "vue";
+import { ref, onMounted, onUnmounted, computed, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
 import { getVideo, deleteVideo, likeVideo, getVideos, type VideoOut } from "@/api/video";
@@ -21,14 +21,28 @@ const likeSubmitting = ref(false);
 /** 同分类下一次要播放的视频（自动连播用） */
 const nextVideo = ref<VideoOut | null>(null);
 const videoRef = ref<HTMLVideoElement | null>(null);
+/** 当前路由名，watch 中防止其他路由参数变化误触发 */
+const routeName = route.name;
 
 onMounted(async () => {
-  const id = Number(route.params.id);
+  await loadVideo(Number(route.params.id));
+});
+
+/** 路由只变 id 时组件被复用（onMounted 不再触发），watch 参数重新加载实现自动连播切换 */
+watch(
+  () => route.params.id,
+  (newId, oldId) => {
+    if (newId && newId !== oldId && route.name === routeName) loadVideo(Number(newId));
+  }
+);
+
+async function loadVideo(id: number) {
   if (!id) { router.push("/videos"); return; }
-  try { const res = await getVideo(id); video.value = res.data; loadComments(); findNextVideo(); }
+  loading.value = true;
+  try { const res = await getVideo(id); video.value = res.data; comments.value = []; loadComments(); findNextVideo(); }
   catch { ElMessage.error("视频不存在"); router.push("/videos"); }
   finally { loading.value = false; }
-});
+}
 
 onUnmounted(() => {});
 
@@ -47,7 +61,6 @@ async function findNextVideo() {
 /** 直链视频播放结束 → 自动跳下一个（B 站 iframe 无法监听） */
 function handleEnded() {
   if (nextVideo.value) {
-    ElMessage.success(`自动播放下一个：${nextVideo.value.title}`);
     router.push(`/videos/${nextVideo.value.id}`);
   }
 }
@@ -169,7 +182,8 @@ const embedSrc = computed(() => {
         </div>
         <p v-if="video.description" class="video-desc">{{ video.description }}</p>
         <div v-if="nextVideo" class="up-next-tip">
-          <Icon name="video" :size="14" /> 播放结束将自动播放：<a @click.prevent="router.push(`/videos/${nextVideo.id}`)" href="#">{{ nextVideo.title }}</a>
+          <span class="up-next-label">接着播放</span>
+          <a class="up-next-link" @click.prevent="router.push(`/videos/${nextVideo.id}`)" href="#">{{ nextVideo.title }}</a>
         </div>
         <div v-if="auth.isAdmin()" class="admin-actions">
           <el-button plain size="small" @click="share(video.title, video.description)">
@@ -234,12 +248,17 @@ const embedSrc = computed(() => {
 .meta-like:hover { color: #ef4444; }
 .meta-like.liked { color: #ef4444; font-weight: 600; }
 .up-next-tip {
-  display: flex; align-items: center; gap: 6px;
+  display: flex; align-items: center; gap: 8px;
   font-size: 13px; color: var(--text-light);
   background: var(--bg-soft, rgba(37, 99, 235, 0.05)); border-radius: 8px;
   padding: 8px 12px; margin-bottom: 14px;
+  min-width: 0;
 }
-.up-next-tip a { color: var(--primary); cursor: pointer; font-weight: 600; }
+.up-next-label { flex-shrink: 0; white-space: nowrap; }
+.up-next-link {
+  color: var(--primary); cursor: pointer; font-weight: 600;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
+}
 .admin-actions { padding-top: 16px; border-top: 1px solid var(--card-border); }
 .comments-section {
   background: var(--card-bg); border-radius: var(--radius); padding: 24px;
@@ -257,4 +276,13 @@ const embedSrc = computed(() => {
 .comment-del { margin-left: auto; background: none; border: none; color: #e74c3c; cursor: pointer; font-size: 12px; opacity: 0; transition: opacity 0.2s; }
 .comment-item:hover .comment-del { opacity: 1; }
 .comment-content { font-size: 15px; color: var(--text); line-height: 1.7; }
+
+@media (max-width: 768px) {
+  .video-title { font-size: 19px; line-height: 1.4; }
+  .video-info { padding: 16px; }
+  .video-meta { gap: 8px 14px; font-size: 12.5px; }
+  .video-meta span { white-space: nowrap; }
+  .up-next-tip { padding: 7px 10px; margin-bottom: 12px; }
+  .comments-section { padding: 16px; }
+}
 </style>

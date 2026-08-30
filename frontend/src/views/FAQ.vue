@@ -548,6 +548,11 @@ function canDeleteComment(c: FAQCommentOut) {
   padding: 8px 24px 24px; box-shadow: var(--shadow); border: 1px solid var(--border-light);
 }
 
+/* Element Plus 折叠标题默认 height/line-height 48px，问题换行后行距巨大，放开为自适应 */
+.faq-list :deep(.el-collapse-item__header) {
+  height: auto; min-height: 48px; line-height: 1.6; padding: 8px 0;
+}
+
 .faq-q-badge, .faq-a-badge {
   width: 22px; height: 22px; flex-shrink: 0;
   display: flex; align-items: center; justify-content: center;
@@ -563,6 +568,7 @@ function canDeleteComment(c: FAQCommentOut) {
 }
 .faq-question {
   font-size: 16px; font-weight: 600; color: var(--text);
+  line-height: 1.5;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .faq-cat-badge {
@@ -590,10 +596,10 @@ function canDeleteComment(c: FAQCommentOut) {
 }
 
 .faq-meta {
-  display: flex; gap: 18px; margin-top: 14px; font-size: 12px; color: var(--text-muted);
+  display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: 12px; font-size: 12px; color: var(--text-muted);
 }
 .faq-meta span {
-  display: flex; align-items: center; gap: 4px;
+  display: flex; align-items: center; gap: 4px; white-space: nowrap;
 }
 .faq-delete { margin-left: auto; cursor: pointer; transition: color 0.2s; }
 .faq-delete:hover { color: #ef4444; }
@@ -602,7 +608,7 @@ function canDeleteComment(c: FAQCommentOut) {
 .faq-count-badge {
   display: inline-flex; align-items: center; gap: 3px; flex-shrink: 0;
   font-size: 11px; color: var(--text-muted);
-  background: var(--bg-soft); border-radius: 8px; padding: 2px 7px;
+  border-radius: 8px; padding: 2px 7px;
 }
 .faq-like { cursor: pointer; transition: color 0.2s; }
 .faq-like:hover { color: #ef4444; }
@@ -654,9 +660,17 @@ function canDeleteComment(c: FAQCommentOut) {
   .controls { flex-direction: column; align-items: stretch; }
   .search-wrap { margin-left: 0; }
   .local-search { width: 100%; }
-  .faq-list { padding: 8px 16px 20px; }
-  .faq-question { font-size: 14.5px; white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  .faq-list { padding: 4px 14px 20px; }
+  /* 手机端问题标题允许多行（clamp 2 行），行距收紧避免松散 */
+  .faq-question {
+    font-size: 14.5px; white-space: normal; line-height: 1.5;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  }
+  .faq-title-line { gap: 8px; align-items: flex-start; }
+  .faq-q-badge { margin-top: 1px; }
+  .faq-list :deep(.el-collapse-item__header) { padding: 10px 0; }
   .faq-edit { display: none; }
   .faq-count-badge { display: none; }
+  .faq-meta { gap: 6px 14px; margin-top: 10px; }
 }
 </style>
