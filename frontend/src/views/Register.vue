@@ -2,23 +2,20 @@
 import { ref, computed } from "vue";
 import { useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
-import { register, sendSms, getMe } from "@/api/user";
+import { register, sendSms, bindPhone, getMe } from "@/api/user";
 import { ElMessage } from "element-plus";
 import BrandLogo from "@/components/BrandLogo.vue";
 
 const router = useRouter();
 const auth = useAuthStore();
 
-/** 注册方式 Tab：account（账号密码）/ phone（手机号，预留） */
-const activeTab = ref<"account" | "phone">("account");
+/** 注册步骤：1=账号密码 → 2=手机验证码关联（必须完成） */
+const step = ref<1 | 2>(1);
 
-// ==================== 账号密码注册 ====================
+// ==================== 第一步：账号密码注册 ====================
 const form = ref({
   username: "",
-  email: "",
   password: "",
-  confirmPassword: "",
-  nickname: "",
 });
 const loading = ref(false);
 const agreed = ref(false);
@@ -37,19 +34,28 @@ async function handleRegister() {
     ElMessage.warning("请输入用户名和密码");
     return;
   }
-  if (form.value.password !== form.value.confirmPassword) {
-    ElMessage.warning("两次密码不一致");
+  if (form.value.password.length < 6) {
+    ElMessage.warning("密码至少 6 位");
     return;
   }
   loading.value = true;
   try {
+    // 第一步：创建账号（昵称/邮箱后置到个人中心补填）
     const res = await register({
       username: form.value.username.trim(),
-      email: form.value.email.trim() || undefined,
       password: form.value.password,
-      nickname: form.value.nickname.trim(),
     });
-    await finishRegister(res.data.access_token);
+    // 拿到 token 即已完成账号创建，直接进入登录态
+    auth.token = res.data.access_token;
+    localStorage.setItem("hjzk_token", res.data.access_token);
+    try {
+      const meRes = await getMe();
+      auth.setLogin(res.data.access_token, meRes.data);
+    } catch {
+      auth.setLogin(res.data.access_token, {} as any);
+    }
+    ElMessage.success("账号创建成功，请关联手机号");
+    step.value = 2;
   } catch (err: any) {
     ElMessage.error(err?.response?.data?.detail || "注册失败");
   } finally {
@@ -57,10 +63,10 @@ async function handleRegister() {
   }
 }
 
-// ==================== 手机号注册（预留：短信服务开通后启用） ====================
+// ==================== 第二步：手机验证码关联 ====================
 const SMS_ENABLED = false; // 短信认证服务开通后改为 true
-const phoneForm = ref({ phone: "", code: "", password: "" });
-const smsLoading = ref(false);
+const phoneForm = ref({ phone: "", code: "" });
+const bindLoading = ref(false);
 const countdown = ref(0);
 let countdownTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -82,30 +88,30 @@ async function handleSendSms() {
   }
 }
 
-async function handlePhoneRegister() {
-  if (!checkAgreement()) return;
+async function handleBindPhone() {
   if (!phoneValid.value) { ElMessage.warning("请输入正确的手机号"); return; }
   if (!phoneForm.value.code) { ElMessage.warning("请输入验证码"); return; }
-  smsLoading.value = true;
+  bindLoading.value = true;
   try {
-    // 预留：短信服务开通后走 phone+sms_code 注册链路
-    ElMessage.info("短信注册暂未开放，敬请期待");
+    await bindPhone({ phone: phoneForm.value.phone, sms_code: phoneForm.value.code });
+    ElMessage.success("手机号关联成功，欢迎加入！");
+    router.push("/");
+  } catch (err: any) {
+    // 短信未开通（501）时给出引导，不阻断进入首页
+    if (err?.response?.status === 501) {
+      ElMessage.info("短信服务暂未开通，已跳过手机关联，可稍后在个人中心绑定");
+      router.push("/");
+    } else {
+      ElMessage.error(err?.response?.data?.detail || "关联失败");
+    }
   } finally {
-    smsLoading.value = false;
+    bindLoading.value = false;
   }
 }
 
-// ==================== 注册成功统一处理 ====================
-async function finishRegister(token: string) {
-  auth.token = token;
-  localStorage.setItem("hjzk_token", token);
-  try {
-    const meRes = await getMe();
-    auth.setLogin(token, meRes.data);
-  } catch {
-    auth.setLogin(token, {} as any);
-  }
-  ElMessage.success("注册成功");
+/** 暂时跳过（短信未开通期间的兜底入口） */
+function skipBind() {
+  ElMessage.info("已跳过手机关联，可稍后在个人中心绑定");
   router.push("/");
 }
 </script>
@@ -117,55 +123,49 @@ async function finishRegister(token: string) {
         <div class="auth-logo">
           <BrandLogo />
         </div>
-        <h2>注册账号</h2>
-        <p>加入产品小吴知识库社区</p>
+        <h2>{{ step === 1 ? "注册账号" : "关联手机号" }}</h2>
+        <p>{{ step === 1 ? "加入产品小吴知识库社区" : "验证通过即完成注册" }}</p>
       </div>
 
-      <!-- 注册方式 Tab -->
-      <div class="auth-tabs">
-        <span
-          :class="['auth-tab', { active: activeTab === 'account' }]"
-          @click="activeTab = 'account'"
-        >账号注册</span>
-        <span class="tab-divider">|</span>
-        <span
-          :class="['auth-tab', { active: activeTab === 'phone' }]"
-          @click="activeTab = 'phone'"
-        >手机号注册</span>
+      <!-- 步骤指示器 -->
+      <div class="steps">
+        <span :class="['step', { active: step >= 1, done: step > 1 }]">
+          <i class="step-num">1</i>账号密码
+        </span>
+        <span class="step-line" :class="{ passed: step > 1 }"></span>
+        <span :class="['step', { active: step >= 2 }]">
+          <i class="step-num">2</i>手机关联
+        </span>
       </div>
 
-      <!-- 账号密码注册 -->
-      <el-form v-if="activeTab === 'account'" @keyup.enter="handleRegister">
+      <!-- 第一步：账号密码（仅用户名+密码，昵称/邮箱后置） -->
+      <el-form v-if="step === 1" @keyup.enter="handleRegister">
         <el-form-item>
           <el-input v-model="form.username" placeholder="用户名（3-50 个字符）" size="large" />
         </el-form-item>
         <el-form-item>
-          <el-input v-model="form.nickname" placeholder="昵称（可选）" size="large" />
-        </el-form-item>
-        <el-form-item>
-          <el-input v-model="form.email" placeholder="邮箱（可选）" size="large" />
-        </el-form-item>
-        <el-form-item>
           <el-input v-model="form.password" type="password" placeholder="密码（至少 6 位）" size="large" show-password />
-        </el-form-item>
-        <el-form-item>
-          <el-input v-model="form.confirmPassword" type="password" placeholder="确认密码" size="large" show-password />
         </el-form-item>
         <el-form-item>
           <el-button type="primary" size="large" :loading="loading" @click="handleRegister" style="width: 100%">
             注册
           </el-button>
         </el-form-item>
+        <div class="step-tip">下一步需通过手机验证码完成关联；昵称、邮箱可登录后在个人中心补填</div>
       </el-form>
 
-      <!-- 手机号注册（预留） -->
-      <el-form v-else @keyup.enter="handlePhoneRegister">
+      <!-- 第二步：手机验证码关联 -->
+      <el-form v-else @keyup.enter="handleBindPhone">
         <el-form-item>
-          <el-input v-model="phoneForm.phone" placeholder="请输入手机号" size="large" maxlength="11" />
+          <el-input v-model="phoneForm.phone" placeholder="请输入手机号" size="large" maxlength="11">
+            <template #prefix><span class="field-label">手机号</span></template>
+          </el-input>
         </el-form-item>
         <el-form-item>
           <div class="sms-row">
-            <el-input v-model="phoneForm.code" placeholder="请输入验证码" size="large" maxlength="6" />
+            <el-input v-model="phoneForm.code" placeholder="请输入验证码" size="large" maxlength="6">
+              <template #prefix><span class="field-label">验证码</span></template>
+            </el-input>
             <el-button
               type="primary" plain size="large" class="sms-btn"
               :disabled="countdown > 0" @click="handleSendSms"
@@ -173,18 +173,19 @@ async function finishRegister(token: string) {
           </div>
         </el-form-item>
         <el-form-item>
-          <el-input v-model="phoneForm.password" type="password" placeholder="设置密码（至少 6 位）" size="large" show-password />
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" size="large" :loading="smsLoading" @click="handlePhoneRegister" style="width: 100%">
-            注册
+          <el-button type="primary" size="large" :loading="bindLoading" @click="handleBindPhone" style="width: 100%">
+            完成关联
           </el-button>
         </el-form-item>
-        <div v-if="!SMS_ENABLED" class="sms-hint">短信注册暂未开放，当前请使用账号注册</div>
+        <div v-if="!SMS_ENABLED" class="sms-hint">
+          短信服务暂未开通，可先
+          <a @click.prevent="skipBind" href="#">跳过</a>
+          ，稍后在个人中心绑定
+        </div>
       </el-form>
 
-      <!-- 协议勾选 -->
-      <label class="agree-row">
+      <!-- 协议（仅第一步显示） -->
+      <label v-if="step === 1" class="agree-row">
         <input v-model="agreed" type="checkbox" class="agree-check" />
         <span>
           我已阅读并同意
@@ -252,7 +253,7 @@ async function finishRegister(token: string) {
 
 .auth-header {
   text-align: center;
-  margin-bottom: 24px;
+  margin-bottom: 20px;
 }
 
 .auth-logo {
@@ -283,27 +284,65 @@ async function finishRegister(token: string) {
   color: var(--text-light);
 }
 
-/* 注册方式 Tab */
-.auth-tabs {
+/* 步骤指示器 */
+.steps {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 18px;
-  margin-bottom: 20px;
+  gap: 12px;
+  margin-bottom: 24px;
 }
-.auth-tab {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--text-light);
-  cursor: pointer;
-  padding-bottom: 4px;
+.step {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13.5px;
+  color: var(--text-muted);
+  transition: color 0.2s;
+}
+.step.active { color: var(--primary); font-weight: 600; }
+.step-num {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 700;
+  font-style: normal;
+  background: var(--bg-soft, #f1f5f9);
+  color: var(--text-muted);
   transition: all 0.2s;
 }
-.auth-tab.active {
-  color: var(--primary);
+.step.active .step-num {
+  background: var(--gradient-primary);
+  color: #fff;
+  box-shadow: 0 2px 8px var(--primary-glow);
 }
-.tab-divider {
-  color: var(--border);
+.step-line {
+  width: 48px;
+  height: 2px;
+  background: var(--border);
+  border-radius: 1px;
+  transition: background 0.3s;
+}
+.step-line.passed { background: var(--primary); }
+
+.field-label {
+  display: inline-block;
+  width: 44px;
+  font-size: 13.5px;
+  color: var(--text);
+  font-weight: 500;
+}
+
+.step-tip {
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--text-muted);
+  line-height: 1.7;
+  margin-top: -6px;
 }
 
 /* 短信行 */
@@ -319,6 +358,11 @@ async function finishRegister(token: string) {
   font-size: 12.5px;
   color: var(--text-muted);
   margin-top: -6px;
+}
+.sms-hint a {
+  color: var(--primary);
+  font-weight: 600;
+  cursor: pointer;
 }
 
 /* 协议勾选 */

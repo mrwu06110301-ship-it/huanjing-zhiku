@@ -35,6 +35,14 @@ export function smsLogin(data: {
   return request.post("/users/sms/login", data);
 }
 
+/** 绑定/关联手机号（注册第二步：验证码校验后写入 phone） */
+export function bindPhone(data: {
+  phone: string;
+  sms_code: string;
+}): Promise<{ data: { detail: string; phone: string } }> {
+  return request.post("/users/bind-phone", data);
+}
+
 /** 微信扫码授权登录（预留） */
 export function wechatLogin(code: string): Promise<{ data: { access_token: string } }> {
   return request.post("/users/wechat/login", { code });

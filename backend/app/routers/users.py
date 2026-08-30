@@ -99,6 +99,32 @@ async def sms_login(data: SmsLoginRequest, db: AsyncSession = Depends(get_db)):
     raise HTTPException(status_code=501, detail="短信登录暂未开放，敬请期待")
 
 
+@router.post("/bind-phone")
+async def bind_phone(
+    data: SmsLoginRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """已注册用户绑定/关联手机号（注册流程第二步，预留接口）
+
+    账号密码注册完成后，通过手机验证码关联手机号。
+    短信服务开通后：校验验证码一致才写入 phone；手机号被占用时返回 400。
+    """
+    if not SMS_ENABLED:
+        raise HTTPException(status_code=501, detail="短信服务暂未开通，可稍后在个人中心绑定")
+    # TODO: 校验 data.sms_code 与下发验证码一致
+    phone = data.phone.strip()
+    exists = await db.execute(
+        select(User).where(User.phone == phone, User.id != current_user.id)
+    )
+    if exists.scalars().first():
+        raise HTTPException(status_code=400, detail="该手机号已被其他账号绑定")
+    current_user.phone = phone
+    db.add(current_user)
+    await db.commit()
+    return {"detail": "手机号绑定成功", "phone": phone}
+
+
 # ========== 微信扫码登录（预留：微信开放平台接入后启用） ==========
 
 @router.post("/wechat/login", response_model=Token)
