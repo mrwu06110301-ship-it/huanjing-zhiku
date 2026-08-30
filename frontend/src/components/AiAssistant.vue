@@ -163,7 +163,14 @@ async function send() {
   }
 }
 
-const QUICK_QS = ["烟气采样布点要求？", "HJ 1385 是什么标准？", "含湿量测定有哪些方法？"];
+const QUICK_QS = [
+  "这个平台是干什么的？",
+  "平台作者是谁？",
+  "污染源β射线测量颗粒物标准解读？",
+  "现场监测有哪些不规范案例？",
+  "含湿量测定有哪些方法？",
+  "烟气采样布点有什么要求？",
+];
 function askQuick(q: string) {
   input.value = q;
   send();
