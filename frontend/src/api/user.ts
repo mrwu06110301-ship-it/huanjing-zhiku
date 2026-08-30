@@ -85,3 +85,8 @@ export function getUserList(params?: {
 export function getUserCount(): Promise<{ data: { total: number } }> {
   return request.get("/users/count");
 }
+
+/** 管理员删除用户（软删除：禁用+匿名化，内容保留） */
+export function deleteUser(userId: number): Promise<{ data: { detail: string } }> {
+  return request.delete(`/users/${userId}`);
+}

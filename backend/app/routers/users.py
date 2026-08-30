@@ -274,3 +274,36 @@ async def get_user(user_id: int, db: AsyncSession = Depends(get_db)):
     if not user:
         raise HTTPException(status_code=404, detail="用户不存在")
     return user
+
+
+@router.delete("/{user_id}")
+async def delete_user(
+    user_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """管理员删除用户（软删除：禁用 + 数据匿名化，保留内容完整性）
+
+    - 不能删除自己和其他管理员
+    - 软删除：置 is_active=False + 用户名/昵称/手机号/邮箱匿名化，释放唯一字段供重新注册
+    - 该用户发布的文章/评论/留言保留（匿名化为"已注销用户"），不破坏内容与计数
+    """
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalars().first()
+    if not user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    if user.id == current_user.id:
+        raise HTTPException(status_code=400, detail="不能删除自己的账号")
+    if user.role == "admin":
+        raise HTTPException(status_code=400, detail="不能删除管理员账号")
+
+    suffix = uuid.uuid4().hex[:8]
+    user.is_active = False
+    user.username = f"deleted_{user.id}_{suffix}"
+    user.nickname = "已注销用户"
+    user.email = ""
+    user.phone = ""
+    user.hashed_password = hash_password(uuid.uuid4().hex + uuid.uuid4().hex)
+    db.add(user)
+    await db.commit()
+    return {"detail": f"用户 {user_id} 已删除（内容保留并匿名化）"}

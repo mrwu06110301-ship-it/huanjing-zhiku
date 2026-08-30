@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { ref, onMounted } from "vue";
 import { useAuthStore } from "@/stores/auth";
-import { getUserList } from "@/api/user";
+import { getUserList, deleteUser } from "@/api/user";
 import { setUploadPermission } from "@/api/video";
 import type { UserOut } from "@/types";
-import { ElMessage } from "element-plus";
+import { ElMessage, ElMessageBox } from "element-plus";
 import Icon from "@/components/Icon.vue";
 
 const auth = useAuthStore();
@@ -29,6 +29,23 @@ async function toggleUpload(userId: number, canUpload: boolean) {
   try { await setUploadPermission(userId, canUpload); ElMessage.success(canUpload ? "已授权上传权限" : "已取消上传权限"); loadUsers(); }
   catch { ElMessage.error("操作失败"); }
 }
+
+async function handleDelete(user: UserOut) {
+  try {
+    await ElMessageBox.confirm(
+      `确定删除用户「${user.nickname || user.username}」吗？删除后该账号将被禁用并匿名化，其发布的内容保留。此操作不可恢复。`,
+      "删除用户",
+      { confirmButtonText: "删除", cancelButtonText: "取消", type: "warning", confirmButtonClass: "el-button--danger" }
+    );
+  } catch { return; }
+  try {
+    await deleteUser(user.id);
+    ElMessage.success("用户已删除");
+    loadUsers();
+  } catch (err: any) {
+    ElMessage.error(err?.response?.data?.detail || "删除失败");
+  }
+}
 </script>
 
 <template>
@@ -49,6 +66,7 @@ async function toggleUpload(userId: number, canUpload: boolean) {
             <th>角色</th>
             <th>上传权限 <el-tooltip content="开启后用户可在视频页面上传视频" placement="top"><Icon name="info" :size="14" style="cursor:help;opacity:0.4" /></el-tooltip></th>
             <th>注册时间</th>
+            <th>操作</th>
           </tr>
         </thead>
         <tbody>
@@ -63,6 +81,14 @@ async function toggleUpload(userId: number, canUpload: boolean) {
               <span v-else style="color:var(--text-light);font-size:12px">默认</span>
             </td>
             <td>{{ formatDate(user.created_at) }}</td>
+            <td>
+              <el-button
+                v-if="user.role !== 'admin'"
+                type="danger" plain size="small"
+                @click="handleDelete(user)"
+              >删除</el-button>
+              <span v-else style="color:var(--text-light);font-size:12px">-</span>
+            </td>
           </tr>
         </tbody>
       </table>
