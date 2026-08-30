@@ -3,8 +3,8 @@ import { ref, computed } from "vue";
 import { useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
 import {
-  login as loginApi, sendSms, smsLogin, smsVerifyLogin,
-  setupPassword, forgotPassword, getMe,
+  login as loginApi, sendSms, smsVerifyLogin,
+  forgotPassword, getMe,
 } from "@/api/user";
 import { ElMessage } from "element-plus";
 import BrandLogo from "@/components/BrandLogo.vue";
@@ -15,15 +15,11 @@ const auth = useAuthStore();
 
 /**
  * 登录视图状态：
- * - login：主登录页（密码/短信 Tab）
+ * - login：主登录页（仅账号密码登录，短信验证码只用于注册/找回密码）
  * - bindSms：密码登录检测到未绑手机号 → 短信验证补绑后完成登录
- * - setupPassword：短信登录到随机密码账号 → 补设账号密码后进入
  * - forgot：找回密码（手机验证码 → 重置新密码）
  */
-const view = ref<"login" | "bindSms" | "setupPassword" | "forgot">("login");
-
-/** 登录方式 Tab：password / sms */
-const activeTab = ref<"password" | "sms">("password");
+const view = ref<"login" | "bindSms" | "forgot">("login");
 
 // ==================== 密码登录 ====================
 const form = ref({
@@ -59,8 +55,7 @@ async function handleLogin() {
   }
 }
 
-// ==================== 短信验证（补绑 / 找回 密码共用发送逻辑） ====================
-const SMS_ENABLED = true; // 阿里云号码认证服务已接入
+// ==================== 短信验证（补绑手机号 / 找回密码共用发送逻辑） ====================
 const smsForm = ref({ phone: "", code: "" });
 const smsLoading = ref(false);
 const countdown = ref(0);
@@ -110,55 +105,7 @@ async function handleBindSms() {
   }
 }
 
-// ==================== 短信登录 ====================
-async function handleSmsLogin() {
-  if (!phoneValid.value) { ElMessage.warning("请输入正确的手机号"); return; }
-  if (!smsForm.value.code) { ElMessage.warning("请输入验证码"); return; }
-  smsLoading.value = true;
-  try {
-    const res = await smsLogin({ phone: smsForm.value.phone, sms_code: smsForm.value.code });
-    if (res.data.token_type === "need_password") {
-      // 新账号/随机密码账号 → 引导补设账号密码
-      pendingToken.value = res.data.access_token;
-      ElMessage.info("请设置您的账号密码，方便日后密码登录");
-      view.value = "setupPassword";
-      return;
-    }
-    await finishLogin(res.data.access_token);
-  } catch (err: any) {
-    ElMessage.error(err?.response?.data?.detail || "登录失败");
-  } finally {
-    smsLoading.value = false;
-  }
-}
-
-// ==================== 补设账号密码（短信登录的新账号） ====================
-const setupForm = ref({ username: "", password: "", confirm: "" });
-const setupLoading = ref(false);
-
-async function handleSetupPassword() {
-  if (setupForm.value.password.length < 6) {
-    ElMessage.warning("密码至少 6 位");
-    return;
-  }
-  if (setupForm.value.password !== setupForm.value.confirm) {
-    ElMessage.warning("两次输入的密码不一致");
-    return;
-  }
-  setupLoading.value = true;
-  try {
-    await setupPassword({
-      username: setupForm.value.username.trim(),
-      new_password: setupForm.value.password,
-    });
-    ElMessage.success("设置成功，欢迎加入！");
-    await finishLogin(pendingToken.value);
-  } catch (err: any) {
-    ElMessage.error(err?.response?.data?.detail || "设置失败");
-  } finally {
-    setupLoading.value = false;
-  }
-}
+// ==================== 短信验证（补绑 / 找回密码共用发送逻辑） ====================
 
 // ==================== 找回密码 ====================
 const forgotForm = ref({ phone: "", code: "", password: "", confirm: "" });
@@ -196,7 +143,6 @@ async function handleForgotSubmit() {
     form.value.account = f.phone;
     forgotForm.value = { phone: "", code: "", password: "", confirm: "" };
     view.value = "login";
-    activeTab.value = "password";
   } catch (err: any) {
     ElMessage.error(err?.response?.data?.detail || "重置失败");
   } finally {
@@ -233,30 +179,16 @@ async function finishLogin(token: string) {
         <div class="auth-logo">
           <BrandLogo />
         </div>
-        <h2>{{ view === "login" ? "产品小吴知识库" : view === "bindSms" ? "验证手机号" : view === "setupPassword" ? "设置账号密码" : "找回密码" }}</h2>
+        <h2>{{ view === "login" ? "产品小吴知识库" : view === "bindSms" ? "验证手机号" : "找回密码" }}</h2>
         <p>{{ view === "login" ? "让现场监测，触手可感"
           : view === "bindSms" ? "验证通过即完成登录"
-          : view === "setupPassword" ? "设置后可使用密码登录"
           : "通过绑定手机号重置密码" }}</p>
       </div>
 
-      <!-- ============ 主登录视图 ============ -->
+      <!-- ============ 主登录视图（仅账号密码登录） ============ -->
       <template v-if="view === 'login'">
-      <!-- 登录方式 Tab -->
-      <div class="auth-tabs">
-        <span
-          :class="['auth-tab', { active: activeTab === 'password' }]"
-          @click="activeTab = 'password'"
-        >密码登录</span>
-        <span class="tab-divider">|</span>
-        <span
-          :class="['auth-tab', { active: activeTab === 'sms' }]"
-          @click="activeTab = 'sms'"
-        >短信登录</span>
-      </div>
-
       <!-- 密码登录表单 -->
-      <el-form v-if="activeTab === 'password'" :model="form" @keyup.enter="handleLogin">
+      <el-form :model="form" @keyup.enter="handleLogin">
         <el-form-item>
           <el-input
             v-model="form.account"
@@ -284,32 +216,6 @@ async function finishLogin(token: string) {
         </el-form-item>
         <div class="forgot-row"><a @click.prevent="view = 'forgot'" href="#">忘记密码？</a></div>
       </el-form>
-
-      <!-- 短信登录表单（预留） -->
-      <el-form v-else @keyup.enter="handleSmsLogin">
-        <el-form-item>
-          <el-input v-model="smsForm.phone" placeholder="请输入手机号" size="large" maxlength="11">
-            <template #prefix><span class="field-label">手机号</span></template>
-          </el-input>
-        </el-form-item>
-        <el-form-item>
-          <div class="sms-row">
-            <el-input v-model="smsForm.code" placeholder="请输入验证码" size="large" maxlength="6">
-              <template #prefix><span class="field-label">验证码</span></template>
-            </el-input>
-            <el-button
-              type="primary" plain size="large" class="sms-btn"
-              :disabled="countdown > 0" @click="handleSendSms"
-            >{{ countdown > 0 ? `${countdown}s 后重发` : "获取验证码" }}</el-button>
-          </div>
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" size="large" :loading="smsLoading" @click="handleSmsLogin" style="width: 100%">
-            登录 / 注册
-          </el-button>
-        </el-form-item>
-        <div v-if="!SMS_ENABLED" class="sms-hint">短信登录暂未开放，当前请使用密码登录</div>
-      </el-form>
       </template>
 
       <!-- ============ 视图：首次密码登录 → 短信验证补绑手机号 ============ -->
@@ -336,25 +242,6 @@ async function finishLogin(token: string) {
           </el-button>
         </el-form-item>
         <div class="step-tip">绑定后手机号可用于登录和找回密码 · <a @click.prevent="view = 'login'" href="#">返回登录</a></div>
-      </el-form>
-
-      <!-- ============ 视图：短信登录新账号 → 补设账号密码 ============ -->
-      <el-form v-else-if="view === 'setupPassword'" @keyup.enter="handleSetupPassword">
-        <el-form-item>
-          <el-input v-model="setupForm.username" placeholder="设置用户名（3-50 个字符，可留空使用手机号）" size="large" />
-        </el-form-item>
-        <el-form-item>
-          <el-input v-model="setupForm.password" type="password" placeholder="设置密码（至少 6 位）" size="large" show-password />
-        </el-form-item>
-        <el-form-item>
-          <el-input v-model="setupForm.confirm" type="password" placeholder="确认密码" size="large" show-password />
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" size="large" :loading="setupLoading" @click="handleSetupPassword" style="width: 100%">
-            完成设置并进入
-          </el-button>
-        </el-form-item>
-        <div class="step-tip">设置后即可使用 用户名/手机号 + 密码 登录</div>
       </el-form>
 
       <!-- ============ 视图：找回密码 ============ -->
@@ -401,8 +288,7 @@ async function finishLogin(token: string) {
 
       <!-- 协议 -->
       <p v-if="view === 'login'" class="agreement">
-        未注册的手机号，验证通过后将自动注册账号<br />
-        登录或完成注册即代表你同意
+        登录即代表你同意
         <router-link to="/terms" target="_blank">用户协议</router-link>
         和
         <router-link to="/privacy" target="_blank">隐私政策</router-link>
@@ -499,29 +385,6 @@ async function finishLogin(token: string) {
   color: var(--text-light);
 }
 
-/* 登录方式 Tab */
-.auth-tabs {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 18px;
-  margin-bottom: 22px;
-}
-.auth-tab {
-  font-size: 17px;
-  font-weight: 600;
-  color: var(--text-light);
-  cursor: pointer;
-  padding-bottom: 4px;
-  transition: all 0.2s;
-}
-.auth-tab.active {
-  color: var(--primary);
-}
-.tab-divider {
-  color: var(--border);
-}
-
 .field-label {
   display: inline-block;
   width: 52px;
@@ -538,12 +401,6 @@ async function finishLogin(token: string) {
 }
 .sms-row .el-input { flex: 1; }
 .sms-btn { flex-shrink: 0; width: 118px; }
-.sms-hint {
-  text-align: center;
-  font-size: 12.5px;
-  color: var(--text-muted);
-  margin-top: -6px;
-}
 .forgot-row {
   text-align: right;
   font-size: 13px;

@@ -67,8 +67,8 @@ async def register(data: UserRegister, db: AsyncSession = Depends(get_db)):
     if result.scalars().first():
         raise HTTPException(status_code=400, detail="手机号已被注册")
 
-    # email 可选：填写了才查重（个人中心补填场景兼容）
-    email = (data.email or "").strip()
+    # email 可选：填写了才查重（个人中心补填场景兼容）；空串写 NULL 防唯一约束冲突
+    email = (data.email or "").strip() or None
     if email:
         result = await db.execute(select(User).where(User.email == email))
         if result.scalars().first():
@@ -163,7 +163,7 @@ async def sms_login(data: SmsLoginRequest, db: AsyncSession = Depends(get_db)):
         username = f"{phone}_{uuid.uuid4().hex[:4]}"
     user = User(
         username=username,
-        email="",
+        email=None,  # SQLite UNIQUE 允许多个 NULL；空串会与历史 email="" 用户撞唯一约束
         phone=phone,
         nickname=phone,
         hashed_password=hash_password(uuid.uuid4().hex + uuid.uuid4().hex),
@@ -333,7 +333,7 @@ async def wechat_login(data: WechatLoginRequest, db: AsyncSession = Depends(get_
         username = f"wx_{uuid.uuid4().hex[:12]}"
     user = User(
         username=username,
-        email="",
+        email=None,  # SQLite UNIQUE 允许多个 NULL；空串会与历史 email="" 用户撞唯一约束
         phone="",
         nickname=nickname or username,
         avatar=wx_info.get("headimgurl", "") if wx_info["ok"] else "",
