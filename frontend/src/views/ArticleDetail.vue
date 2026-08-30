@@ -2,7 +2,7 @@
 import { ref, computed, onMounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
-import { getArticle, deleteArticle, approveArticle, rejectArticle } from "@/api/article";
+import { getArticle, likeArticle, deleteArticle, approveArticle, rejectArticle } from "@/api/article";
 import { getComments, addComment, deleteComment } from "@/api/comment";
 import type { ArticleOut, CommentOut } from "@/types";
 import { ElMessage, ElMessageBox } from "element-plus";
@@ -56,6 +56,29 @@ const rendered_content = computed(() => {
   if (/<[a-z][\s\S]*>/i.test(content)) return content;
   return content.split("\n").map((line: string) => `<p>${line || "<br>"}</p>`).join("");
 });
+
+// ==================== 点赞 ====================
+const likeLoading = ref(false);
+
+async function handleLike() {
+  if (!article.value) return;
+  if (!auth.token) { ElMessage.warning("请先登录"); router.push("/login"); return; }
+  if (likeLoading.value) return;
+  likeLoading.value = true;
+  // 乐观更新
+  const prev = { liked: article.value.liked, like_count: article.value.like_count };
+  article.value.liked = !prev.liked;
+  article.value.like_count = prev.like_count + (prev.liked ? -1 : 1);
+  try {
+    const res = await likeArticle(article.value.id);
+    article.value.liked = res.data.liked;
+    article.value.like_count = res.data.like_count;
+  } catch (e: any) {
+    article.value.liked = prev.liked;
+    article.value.like_count = prev.like_count;
+    ElMessage.error(e?.response?.data?.detail || "点赞失败");
+  } finally { likeLoading.value = false; }
+}
 
 // ==================== 正文图片点击预览 ====================
 const previewVisible = ref(false);
@@ -149,7 +172,15 @@ function formatTime(dateStr: string) {
           </div>
           <div class="article-stats">
             <span><Icon name="eye" :size="14" /> {{ article.view_count }}</span>
-            <span><Icon name="heart" :size="14" /> {{ article.like_count }}</span>
+            <button
+              class="like-btn"
+              :class="{ active: article.liked }"
+              :disabled="likeLoading"
+              @click="handleLike"
+            >
+              <Icon name="heart" :size="14" />
+              <span>{{ article.like_count }}</span>
+            </button>
           </div>
         </div>
       </div>
@@ -247,6 +278,17 @@ function formatTime(dateStr: string) {
 .author-time { font-size: 12px; color: var(--text-light); }
 .article-stats { display: flex; gap: 16px; font-size: 13px; color: var(--text-light); align-items: center; }
 .article-stats span { display: flex; align-items: center; gap: 4px; }
+.like-btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 5px 14px; border-radius: 20px;
+  border: 1.5px solid var(--card-border); background: var(--card-bg);
+  color: var(--text-light); font-size: 13px; cursor: pointer;
+  transition: all 0.2s var(--ease);
+}
+.like-btn:hover { border-color: #e74c3c; color: #e74c3c; }
+.like-btn.active { border-color: #e74c3c; background: rgba(231, 76, 60, 0.08); color: #e74c3c; }
+.like-btn.active :deep(svg) { fill: #e74c3c; }
+.like-btn:disabled { opacity: 0.7; cursor: default; }
 .detail-content {
   background: var(--card-bg); border-radius: var(--radius);
   padding: 32px 28px; box-shadow: var(--shadow);

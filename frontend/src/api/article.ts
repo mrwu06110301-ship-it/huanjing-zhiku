@@ -21,6 +21,10 @@ export function getArticle(id: number): Promise<{ data: ArticleOut }> {
   return request.get(`/articles/${id}`);
 }
 
+export function likeArticle(id: number): Promise<{ data: { like_count: number; liked: boolean } }> {
+  return request.post(`/articles/${id}/like`);
+}
+
 export function createArticle(data: Partial<ArticleOut>) {
   return request.post("/articles", data);
 }

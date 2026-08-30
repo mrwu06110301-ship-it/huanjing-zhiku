@@ -283,6 +283,8 @@ onMounted(async () => {
                   <span><Icon name="clock" :size="12" /> {{ formatDate(article.created_at) }}</span>
                   <span class="meta-dot">·</span>
                   <span><Icon name="eye" :size="12" /> {{ article.view_count }}</span>
+                  <span class="meta-dot">·</span>
+                  <span class="meta-likes" :class="{ active: article.liked }"><Icon name="heart" :size="12" /> {{ article.like_count }}</span>
                 </div>
               </div>
               <div class="article-cover" v-if="article.cover_image">
@@ -335,6 +337,10 @@ onMounted(async () => {
                 </span>
                 <span class="meta-dot">·</span>
                 <span><Icon name="clock" :size="12" /> {{ formatDate(article.created_at) }}</span>
+                <span class="meta-dot">·</span>
+                <span><Icon name="eye" :size="12" /> {{ article.view_count }}</span>
+                <span class="meta-dot">·</span>
+                <span class="meta-likes" :class="{ active: article.liked }"><Icon name="heart" :size="12" /> {{ article.like_count }}</span>
               </div>
             </div>
             <div class="article-cover" v-if="article.cover_image">
@@ -709,6 +715,13 @@ onMounted(async () => {
 
 .meta-dot {
   color: var(--border);
+}
+
+.meta-likes.active {
+  color: #e74c3c;
+}
+.meta-likes.active :deep(svg) {
+  fill: #e74c3c;
 }
 
 .article-cover {

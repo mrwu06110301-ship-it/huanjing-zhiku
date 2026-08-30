@@ -1,6 +1,8 @@
 """文章路由 — 论坛帖子、标准解读等"""
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+import json
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_
 
@@ -12,6 +14,32 @@ from app.schemas.article import ArticleCreate, ArticleUpdate, ArticleOut, Articl
 from app.dependencies.auth import get_current_user, require_admin
 
 router = APIRouter(prefix="/api/articles", tags=["文章"])
+
+
+async def get_optional_user(request: Request, db: AsyncSession = Depends(get_db)) -> User | None:
+    """可选的用户认证（未登录返回 None，与视频/留言模块一致）"""
+    from app.services.auth import decode_access_token
+    auth_header = request.headers.get("authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return None
+    payload = decode_access_token(auth_header[7:])
+    if not payload:
+        return None
+    user_id = payload.get("sub")
+    if not user_id:
+        return None
+    result = await db.execute(select(User).where(User.id == int(user_id)))
+    return result.scalar_one_or_none()
+
+
+def _is_liked(a: Article, uid: str | None) -> bool:
+    """当前用户是否已点赞该文章"""
+    if not uid or not a.like_users:
+        return False
+    try:
+        return uid in [str(u) for u in json.loads(a.like_users)]
+    except (ValueError, TypeError):
+        return False
 
 
 @router.get("/mine")
@@ -37,6 +65,7 @@ async def list_my_articles(
             module=a.module, category_id=a.category_id, category_name=cat_name,
             tags=a.tags or [], status=a.status, is_pinned=a.is_pinned,
             view_count=a.view_count, like_count=a.like_count,
+            liked=_is_liked(a, str(current_user.id)),
             author_name=current_user.nickname or current_user.username,
             author_avatar=current_user.avatar or "",
             created_at=a.created_at,
@@ -53,6 +82,7 @@ async def list_articles(
     status: str | None = None,
     keyword: str | None = None,
     db: AsyncSession = Depends(get_db),
+    current_user: User | None = Depends(get_optional_user),
 ):
     """文章列表（公开的已审核文章 + 管理员可看全部；keyword 全量模糊搜索标题/摘要）"""
     query = select(Article)
@@ -115,7 +145,9 @@ async def list_articles(
             id=a.id, title=a.title, summary=a.summary, cover_image=a.cover_image,
             module=a.module, category_id=a.category_id, category_name=cat_name,
             tags=a.tags or [], status=a.status, is_pinned=a.is_pinned,
-            view_count=a.view_count, like_count=a.like_count, author_name=author_name,
+            view_count=a.view_count, like_count=a.like_count,
+            liked=_is_liked(a, str(current_user.id) if current_user else None),
+            author_name=author_name,
             author_avatar=author_avatar,
             created_at=a.created_at,
         ))
@@ -124,14 +156,18 @@ async def list_articles(
 
 
 @router.get("/{article_id}", response_model=ArticleOut)
-async def get_article(article_id: int, db: AsyncSession = Depends(get_db)):
+async def get_article(
+    article_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User | None = Depends(get_optional_user),
+):
     # 用列式查询避免 ORM 对象的延迟加载问题
     result = await db.execute(
         select(
             Article.id, Article.title, Article.content, Article.summary,
             Article.cover_image, Article.module, Article.category_id,
             Article.tags, Article.status, Article.is_pinned, Article.is_public,
-            Article.view_count, Article.like_count, Article.author_id,
+            Article.view_count, Article.like_count, Article.like_users, Article.author_id,
             Article.created_at, Article.updated_at,
         ).where(Article.id == article_id)
     )
@@ -165,10 +201,38 @@ async def get_article(article_id: int, db: AsyncSession = Depends(get_db)):
         module=row.module, category_id=row.category_id, category_name=cat_name,
         tags=row.tags or [], status=row.status, is_pinned=row.is_pinned,
         is_public=row.is_public, view_count=(row.view_count or 0) + 1,
-        like_count=row.like_count, author_id=row.author_id, author_name=author_name,
+        like_count=row.like_count, liked=_is_liked(row, str(current_user.id) if current_user else None),
+        author_id=row.author_id, author_name=author_name,
         author_avatar=author_avatar,
         created_at=row.created_at, updated_at=row.updated_at,
     )
+
+
+@router.post("/{article_id}/like")
+async def toggle_like(
+    article_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """点赞/取消点赞文章"""
+    result = await db.execute(select(Article).where(Article.id == article_id))
+    article = result.scalars().first()
+    if not article:
+        raise HTTPException(status_code=404, detail="文章不存在")
+
+    like_users = json.loads(article.like_users) if article.like_users else []
+    uid = str(current_user.id)
+    if uid in [str(u) for u in like_users]:
+        like_users = [u for u in like_users if str(u) != uid]
+        article.like_count = max(0, (article.like_count or 0) - 1)
+        action = "unliked"
+    else:
+        like_users.append(current_user.id)
+        article.like_count = (article.like_count or 0) + 1
+        action = "liked"
+    article.like_users = json.dumps(like_users, ensure_ascii=False)
+    await db.flush()
+    return {"like_count": article.like_count, "liked": action == "liked"}
 
 
 @router.post("", response_model=ArticleOut, status_code=201)

@@ -43,6 +43,7 @@ class ArticleOut(BaseModel):
     is_public: bool = True
     view_count: int = 0
     like_count: int = 0
+    liked: bool = False
     author_id: int
     author_name: str = ""
     author_avatar: str = ""
@@ -66,6 +67,7 @@ class ArticleListOut(BaseModel):
     is_pinned: bool = False
     view_count: int = 0
     like_count: int = 0
+    liked: bool = False
     author_name: str = ""
     author_avatar: str = ""
     created_at: datetime | None = None

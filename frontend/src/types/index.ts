@@ -38,6 +38,7 @@ export interface ArticleOut {
   is_public: boolean;
   view_count: number;
   like_count: number;
+  liked: boolean;
   author_id: number;
   author_name: string;
   author_avatar: string;
@@ -58,6 +59,7 @@ export interface ArticleListOut {
   is_pinned: boolean;
   view_count: number;
   like_count: number;
+  liked: boolean;
   author_name: string;
   author_avatar: string;
   created_at: string;

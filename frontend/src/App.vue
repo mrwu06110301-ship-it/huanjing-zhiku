@@ -84,6 +84,18 @@ import AiAssistant from "@/components/AiAssistant.vue";
   margin: 0;
   padding: 0;
   box-sizing: border-box;
+  /* 移动端：去掉浏览器默认矩形点击高亮（与圆角按钮不匹配），按下反馈由元素自身样式承担 */
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* 触屏交互优化：消除点击 300ms 延迟，禁止双击缩放 */
+button, a, input, textarea, select, label, .el-button, [role="button"] {
+  touch-action: manipulation;
+}
+
+/* 统一按下反馈：跟随元素形状（圆角），透明度变化 */
+button:active, .el-button:active, a:active {
+  opacity: 0.85;
 }
 
 html {
