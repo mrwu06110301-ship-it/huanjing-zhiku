@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed, watch } from "vue";
+import { ref, onMounted, onUnmounted, computed, watch, nextTick } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
 import { getVideo, deleteVideo, likeVideo, getVideos, type VideoOut } from "@/api/video";
@@ -39,7 +39,18 @@ watch(
 async function loadVideo(id: number) {
   if (!id) { router.push("/videos"); return; }
   loading.value = true;
-  try { const res = await getVideo(id); video.value = res.data; comments.value = []; loadComments(); findNextVideo(); }
+  try {
+    const res = await getVideo(id); video.value = res.data; comments.value = []; loadComments(); findNextVideo();
+    // 直链视频自动播放：等 <video> 渲染完成再触发；浏览器拦截自动出声时静默降级为手动
+    await nextTick();
+    if (videoRef.value && video.value?.video_url) {
+      videoRef.value.muted = false;
+      videoRef.value.play().catch(() => {
+        videoRef.value!.muted = true;
+        videoRef.value!.play().catch(() => { /* 仍被拦截则保持手动播放 */ });
+      });
+    }
+  }
   catch { ElMessage.error("视频不存在"); router.push("/videos"); }
   finally { loading.value = false; }
 }
