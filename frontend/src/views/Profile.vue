@@ -12,7 +12,7 @@ const auth = useAuthStore();
 
 const activeTab = ref("profile");
 
-const profileForm = ref({ nickname: "", email: "", phone: "" });
+const profileForm = ref({ nickname: "", phone: "" });
 const avatarUrl = ref("");
 
 const passwordForm = ref({
@@ -29,7 +29,6 @@ onMounted(() => {
   }
   if (auth.user) {
     profileForm.value.nickname = auth.user.nickname || "";
-    profileForm.value.email = auth.user.email || "";
     profileForm.value.phone = (auth.user as any).phone || "";
     avatarUrl.value = auth.user.avatar || "";
   }
@@ -55,7 +54,6 @@ async function handleSaveProfile() {
   try {
     const res = await updateMe({
       nickname: profileForm.value.nickname,
-      email: profileForm.value.email || undefined,
       phone: profileForm.value.phone || undefined,
     });
     auth.user = res.data;
@@ -122,9 +120,6 @@ async function handleChangePassword() {
             </el-form-item>
             <el-form-item label="昵称">
               <el-input v-model="profileForm.nickname" placeholder="请输入昵称" />
-            </el-form-item>
-            <el-form-item label="邮箱">
-              <el-input v-model="profileForm.email" placeholder="请输入邮箱（可选）" />
             </el-form-item>
             <el-form-item label="手机号">
               <el-input v-model="profileForm.phone" placeholder="请输入手机号（可选）" />

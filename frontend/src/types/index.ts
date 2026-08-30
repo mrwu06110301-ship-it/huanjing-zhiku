@@ -3,7 +3,6 @@
 export interface UserOut {
   id: number;
   username: string;
-  email: string | null;
   nickname: string;
   avatar: string;
   phone: string | null;

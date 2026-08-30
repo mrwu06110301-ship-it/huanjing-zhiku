@@ -62,7 +62,6 @@ async function handleDelete(user: UserOut) {
             <th>ID</th>
             <th>用户名</th>
             <th>昵称</th>
-            <th>邮箱</th>
             <th>角色</th>
             <th>上传权限 <el-tooltip content="开启后用户可在视频页面上传视频" placement="top"><Icon name="info" :size="14" style="cursor:help;opacity:0.4" /></el-tooltip></th>
             <th>注册时间</th>
@@ -74,7 +73,6 @@ async function handleDelete(user: UserOut) {
             <td>{{ user.id }}</td>
             <td>{{ user.username }}</td>
             <td>{{ user.nickname || "-" }}</td>
-            <td>{{ user.email || "-" }}</td>
             <td><span :class="['role-tag', user.role]">{{ user.role === 'admin' ? '管理员' : '用户' }}</span></td>
             <td>
               <el-switch v-if="user.role !== 'admin'" :model-value="!!(user as any).can_upload_video" size="small" @change="(val: boolean) => toggleUpload(user.id, val)" />

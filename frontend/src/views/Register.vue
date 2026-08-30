@@ -145,7 +145,7 @@ function backToStep1() {
             下一步
           </el-button>
         </el-form-item>
-        <div class="step-tip">下一步需通过手机验证码完成注册；昵称、邮箱可登录后在个人中心补填</div>
+        <div class="step-tip">下一步需通过手机验证码完成注册；昵称可登录后在个人中心补填</div>
       </el-form>
 
       <!-- 第二步：手机验证码，验证通过才创建账号 -->

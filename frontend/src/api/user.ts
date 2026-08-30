@@ -5,7 +5,6 @@ import type { UserOut } from "@/types";
 
 export function register(data: {
   username: string;
-  email?: string;
   password: string;
   nickname?: string;
   phone: string;
@@ -21,7 +20,7 @@ export function checkUsername(data: {
   return request.post("/users/register/check-username", data);
 }
 
-/** 登录：account 支持用户名/手机号/邮箱；token_type=pending_sms 表示需短信验证补绑 */
+/** 登录：account 支持用户名/手机号；token_type=pending_sms 表示需短信验证补绑 */
 export function login(data: {
   account: string;
   password: string;
@@ -88,7 +87,6 @@ export function getMe(): Promise<{ data: UserOut }> {
 export function updateMe(data: {
   nickname?: string;
   avatar?: string;
-  email?: string;
   phone?: string;
 }): Promise<{ data: UserOut }> {
   return request.put("/users/me", data);

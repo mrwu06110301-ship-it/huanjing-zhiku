@@ -67,16 +67,11 @@ async def register(data: UserRegister, db: AsyncSession = Depends(get_db)):
     if result.scalars().first():
         raise HTTPException(status_code=400, detail="手机号已被注册")
 
-    # email 可选：填写了才查重（个人中心补填场景兼容）；空串写 NULL 防唯一约束冲突
-    email = (data.email or "").strip() or None
-    if email:
-        result = await db.execute(select(User).where(User.email == email))
-        if result.scalars().first():
-            raise HTTPException(status_code=400, detail="邮箱已被注册")
+    # 邮箱功能已下线：建号一律 email=NULL（SQLite UNIQUE 允许多个 NULL）
 
     user = User(
         username=username,
-        email=email,
+        email=None,
         phone=phone,
         nickname=data.nickname or username,
         hashed_password=hash_password(data.password),
@@ -100,9 +95,7 @@ async def login(data: UserLogin, db: AsyncSession = Depends(get_db)):
     if not account:
         raise HTTPException(status_code=400, detail="请输入账号")
     result = await db.execute(
-        select(User).where(
-            or_(User.username == account, User.phone == account, User.email == account)
-        )
+        select(User).where(or_(User.username == account, User.phone == account))
     )
     user = result.scalars().first()
     if not user or not verify_password(data.password, user.hashed_password):
@@ -359,18 +352,9 @@ async def update_me(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """更新当前用户个人信息（昵称/邮箱/头像/手机号）"""
+    """更新当前用户个人信息（昵称/头像/手机号；邮箱功能已下线）"""
     if data.nickname is not None:
         current_user.nickname = data.nickname.strip() or current_user.nickname
-    if data.email is not None:
-        email = data.email.strip()
-        if email:
-            exists = await db.execute(
-                select(User).where(User.email == email, User.id != current_user.id)
-            )
-            if exists.scalars().first():
-                raise HTTPException(status_code=400, detail="该邮箱已被其他用户使用")
-            current_user.email = email
     if data.avatar is not None:
         current_user.avatar = data.avatar
     if data.phone is not None:
@@ -456,7 +440,7 @@ async def delete_user(
     user.is_active = False
     user.username = f"deleted_{user.id}_{suffix}"
     user.nickname = "已注销用户"
-    user.email = ""
+    user.email = None
     user.phone = ""
     user.hashed_password = hash_password(uuid.uuid4().hex + uuid.uuid4().hex)
     db.add(user)

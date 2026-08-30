@@ -7,7 +7,6 @@ from datetime import datetime
 class UserRegister(BaseModel):
     """注册：username/password/phone/sms_code 必填（手机验证通过才创建账号）"""
     username: str = Field(..., min_length=3, max_length=50)
-    email: str = Field(default="", max_length=100)
     password: str = Field(..., min_length=6, max_length=100)
     nickname: str = Field(default="", max_length=50)
     phone: str = Field(default="", max_length=20)
@@ -20,7 +19,7 @@ class UsernameCheck(BaseModel):
 
 
 class UserLogin(BaseModel):
-    """登录：account 兼容用户名/手机号/邮箱（老字段 username 保留兼容）"""
+    """登录：account 兼容用户名/手机号（老字段 username 保留兼容）"""
     username: str = ""
     account: str = ""
     password: str
@@ -55,7 +54,6 @@ class WechatLoginRequest(BaseModel):
 class UserOut(BaseModel):
     id: int
     username: str
-    email: str | None = None
     nickname: str
     avatar: str = ""
     phone: str | None = None
@@ -71,7 +69,6 @@ class UserOut(BaseModel):
 class UserUpdate(BaseModel):
     nickname: str | None = None
     avatar: str | None = None
-    email: str | None = None
     phone: str | None = None
 
 

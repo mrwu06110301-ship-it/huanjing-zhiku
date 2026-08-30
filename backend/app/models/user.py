@@ -12,7 +12,8 @@ class User(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     username: Mapped[str] = mapped_column(String(50), unique=True, index=True, nullable=False)
-    email: Mapped[str] = mapped_column(String(100), unique=True, index=True, nullable=False)
+    # 邮箱功能已下线：列保留仅为兼容历史数据，不再读写；实际表允许 NULL
+    email: Mapped[str] = mapped_column(String(100), unique=True, index=True, nullable=True)
     nickname: Mapped[str] = mapped_column(String(50), default="")
     avatar: Mapped[str] = mapped_column(String(255), default="")
     phone: Mapped[str] = mapped_column(String(20), default="")
