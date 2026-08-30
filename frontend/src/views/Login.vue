@@ -79,7 +79,8 @@ async function handleSmsLogin() {
   }
 }
 
-// ==================== 微信扫码登录 ====================
+// ==================== 微信扫码登录（个人主体无开放平台资质，暂不开放；代码保留） ====================
+const WECHAT_LOGIN_ENABLED = false; // 具备企业资质并配置 WECHAT_APP_ID 后改 true
 const wxVisible = ref(false);
 function handleWechatLogin() {
   wxVisible.value = true;
@@ -179,10 +180,10 @@ async function finishLogin(token: string) {
         <div v-if="!SMS_ENABLED" class="sms-hint">短信登录暂未开放，当前请使用密码登录</div>
       </el-form>
 
-      <!-- 注册 + 其他方式登录 -->
+      <!-- 注册 + 其他方式登录（微信登录需企业主体开放平台，个人站点暂不开放；代码保留，具备条件后改 WECHAT_LOGIN_ENABLED=true 即恢复） -->
       <div class="alt-row">
         <button class="alt-btn register" @click="router.push('/register')">注册</button>
-        <button class="alt-btn wechat" @click="handleWechatLogin">
+        <button v-if="WECHAT_LOGIN_ENABLED" class="alt-btn wechat" @click="handleWechatLogin">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" style="margin-right:6px">
             <path d="M8.69 3.5C4.98 3.5 2 6.05 2 9.2c0 1.77.96 3.35 2.46 4.4l-.62 1.85 2.16-1.08c.56.15 1.15.24 1.76.26a5.3 5.3 0 0 1-.21-1.48c0-3 2.87-5.44 6.4-5.44.22 0 .43.01.64.03C14.14 5.43 11.7 3.5 8.69 3.5zM6.4 6.5a.85.85 0 1 1 0 1.7.85.85 0 0 1 0-1.7zm4.6 0a.85.85 0 1 1 0 1.7.85.85 0 0 1 0-1.7zm3.99 2.21c-3.06 0-5.54 2.05-5.54 4.58 0 2.53 2.48 4.58 5.54 4.58.5 0 .99-.06 1.45-.17l1.86.93-.53-1.59c1.29-.87 2.12-2.2 2.12-3.75 0-2.53-2.49-4.58-5.55-4.58h.65zm-2.1 2.04a.72.72 0 1 1 0 1.44.72.72 0 0 1 0-1.44zm3.5 0a.72.72 0 1 1 0 1.44.72.72 0 0 1 0-1.44z"/>
           </svg>
