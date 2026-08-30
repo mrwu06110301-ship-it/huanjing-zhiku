@@ -5,6 +5,7 @@ import { useAuthStore } from "@/stores/auth";
 import { login as loginApi, sendSms, smsLogin, getMe } from "@/api/user";
 import { ElMessage } from "element-plus";
 import BrandLogo from "@/components/BrandLogo.vue";
+import WechatLogin from "@/components/WechatLogin.vue";
 
 const router = useRouter();
 const auth = useAuthStore();
@@ -78,9 +79,10 @@ async function handleSmsLogin() {
   }
 }
 
-// ==================== 微信扫码登录（预留） ====================
+// ==================== 微信扫码登录 ====================
+const wxVisible = ref(false);
 function handleWechatLogin() {
-  ElMessage.info("微信登录暂未开放，敬请期待");
+  wxVisible.value = true;
 }
 
 // ==================== 登录成功统一处理 ====================
@@ -201,6 +203,8 @@ async function finishLogin(token: string) {
         <span>还没有账号？</span>
         <router-link to="/register">立即注册</router-link>
       </div>
+
+      <WechatLogin v-model:visible="wxVisible" @success="router.push('/')" />
     </div>
   </div>
 </template>

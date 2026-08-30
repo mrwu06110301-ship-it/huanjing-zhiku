@@ -80,6 +80,11 @@ const router = createRouter({
       component: () => import("@/views/Register.vue"),
     },
     {
+      path: "/wechat/callback",
+      name: "WechatCallback",
+      component: () => import("@/views/WechatCallback.vue"),
+    },
+    {
       path: "/terms",
       name: "Terms",
       component: () => import("@/views/TermsPage.vue"),

@@ -13,7 +13,7 @@ from app.schemas.user import (
     SmsSendRequest, SmsLoginRequest, WechatLoginRequest, UsernameCheck,
 )
 from app.services.auth import hash_password, verify_password, create_access_token
-from app.services import aliyun_sms
+from app.services import aliyun_sms, wechat
 from app.config import settings
 from app.dependencies.auth import get_current_user, require_admin
 
@@ -184,13 +184,64 @@ async def bind_phone(
     return {"detail": "手机号绑定成功", "phone": phone}
 
 
-# ========== 微信扫码登录（预留：微信开放平台接入后启用） ==========
+# ========== 微信扫码登录（开放平台网站应用，AppID 审核通过后即用） ==========
+
+@router.get("/wechat/qrcode")
+async def wechat_qrcode():
+    """返回微信扫码授权页 URL（前端内嵌 iframe 或跳转），state 防 CSRF"""
+    if not wechat.is_configured():
+        raise HTTPException(status_code=501, detail="微信登录暂未开放，敬请期待")
+    state = uuid.uuid4().hex
+    return {"qrcode_url": wechat.build_qr_url(state), "state": state}
+
 
 @router.post("/wechat/login", response_model=Token)
 async def wechat_login(data: WechatLoginRequest, db: AsyncSession = Depends(get_db)):
-    """微信扫码授权登录（预留接口，微信开放平台审核通过后接入）"""
-    # TODO: code 换 access_token → 拉用户信息 → 按 openid 查找/创建用户
-    raise HTTPException(status_code=501, detail="微信登录暂未开放，敬请期待")
+    """微信扫码授权登录/注册：code 换 openid → 查找/自动建号 → 站内 JWT
+
+    自动建号规则：username=wx_{openid后8位}（冲突加随机后缀）、nickname=微信昵称、
+    头像同步微信、随机密码（不可知）；手机号留空，可后续个人中心绑定。
+    """
+    if not wechat.is_configured():
+        raise HTTPException(status_code=501, detail="微信登录暂未开放，敬请期待")
+
+    # 1. code 换 access_token + openid
+    token_info = await wechat.exchange_code(data.code.strip())
+    if not token_info["ok"]:
+        raise HTTPException(status_code=401, detail=token_info["detail"])
+    openid, unionid = token_info["openid"], token_info.get("unionid", "")
+
+    # 2. openid 已绑定 → 直接登录
+    result = await db.execute(select(User).where(User.wechat_openid == openid))
+    user = result.scalars().first()
+    if user:
+        if not user.is_active:
+            raise HTTPException(status_code=403, detail="账号已被禁用，请联系管理员")
+        token = create_access_token({"sub": str(user.id)})
+        return Token(access_token=token)
+
+    # 3. 未绑定 → 拉微信用户信息，自动创建账号
+    wx_info = await wechat.get_user_info(token_info["access_token"], openid)
+    nickname = wx_info.get("nickname") if wx_info["ok"] else ""
+    username = f"wx_{openid[-8:]}"
+    result = await db.execute(select(User).where(User.username == username))
+    if result.scalars().first():
+        username = f"wx_{uuid.uuid4().hex[:12]}"
+    user = User(
+        username=username,
+        email="",
+        phone="",
+        nickname=nickname or username,
+        avatar=wx_info.get("headimgurl", "") if wx_info["ok"] else "",
+        hashed_password=hash_password(uuid.uuid4().hex + uuid.uuid4().hex),
+        wechat_openid=openid,
+        wechat_unionid=unionid,
+    )
+    db.add(user)
+    await db.flush()
+    await db.refresh(user)
+    token = create_access_token({"sub": str(user.id)})
+    return Token(access_token=token)
 
 
 @router.get("/me", response_model=UserOut)

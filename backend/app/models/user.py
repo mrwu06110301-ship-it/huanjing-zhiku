@@ -17,6 +17,9 @@ class User(Base):
     avatar: Mapped[str] = mapped_column(String(255), default="")
     phone: Mapped[str] = mapped_column(String(20), default="")
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
+    # 微信扫码登录（开放平台网站应用）
+    wechat_openid: Mapped[str] = mapped_column(String(64), default="", index=True)
+    wechat_unionid: Mapped[str] = mapped_column(String(64), default="")
     # 角色: admin / editor / user
     role: Mapped[str] = mapped_column(String(20), default="user")
     can_upload_video: Mapped[bool] = mapped_column(Boolean, default=False)

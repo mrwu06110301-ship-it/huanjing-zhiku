@@ -52,6 +52,7 @@ class UserOut(BaseModel):
     role: str = "user"
     can_upload_video: bool = False
     is_active: bool = True
+    wechat_openid: str = ""
     created_at: datetime | None = None
 
     model_config = {"from_attributes": True}

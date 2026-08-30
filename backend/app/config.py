@@ -38,6 +38,10 @@ class Settings(BaseSettings):
     SMS_SCHEME_NAME: str = ""  # 认证方案名，默认方案留空即可
     SMS_CODE_TTL_MIN: int = 5  # 验证码有效期（分钟）
 
+    # 微信开放平台（网站应用扫码登录）：AppID/Secret 审核通过后经 systemd 环境变量注入
+    WECHAT_APP_ID: str = ""
+    WECHAT_APP_SECRET: str = ""
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 
