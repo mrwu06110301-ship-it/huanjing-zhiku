@@ -25,3 +25,5 @@ backend/uploads/
 *.tar.gz
 *.html
 .env
+backend/hjzk.db-shm
+backend/hjzk.db-wal
