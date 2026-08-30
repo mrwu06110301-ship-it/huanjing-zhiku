@@ -39,33 +39,35 @@ watch(
 async function loadVideo(id: number) {
   if (!id) { router.push("/videos"); return; }
   loading.value = true;
-  try {
-    const res = await getVideo(id); video.value = res.data; comments.value = []; loadComments(); findNextVideo();
-    // 直链视频自动播放：等 <video> 渲染完成再触发；浏览器拦截自动出声时静默降级为手动
-    await nextTick();
-    if (videoRef.value && video.value?.video_url) {
-      videoRef.value.muted = false;
-      videoRef.value.play().catch(() => {
-        videoRef.value!.muted = true;
-        videoRef.value!.play().catch(() => { /* 仍被拦截则保持手动播放 */ });
-      });
-    }
-  }
-  catch { ElMessage.error("视频不存在"); router.push("/videos"); }
+  try { const res = await getVideo(id); video.value = res.data; comments.value = []; }
+  catch { ElMessage.error("视频不存在"); router.push("/videos"); return; }
   finally { loading.value = false; }
+  loadComments();
+  findNextVideo();
+  // loading 置 false 后 <video> 才挂载到 DOM，nextTick 后再触发自动播放
+  await nextTick();
+  if (videoRef.value && video.value?.video_url) {
+    videoRef.value.muted = false;
+    videoRef.value.play().catch(() => {
+      videoRef.value!.muted = true;
+      videoRef.value!.play().catch(() => { /* 仍被拦截则保持手动播放 */ });
+    });
+  }
 }
 
 onUnmounted(() => {});
 
-/** 找同分类（不限则取最新）的下一个视频，用于播放结束自动连播 */
+/** 找同分类（不限则取最新）列表中当前视频的下一个，用于播放结束自动连播 */
 async function findNextVideo() {
   if (!video.value) return;
   try {
     const params: Record<string, unknown> = { page: 1, page_size: 50 };
     if (video.value.category_id) params.category_id = video.value.category_id;
     const res = await getVideos(params as any);
-    const list = (res.data.items || []).filter((v: VideoOut) => v.id !== video.value!.id);
-    nextVideo.value = list.length > 0 ? list[0] : null;
+    const list = res.data.items || [];
+    // 按列表顺序播放：当前项的下一个；到末尾循环回第一个；仅 1 个视频不连播
+    const idx = list.findIndex((v: VideoOut) => v.id === video.value!.id);
+    nextVideo.value = list.length > 1 ? list[(idx + 1) % list.length] : null;
   } catch { nextVideo.value = null; }
 }
 
