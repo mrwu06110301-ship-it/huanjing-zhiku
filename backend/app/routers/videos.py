@@ -1,11 +1,14 @@
 """学习视频路由 — 上传/管理/轮播/播放"""
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+import json
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_
 
 from app.database import get_db
 from app.models.video import Video
+from app.models.video_comment import VideoComment
 from app.models.user import User
 from app.models.category import Category
 from app.schemas.video import VideoCreate, VideoUpdate, VideoOut
@@ -14,7 +17,26 @@ from app.dependencies.auth import get_current_user, require_admin
 router = APIRouter(prefix="/api/videos", tags=["学习视频"])
 
 
-def _make_video_out(v: Video, cat_name: str | None, author_name: str, cat_color: str = "", author_avatar: str = "") -> VideoOut:
+async def get_optional_user(request: Request, db: AsyncSession = Depends(get_db)) -> User | None:
+    """可选的用户认证（未登录返回 None，与留言模块一致）"""
+    from app.services.auth import decode_access_token
+    auth_header = request.headers.get("authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return None
+    payload = decode_access_token(auth_header[7:])
+    if not payload:
+        return None
+    user_id = payload.get("sub")
+    if not user_id:
+        return None
+    result = await db.execute(select(User).where(User.id == int(user_id)))
+    return result.scalar_one_or_none()
+
+
+def _make_video_out(
+    v: Video, cat_name: str | None, author_name: str, cat_color: str = "",
+    author_avatar: str = "", comment_count: int = 0, liked: bool = False,
+) -> VideoOut:
     return VideoOut(
         id=v.id, title=v.title, description=v.description,
         cover_image=v.cover_image, video_url=v.video_url,
@@ -23,9 +45,31 @@ def _make_video_out(v: Video, cat_name: str | None, author_name: str, cat_color:
         category_name=cat_name, category_color=cat_color,
         tags=v.tags or [], duration=v.duration,
         is_public=v.is_public, is_featured=v.is_featured or False,
-        view_count=v.view_count,
+        view_count=v.view_count, like_count=v.like_count or 0,
+        liked=liked, comment_count=comment_count,
         author_name=author_name, author_avatar=author_avatar, created_at=v.created_at,
     )
+
+
+async def _get_comment_counts(db: AsyncSession, video_ids: list[int]) -> dict[int, int]:
+    """批量取视频评论数"""
+    if not video_ids:
+        return {}
+    rows = await db.execute(
+        select(VideoComment.video_id, func.count(VideoComment.id))
+        .where(VideoComment.video_id.in_(video_ids))
+        .group_by(VideoComment.video_id)
+    )
+    return {vid: cnt for vid, cnt in rows.all()}
+
+
+def _is_liked(v: Video, uid: str | None) -> bool:
+    if not uid or not v.like_users:
+        return False
+    try:
+        return uid in [str(u) for u in json.loads(v.like_users)]
+    except (ValueError, TypeError):
+        return False
 
 
 async def _get_cat_author(v: Video, db: AsyncSession) -> tuple[str | None, str, str, str]:
@@ -56,6 +100,7 @@ async def list_videos(
     category_id: int | None = None,
     keyword: str | None = None,
     db: AsyncSession = Depends(get_db),
+    current_user: User | None = Depends(get_optional_user),
 ):
     """获取视频列表（keyword 全量模糊搜索标题/简介）"""
     query = select(Video).where(Video.is_public == True)
@@ -80,10 +125,16 @@ async def list_videos(
     result = await db.execute(query)
     videos = result.scalars().all()
 
+    comment_counts = await _get_comment_counts(db, [v.id for v in videos])
+    uid = str(current_user.id) if current_user else None
+
     items = []
     for v in videos:
         cat_name, author_name, cat_color, author_avatar = await _get_cat_author(v, db)
-        items.append(_make_video_out(v, cat_name, author_name, cat_color, author_avatar))
+        items.append(_make_video_out(
+            v, cat_name, author_name, cat_color, author_avatar,
+            comment_counts.get(v.id, 0), _is_liked(v, uid),
+        ))
 
     return {"items": items, "total": total, "page": page, "page_size": page_size}
 
@@ -96,10 +147,14 @@ async def get_featured_videos(db: AsyncSession = Depends(get_db)):
         .order_by(Video.view_count.desc()).limit(5)
     )
     videos = result.scalars().all()
+    comment_counts = await _get_comment_counts(db, [v.id for v in videos])
     items = []
     for v in videos:
         cat_name, author_name, cat_color, author_avatar = await _get_cat_author(v, db)
-        items.append(_make_video_out(v, cat_name, author_name, cat_color, author_avatar))
+        items.append(_make_video_out(
+            v, cat_name, author_name, cat_color, author_avatar,
+            comment_counts.get(v.id, 0),
+        ))
     return items
 
 
@@ -111,15 +166,23 @@ async def get_recommended_videos(db: AsyncSession = Depends(get_db)):
         .order_by(Video.view_count.desc()).limit(8)
     )
     videos = result.scalars().all()
+    comment_counts = await _get_comment_counts(db, [v.id for v in videos])
     items = []
     for v in videos:
         cat_name, author_name, cat_color, author_avatar = await _get_cat_author(v, db)
-        items.append(_make_video_out(v, cat_name, author_name, cat_color, author_avatar))
+        items.append(_make_video_out(
+            v, cat_name, author_name, cat_color, author_avatar,
+            comment_counts.get(v.id, 0),
+        ))
     return items
 
 
 @router.get("/{video_id}", response_model=VideoOut)
-async def get_video(video_id: int, db: AsyncSession = Depends(get_db)):
+async def get_video(
+    video_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User | None = Depends(get_optional_user),
+):
     """获取视频详情"""
     result = await db.execute(select(Video).where(Video.id == video_id))
     video = result.scalars().first()
@@ -129,7 +192,40 @@ async def get_video(video_id: int, db: AsyncSession = Depends(get_db)):
     await db.flush()
 
     cat_name, author_name, cat_color, author_avatar = await _get_cat_author(video, db)
-    return _make_video_out(video, cat_name, author_name, cat_color, author_avatar)
+    cr = await db.execute(select(func.count(VideoComment.id)).where(VideoComment.video_id == video_id))
+    comment_count = cr.scalar() or 0
+    uid = str(current_user.id) if current_user else None
+    return _make_video_out(
+        video, cat_name, author_name, cat_color, author_avatar,
+        comment_count, _is_liked(video, uid),
+    )
+
+
+@router.post("/{video_id}/like")
+async def toggle_like(
+    video_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """点赞/取消点赞视频"""
+    result = await db.execute(select(Video).where(Video.id == video_id))
+    video = result.scalars().first()
+    if not video:
+        raise HTTPException(status_code=404, detail="视频不存在")
+
+    like_users = json.loads(video.like_users) if video.like_users else []
+    uid = str(current_user.id)
+    if uid in [str(u) for u in like_users]:
+        like_users = [u for u in like_users if str(u) != uid]
+        video.like_count = max(0, (video.like_count or 0) - 1)
+        action = "unliked"
+    else:
+        like_users.append(current_user.id)
+        video.like_count = (video.like_count or 0) + 1
+        action = "liked"
+    video.like_users = json.dumps(like_users, ensure_ascii=False)
+    await db.flush()
+    return {"like_count": video.like_count, "liked": action == "liked"}
 
 
 @router.post("", response_model=VideoOut, status_code=201)
@@ -147,7 +243,6 @@ async def create_video(
     await db.refresh(video)
     return _make_video_out(video, None, current_user.nickname or current_user.username, "", current_user.avatar or "")
 
-
 @router.put("/{video_id}", response_model=VideoOut)
 async def update_video(
     video_id: int,
@@ -164,7 +259,13 @@ async def update_video(
         setattr(video, key, val)
     await db.flush()
     cat_name, author_name, cat_color, author_avatar = await _get_cat_author(video, db)
-    return _make_video_out(video, cat_name, author_name, cat_color, author_avatar)
+    cr = await db.execute(select(func.count(VideoComment.id)).where(VideoComment.video_id == video_id))
+    comment_count = cr.scalar() or 0
+    uid = str(current_user.id)
+    return _make_video_out(
+        video, cat_name, author_name, cat_color, author_avatar,
+        comment_count, _is_liked(video, uid),
+    )
 
 
 @router.delete("/{video_id}")
@@ -196,7 +297,12 @@ async def toggle_featured(
     video.is_featured = not video.is_featured
     await db.flush()
     cat_name, author_name, cat_color, author_avatar = await _get_cat_author(video, db)
-    return _make_video_out(video, cat_name, author_name, cat_color, author_avatar)
+    cr = await db.execute(select(func.count(VideoComment.id)).where(VideoComment.video_id == video_id))
+    comment_count = cr.scalar() or 0
+    return _make_video_out(
+        video, cat_name, author_name, cat_color, author_avatar,
+        comment_count, _is_liked(video, str(current_user.id)),
+    )
 
 
 # ========== 上传权限管理 ==========

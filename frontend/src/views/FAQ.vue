@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from "vue";
-import { getFAQs, createFAQ, deleteFAQ, updateFAQ } from "@/api/faq";
+import { getFAQs, createFAQ, deleteFAQ, updateFAQ, reportFAQView, likeFAQ, getFAQComments, createFAQComment, deleteFAQComment, type FAQCommentOut } from "@/api/faq";
 import { getCategories, createCategory } from "@/api/category";
 import type { FAQOut, CategoryOut } from "@/types";
 import { checkUploadPermission } from "@/api/video";
@@ -242,6 +242,87 @@ function handleDelete(id: number) {
     .then(() => { ElMessage.success("已删除"); loadFAQs(); })
     .catch(() => {});
 }
+
+// ==================== 预览计数 / 点赞 / 评论 ====================
+/** 手风琴切换：展开时上报一次预览计数；收起时清空评论区 */
+function handleCollapseChange(name: string | number | undefined) {
+  if (name === undefined || name === null || name === "") {
+    activeComments.value = null;
+    return;
+  }
+  const faq = faqs.value.find((f) => f.id === name);
+  if (faq) {
+    faq.view_count += 1;
+    reportFAQView(faq.id).catch(() => { /* 静默失败 */ });
+  }
+  activeComments.value = null;
+  loadComments(name as number);
+}
+
+/** 点赞/取消点赞（未登录引导去登录） */
+async function toggleLike(f: FAQOut) {
+  if (!auth.isLoggedIn()) { ElMessage.warning("请先登录后点赞"); return; }
+  try {
+    const res = await likeFAQ(f.id);
+    f.like_count = res.data.like_count;
+    f.liked = res.data.liked;
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.detail || "操作失败");
+  }
+}
+
+/** 当前展开条目的评论区状态 */
+const activeComments = ref<number | null>(null);
+const commentList = ref<FAQCommentOut[]>([]);
+const commentsLoading = ref(false);
+const commentText = ref("");
+const commentSubmitting = ref(false);
+/** 展开评论区（再次点击收起） */
+function toggleCommentBox(f: FAQOut) {
+  if (activeComments.value === f.id) { activeComments.value = null; return; }
+  activeComments.value = f.id;
+  loadComments(f.id);
+}
+
+async function loadComments(faqId: number) {
+  commentsLoading.value = true;
+  try {
+    const res = await getFAQComments(faqId);
+    commentList.value = res.data.items || [];
+  } catch { commentList.value = []; }
+  finally { commentsLoading.value = false; }
+}
+
+async function submitComment(f: FAQOut) {
+  const content = commentText.value.trim();
+  if (!content) { ElMessage.warning("请输入评论内容"); return; }
+  commentSubmitting.value = true;
+  try {
+    await createFAQComment(f.id, content);
+    commentText.value = "";
+    f.comment_count += 1;
+    loadComments(f.id);
+    ElMessage.success("评论已发表");
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.detail || "评论失败");
+  } finally {
+    commentSubmitting.value = false;
+  }
+}
+
+async function removeComment(f: FAQOut, c: FAQCommentOut) {
+  try {
+    await deleteFAQComment(f.id, c.id);
+    f.comment_count = Math.max(0, f.comment_count - 1);
+    loadComments(f.id);
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.detail || "删除失败");
+  }
+}
+
+function canDeleteComment(c: FAQCommentOut) {
+  return auth.isAdmin() || (auth.user && c.author_id === auth.user.id);
+}
 </script>
 
 <template>
@@ -283,7 +364,7 @@ function handleDelete(id: number) {
     </div>
 
     <div v-loading="loading" class="faq-list">
-      <el-collapse v-model="activeNames" accordion>
+      <el-collapse v-model="activeNames" accordion @change="handleCollapseChange">
         <el-collapse-item v-for="f in filtered" :key="f.id" :name="f.id">
           <template #title>
             <span class="faq-title-line">
@@ -294,6 +375,8 @@ function handleDelete(id: number) {
                 class="faq-cat-badge"
                 :style="catColorStyle(f.category_name)"
               >{{ f.category_name }}</span>
+              <span class="faq-count-badge" title="预览次数"><Icon name="eye" :size="12" /> {{ f.view_count }}</span>
+              <span class="faq-count-badge" title="评论数"><Icon name="message" :size="12" /> {{ f.comment_count || 0 }}</span>
               <span v-if="auth.isAdmin()" class="faq-edit" @click.stop="openEdit(f)">编辑</span>
             </span>
           </template>
@@ -306,10 +389,40 @@ function handleDelete(id: number) {
             <span><Icon name="clock" :size="12" /> {{ f.created_at?.substring(0, 10) }}</span>
             <span><Icon name="eye" :size="12" /> {{ f.view_count }}</span>
             <span
+              :class="['faq-like', { liked: f.liked }]"
+              @click.stop="toggleLike(f)"
+            ><Icon name="like" :size="12" /> {{ f.like_count || 0 }}</span>
+            <span class="faq-comment-btn" @click.stop="toggleCommentBox(f)">
+              <Icon name="message" :size="12" /> {{ f.comment_count || 0 }} 条评论
+            </span>
+            <span
               v-if="auth.user?.id === (f as any).author_id || auth.isAdmin()"
               class="faq-delete"
               @click.stop="handleDelete(f.id)"
             >删除</span>
+          </div>
+          <!-- 评论区 -->
+          <div v-if="activeComments === f.id" class="faq-comments">
+            <div v-if="auth.isLoggedIn()" class="faq-comment-form">
+              <el-input
+                v-model="commentText" type="textarea" :rows="2"
+                placeholder="发表你的评论..." maxlength="300" show-word-limit
+              />
+              <el-button type="primary" size="small" :loading="commentSubmitting" @click="submitComment(f)">发表评论</el-button>
+            </div>
+            <div v-else class="faq-comment-login"><router-link to="/login">登录</router-link> 后可以发表评论</div>
+            <div v-if="commentsLoading" class="faq-comment-loading">加载评论...</div>
+            <div v-else-if="commentList.length === 0" class="faq-comment-empty">暂无评论</div>
+            <div v-else class="faq-comment-list">
+              <div v-for="c in commentList" :key="c.id" class="faq-comment-item">
+                <div class="faq-comment-head">
+                  <strong>{{ c.author_name }}</strong>
+                  <span class="faq-comment-date">{{ c.created_at?.substring(0, 16).replace("T", " ") }}</span>
+                  <button v-if="canDeleteComment(c)" class="faq-comment-del" @click="removeComment(f, c)">删除</button>
+                </div>
+                <div class="faq-comment-content">{{ c.content }}</div>
+              </div>
+            </div>
           </div>
         </el-collapse-item>
       </el-collapse>
@@ -485,6 +598,40 @@ function handleDelete(id: number) {
 .faq-delete { margin-left: auto; cursor: pointer; transition: color 0.2s; }
 .faq-delete:hover { color: #ef4444; }
 
+/* 标题行计数徽标 */
+.faq-count-badge {
+  display: inline-flex; align-items: center; gap: 3px; flex-shrink: 0;
+  font-size: 11px; color: var(--text-muted);
+  background: var(--bg-soft); border-radius: 8px; padding: 2px 7px;
+}
+.faq-like { cursor: pointer; transition: color 0.2s; }
+.faq-like:hover { color: #ef4444; }
+.faq-like.liked { color: #ef4444; font-weight: 600; }
+.faq-comment-btn { cursor: pointer; transition: color 0.2s; }
+.faq-comment-btn:hover { color: var(--primary); }
+
+/* FAQ 评论区 */
+.faq-comments {
+  margin-top: 12px; padding: 12px 14px;
+  background: var(--bg-soft); border-radius: 10px;
+}
+.faq-comment-form { display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
+.faq-comment-form .el-textarea { width: 100%; }
+.faq-comment-login { text-align: center; font-size: 13px; color: var(--text-muted); padding: 6px 0; }
+.faq-comment-login a { color: var(--primary); font-weight: 600; }
+.faq-comment-loading, .faq-comment-empty { text-align: center; font-size: 13px; color: var(--text-muted); padding: 10px 0; }
+.faq-comment-list { margin-top: 10px; display: flex; flex-direction: column; gap: 10px; }
+.faq-comment-item { padding: 8px 0; border-bottom: 1px dashed var(--border); }
+.faq-comment-item:last-child { border-bottom: none; }
+.faq-comment-head { display: flex; align-items: center; gap: 8px; font-size: 12.5px; margin-bottom: 4px; }
+.faq-comment-date { color: var(--text-muted); font-size: 11.5px; }
+.faq-comment-del {
+  margin-left: auto; background: none; border: none; color: #ef4444;
+  cursor: pointer; font-size: 11.5px; opacity: 0.7;
+}
+.faq-comment-del:hover { opacity: 1; }
+.faq-comment-content { font-size: 13.5px; color: var(--text-light); line-height: 1.7; }
+
 /* 分页 */
 .faq-pagination {
   display: flex; justify-content: center; padding: 20px 0 4px;
@@ -510,5 +657,6 @@ function handleDelete(id: number) {
   .faq-list { padding: 8px 16px 20px; }
   .faq-question { font-size: 14.5px; white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
   .faq-edit { display: none; }
+  .faq-count-badge { display: none; }
 }
 </style>

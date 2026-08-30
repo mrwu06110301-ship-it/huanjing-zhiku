@@ -45,3 +45,38 @@ export function updateFAQ(
 ): Promise<{ data: FAQOut }> {
   return request.put(`/faqs/${id}`, data);
 }
+
+/** 上报 FAQ 预览计数（展开条目时调用） */
+export function reportFAQView(id: number) {
+  return request.post(`/faqs/${id}/view`);
+}
+
+/** 点赞/取消点赞 FAQ */
+export function likeFAQ(id: number): Promise<{ data: { like_count: number; liked: boolean } }> {
+  return request.post(`/faqs/${id}/like`);
+}
+
+export interface FAQCommentOut {
+  id: number;
+  content: string;
+  faq_id: number;
+  author_id: number;
+  author_name: string;
+  author_avatar: string;
+  created_at: string;
+}
+
+/** 获取 FAQ 评论列表 */
+export function getFAQComments(id: number): Promise<{ data: { items: FAQCommentOut[]; total: number } }> {
+  return request.get(`/faqs/${id}/comments`);
+}
+
+/** 发表 FAQ 评论 */
+export function createFAQComment(id: number, content: string): Promise<{ data: FAQCommentOut }> {
+  return request.post(`/faqs/${id}/comments`, { content });
+}
+
+/** 删除 FAQ 评论（本人或管理员） */
+export function deleteFAQComment(faqId: number, commentId: number) {
+  return request.delete(`/faqs/${faqId}/comments/${commentId}`);
+}

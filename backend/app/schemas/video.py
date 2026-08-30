@@ -48,6 +48,9 @@ class VideoOut(BaseModel):
     is_public: bool = True
     is_featured: bool = False
     view_count: int = 0
+    like_count: int = 0
+    liked: bool = False
+    comment_count: int = 0
     author_name: str = ""
     author_avatar: str = ""
     created_at: datetime | None = None

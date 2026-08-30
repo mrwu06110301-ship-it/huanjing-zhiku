@@ -19,6 +19,9 @@ export interface VideoOut {
   is_public: boolean;
   is_featured: boolean;
   view_count: number;
+  like_count: number;
+  liked: boolean;
+  comment_count: number;
   author_name: string;
   created_at: string;
 }
@@ -58,6 +61,11 @@ export function deleteVideo(id: number): Promise<{ data: any }> {
 
 export function toggleFeatured(id: number): Promise<{ data: VideoOut }> {
   return request.post(`/videos/${id}/toggle-featured`);
+}
+
+/** 点赞/取消点赞视频 */
+export function likeVideo(id: number): Promise<{ data: { like_count: number; liked: boolean } }> {
+  return request.post(`/videos/${id}/like`);
 }
 
 export function checkUploadPermission(): Promise<{ data: { can_upload: boolean } }> {

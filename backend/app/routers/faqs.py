@@ -1,17 +1,36 @@
 """常见问题路由"""
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+import json
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_
 
 from app.database import get_db
 from app.models.faq import FAQ
+from app.models.faq_comment import FAQComment
 from app.models.user import User
 from app.models.category import Category
 from app.schemas.faq import FAQCreate, FAQUpdate, FAQOut
 from app.dependencies.auth import get_current_user, require_admin
 
 router = APIRouter(prefix="/api/faqs", tags=["常见问题"])
+
+
+async def get_optional_user(request: Request, db: AsyncSession = Depends(get_db)) -> User | None:
+    """可选的用户认证（未登录返回 None，与留言模块一致）"""
+    from app.services.auth import decode_access_token
+    auth_header = request.headers.get("authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return None
+    payload = decode_access_token(auth_header[7:])
+    if not payload:
+        return None
+    user_id = payload.get("sub")
+    if not user_id:
+        return None
+    result = await db.execute(select(User).where(User.id == int(user_id)))
+    return result.scalar_one_or_none()
 
 
 async def _get_cat_author(f: FAQ, db: AsyncSession) -> tuple[str | None, str]:
@@ -26,13 +45,30 @@ async def _get_cat_author(f: FAQ, db: AsyncSession) -> tuple[str | None, str]:
     return cat_name, author_name
 
 
-def _make_out(f: FAQ, cat_name: str | None, author_name: str) -> FAQOut:
+async def _get_comment_counts(db: AsyncSession, faq_ids: list[int]) -> dict[int, int]:
+    """批量取 FAQ 评论数"""
+    if not faq_ids:
+        return {}
+    rows = await db.execute(
+        select(FAQComment.faq_id, func.count(FAQComment.id))
+        .where(FAQComment.faq_id.in_(faq_ids))
+        .group_by(FAQComment.faq_id)
+    )
+    return {fid: cnt for fid, cnt in rows.all()}
+
+
+def _make_out(
+    f: FAQ, cat_name: str | None, author_name: str,
+    comment_count: int = 0, liked: bool = False,
+) -> FAQOut:
     return FAQOut(
         id=f.id, question=f.question, answer=f.answer,
         faq_type=f.faq_type, category_id=f.category_id,
         category_name=cat_name, tags=f.tags or [],
         is_pinned=f.is_pinned, is_public=f.is_public,
-        view_count=f.view_count, author_id=f.author_id, author_name=author_name,
+        view_count=f.view_count, like_count=f.like_count or 0,
+        liked=liked, comment_count=comment_count,
+        author_id=f.author_id, author_name=author_name,
         created_at=f.created_at,
     )
 
@@ -45,6 +81,7 @@ async def list_faqs(
     category_id: int | None = None,
     keyword: str | None = None,
     db: AsyncSession = Depends(get_db),
+    current_user: User | None = Depends(get_optional_user),
 ):
     query = select(FAQ).where(FAQ.is_public == True)
     count_query = select(func.count(FAQ.id)).where(FAQ.is_public == True)
@@ -68,10 +105,17 @@ async def list_faqs(
     result = await db.execute(query)
     faqs = result.scalars().all()
 
+    comment_counts = await _get_comment_counts(db, [f.id for f in faqs])
+    uid = str(current_user.id) if current_user else None
+
     items = []
     for f in faqs:
         cat_name, author_name = await _get_cat_author(f, db)
-        items.append(_make_out(f, cat_name, author_name))
+        try:
+            liked = uid in [str(u) for u in json.loads(f.like_users)] if f.like_users else False
+        except (ValueError, TypeError):
+            liked = False
+        items.append(_make_out(f, cat_name, author_name, comment_counts.get(f.id, 0), liked))
 
     return {"items": items, "total": total, "page": page, "page_size": page_size}
 
@@ -86,7 +130,119 @@ async def get_faq(faq_id: int, db: AsyncSession = Depends(get_db)):
     await db.flush()
 
     cat_name, author_name = await _get_cat_author(faq, db)
-    return _make_out(faq, cat_name, author_name)
+    cr = await db.execute(select(func.count(FAQComment.id)).where(FAQComment.faq_id == faq_id))
+    comment_count = cr.scalar() or 0
+    return _make_out(faq, cat_name, author_name, comment_count)
+
+
+@router.post("/{faq_id}/view")
+async def report_view(
+    faq_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """展开 FAQ 条目时上报一次预览计数"""
+    result = await db.execute(select(FAQ).where(FAQ.id == faq_id))
+    faq = result.scalars().first()
+    if not faq:
+        raise HTTPException(status_code=404, detail="FAQ不存在")
+    faq.view_count = (faq.view_count or 0) + 1
+    await db.flush()
+    return {"view_count": faq.view_count}
+
+
+@router.post("/{faq_id}/like")
+async def toggle_like(
+    faq_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """点赞/取消点赞 FAQ"""
+    result = await db.execute(select(FAQ).where(FAQ.id == faq_id))
+    faq = result.scalars().first()
+    if not faq:
+        raise HTTPException(status_code=404, detail="FAQ不存在")
+
+    like_users = json.loads(faq.like_users) if faq.like_users else []
+    uid = str(current_user.id)
+    if uid in [str(u) for u in like_users]:
+        like_users = [u for u in like_users if str(u) != uid]
+        faq.like_count = max(0, (faq.like_count or 0) - 1)
+        action = "unliked"
+    else:
+        like_users.append(current_user.id)
+        faq.like_count = (faq.like_count or 0) + 1
+        action = "liked"
+    faq.like_users = json.dumps(like_users, ensure_ascii=False)
+    await db.flush()
+    return {"like_count": faq.like_count, "liked": action == "liked"}
+
+
+@router.get("/{faq_id}/comments")
+async def list_comments(
+    faq_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """获取 FAQ 评论列表"""
+    rows = await db.execute(
+        select(FAQComment, User.nickname, User.username, User.avatar)
+        .outerjoin(User, FAQComment.author_id == User.id)
+        .where(FAQComment.faq_id == faq_id)
+        .order_by(FAQComment.created_at.asc())
+    )
+    items = []
+    for c, nickname, username, avatar in rows.all():
+        items.append({
+            "id": c.id, "content": c.content, "faq_id": c.faq_id,
+            "author_id": c.author_id, "author_name": nickname or username or "用户",
+            "author_avatar": avatar or "", "created_at": c.created_at,
+        })
+    return {"items": items, "total": len(items)}
+
+
+@router.post("/{faq_id}/comments", status_code=201)
+async def create_comment(
+    faq_id: int,
+    data: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """发表 FAQ 评论"""
+    content = (data.get("content") or "").strip()
+    if not content:
+        raise HTTPException(status_code=400, detail="评论内容不能为空")
+    result = await db.execute(select(FAQ).where(FAQ.id == faq_id))
+    if not result.scalars().first():
+        raise HTTPException(status_code=404, detail="FAQ不存在")
+    comment = FAQComment(content=content, faq_id=faq_id, author_id=current_user.id)
+    db.add(comment)
+    await db.flush()
+    await db.refresh(comment)
+    return {
+        "id": comment.id, "content": comment.content, "faq_id": comment.faq_id,
+        "author_id": comment.author_id,
+        "author_name": current_user.nickname or current_user.username or "用户",
+        "author_avatar": current_user.avatar or "", "created_at": comment.created_at,
+    }
+
+
+@router.delete("/{faq_id}/comments/{comment_id}")
+async def delete_comment(
+    faq_id: int,
+    comment_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """删除评论 — 作者本人或管理员"""
+    result = await db.execute(
+        select(FAQComment).where(FAQComment.id == comment_id, FAQComment.faq_id == faq_id)
+    )
+    comment = result.scalars().first()
+    if not comment:
+        raise HTTPException(status_code=404, detail="评论不存在")
+    if comment.author_id != current_user.id and current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="无权限删除")
+    await db.delete(comment)
+    return {"detail": "删除成功"}
 
 
 @router.post("", response_model=FAQOut, status_code=201)
@@ -104,7 +260,7 @@ async def create_faq(
     await db.refresh(faq)
 
     cat_name, author_name = await _get_cat_author(faq, db)
-    return _make_out(faq, cat_name, author_name)
+    return _make_out(faq, cat_name, author_name, 0)
 
 
 @router.put("/{faq_id}", response_model=FAQOut)
@@ -125,7 +281,9 @@ async def update_faq(
     await db.refresh(faq)
 
     cat_name, author_name = await _get_cat_author(faq, db)
-    return _make_out(faq, cat_name, author_name)
+    cr = await db.execute(select(func.count(FAQComment.id)).where(FAQComment.faq_id == faq_id))
+    comment_count = cr.scalar() or 0
+    return _make_out(faq, cat_name, author_name, comment_count)
 
 
 @router.delete("/{faq_id}")

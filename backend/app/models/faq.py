@@ -20,6 +20,8 @@ class FAQ(Base):
     is_pinned: Mapped[bool] = mapped_column(default=False)
     is_public: Mapped[bool] = mapped_column(Boolean, default=True)
     view_count: Mapped[int] = mapped_column(Integer, default=0)
+    like_count: Mapped[int] = mapped_column(Integer, default=0)
+    like_users: Mapped[str] = mapped_column(Text, default="")  # JSON 字符串存点赞用户 ID 列表
     author_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
     created_at = mapped_column(DateTime, default=datetime.now)
     updated_at = mapped_column(DateTime, default=datetime.now, onupdate=datetime.now)

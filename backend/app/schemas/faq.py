@@ -34,6 +34,9 @@ class FAQOut(BaseModel):
     is_pinned: bool = False
     is_public: bool = True
     view_count: int = 0
+    like_count: int = 0
+    liked: bool = False
+    comment_count: int = 0
     author_id: int | None = None
     author_name: str = ""
     created_at: datetime | None = None

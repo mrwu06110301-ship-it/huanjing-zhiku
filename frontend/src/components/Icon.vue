@@ -61,6 +61,7 @@ const ICON_MAP: Record<string, unknown> = {
   close: Close,
   menu: HamburgerButton,
   heart: Like,
+  like: Like,
   heartFill: Like,
   reply: Undo,
   robot: Robot,

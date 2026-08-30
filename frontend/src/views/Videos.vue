@@ -163,7 +163,7 @@ function tagColor(v: any) {
             </div>
             <div class="rec-info">
               <span class="rec-title">{{ v.title }}</span>
-              <span class="rec-views">{{ v.view_count || 0 }}次播放</span>
+              <span class="rec-views">{{ v.view_count || 0 }}次播放 · {{ v.comment_count || 0 }}评论</span>
             </div>
           </div>
         </div>
@@ -214,7 +214,11 @@ function tagColor(v: any) {
                 <span class="meta-name">{{ v.author_name || '未知' }}</span>
               </span>
               <span class="meta-dot">·</span>
-              <span class="meta-views"><Icon name="eye" :size="12" /> {{ v.view_count || 0 }}次播放</span>
+              <span class="meta-views"><Icon name="eye" :size="12" /> {{ v.view_count || 0 }}</span>
+              <span class="meta-dot">·</span>
+              <span class="meta-views"><Icon name="message" :size="12" /> {{ v.comment_count || 0 }}</span>
+              <span class="meta-dot">·</span>
+              <span class="meta-views"><Icon name="like" :size="12" /> {{ v.like_count || 0 }}</span>
             </div>
           </div>
         </div>

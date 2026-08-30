@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from "vue";
+import { ref, onMounted, onUnmounted, computed } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
-import { getVideo, deleteVideo, type VideoOut } from "@/api/video";
+import { getVideo, deleteVideo, likeVideo, getVideos, type VideoOut } from "@/api/video";
 import { ElMessage } from "element-plus";
 import { useShare } from "@/composables/useShare";
 import Icon from "@/components/Icon.vue";
@@ -16,14 +16,58 @@ const loading = ref(true);
 const comments = ref<any[]>([]);
 const commentsLoading = ref(false);
 const commentText = ref("");
+/** 点赞防抖中 */
+const likeSubmitting = ref(false);
+/** 同分类下一次要播放的视频（自动连播用） */
+const nextVideo = ref<VideoOut | null>(null);
+const videoRef = ref<HTMLVideoElement | null>(null);
 
 onMounted(async () => {
   const id = Number(route.params.id);
   if (!id) { router.push("/videos"); return; }
-  try { const res = await getVideo(id); video.value = res.data; loadComments(); }
+  try { const res = await getVideo(id); video.value = res.data; loadComments(); findNextVideo(); }
   catch { ElMessage.error("视频不存在"); router.push("/videos"); }
   finally { loading.value = false; }
 });
+
+onUnmounted(() => {});
+
+/** 找同分类（不限则取最新）的下一个视频，用于播放结束自动连播 */
+async function findNextVideo() {
+  if (!video.value) return;
+  try {
+    const params: Record<string, unknown> = { page: 1, page_size: 50 };
+    if (video.value.category_id) params.category_id = video.value.category_id;
+    const res = await getVideos(params as any);
+    const list = (res.data.items || []).filter((v: VideoOut) => v.id !== video.value!.id);
+    nextVideo.value = list.length > 0 ? list[0] : null;
+  } catch { nextVideo.value = null; }
+}
+
+/** 直链视频播放结束 → 自动跳下一个（B 站 iframe 无法监听） */
+function handleEnded() {
+  if (nextVideo.value) {
+    ElMessage.success(`自动播放下一个：${nextVideo.value.title}`);
+    router.push(`/videos/${nextVideo.value.id}`);
+  }
+}
+
+/** 点赞/取消点赞 */
+async function toggleLike() {
+  if (!video.value) return;
+  if (!auth.isLoggedIn()) { ElMessage.warning("请先登录后点赞"); return; }
+  if (likeSubmitting.value) return;
+  likeSubmitting.value = true;
+  try {
+    const res = await likeVideo(video.value.id);
+    video.value.like_count = res.data.like_count;
+    video.value.liked = res.data.liked;
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.detail || "操作失败");
+  } finally {
+    likeSubmitting.value = false;
+  }
+}
 
 async function loadComments() {
   if (!video.value) return;
@@ -98,7 +142,11 @@ const embedSrc = computed(() => {
     <template v-else-if="video">
       <div class="video-player">
         <iframe v-if="embedSrc" :src="embedSrc" frameborder="0" allowfullscreen class="player-iframe"></iframe>
-        <video v-else-if="video.video_url" controls class="player-video" playsinline webkit-playsinline x5-playsinline preload="metadata" :src="video.video_url"></video>
+        <video
+          v-else-if="video.video_url" ref="videoRef" controls class="player-video"
+          playsinline webkit-playsinline x5-playsinline preload="metadata"
+          :src="video.video_url" @ended="handleEnded"
+        ></video>
         <div v-else class="no-source">暂无视频源</div>
       </div>
 
@@ -107,6 +155,10 @@ const embedSrc = computed(() => {
         <div class="video-meta">
           <span class="meta-tag" :style="{ background: tagColor(video) }">{{ tagText(video) }}</span>
           <span><Icon name="eye" :size="14" /> {{ video.view_count || 0 }}次播放</span>
+          <span :class="['meta-like', { liked: video.liked }]" @click="toggleLike">
+            <Icon name="like" :size="14" /> {{ video.like_count || 0 }}点赞
+          </span>
+          <span><Icon name="message" :size="14" /> {{ comments.length }}评论</span>
           <span class="meta-author">
             <img v-if="video.author_avatar" :src="video.author_avatar" alt="" class="meta-avatar" />
             <Icon v-else name="user" :size="14" />
@@ -116,6 +168,9 @@ const embedSrc = computed(() => {
           <span v-if="video.duration"><Icon name="clock" :size="14" /> {{ video.duration }}</span>
         </div>
         <p v-if="video.description" class="video-desc">{{ video.description }}</p>
+        <div v-if="nextVideo" class="up-next-tip">
+          <Icon name="video" :size="14" /> 播放结束将自动播放：<a @click.prevent="router.push(`/videos/${nextVideo.id}`)" href="#">{{ nextVideo.title }}</a>
+        </div>
         <div v-if="auth.isAdmin()" class="admin-actions">
           <el-button plain size="small" @click="share(video.title, video.description)">
             <Icon name="share" :size="14" /> 分享
@@ -175,6 +230,16 @@ const embedSrc = computed(() => {
 .meta-author { display: flex; align-items: center; gap: 4px; }
 .meta-tag { padding: 3px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; color: #fff; }
 .video-desc { font-size: 15px; line-height: 1.8; color: var(--text); margin-bottom: 16px; }
+.meta-like { cursor: pointer; transition: color 0.2s; }
+.meta-like:hover { color: #ef4444; }
+.meta-like.liked { color: #ef4444; font-weight: 600; }
+.up-next-tip {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 13px; color: var(--text-light);
+  background: var(--bg-soft, rgba(37, 99, 235, 0.05)); border-radius: 8px;
+  padding: 8px 12px; margin-bottom: 14px;
+}
+.up-next-tip a { color: var(--primary); cursor: pointer; font-weight: 600; }
 .admin-actions { padding-top: 16px; border-top: 1px solid var(--card-border); }
 .comments-section {
   background: var(--card-bg); border-radius: var(--radius); padding: 24px;

@@ -11,6 +11,7 @@ from app.models.tool import Tool
 from app.models.about import AboutContent
 from app.models.message import Message
 from app.models.video_comment import VideoComment
+from app.models.faq_comment import FAQComment
 from app.models.carousel import CarouselSlide
 
-__all__ = ["User", "Category", "Article", "Comment", "Video", "Standard", "FAQ", "Tool", "AboutContent", "Message", "VideoComment", "CarouselSlide"]
+__all__ = ["User", "Category", "Article", "Comment", "Video", "Standard", "FAQ", "Tool", "AboutContent", "Message", "VideoComment", "FAQComment", "CarouselSlide"]
