@@ -29,6 +29,15 @@ class Settings(BaseSettings):
         "http://localhost:3000",
     ]
 
+    # 阿里云号码认证服务（短信认证）：凭证建议用 systemd 环境变量注入，勿写死
+    SMS_ENABLED: bool = False  # 总开关：凭证配好后置 True
+    SMS_ACCESS_KEY_ID: str = ""
+    SMS_ACCESS_KEY_SECRET: str = ""
+    SMS_SIGN_NAME: str = ""  # 控制台"赠送签名"名称，如"恒创联众"
+    SMS_TEMPLATE_CODE: str = ""  # 控制台"赠送模板"Code，如 100001
+    SMS_SCHEME_NAME: str = ""  # 认证方案名，默认方案留空即可
+    SMS_CODE_TTL_MIN: int = 5  # 验证码有效期（分钟）
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 

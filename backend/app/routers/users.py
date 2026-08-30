@@ -11,12 +11,11 @@ from app.schemas.user import (
     SmsSendRequest, SmsLoginRequest, WechatLoginRequest, UsernameCheck,
 )
 from app.services.auth import hash_password, verify_password, create_access_token
+from app.services import aliyun_sms
+from app.config import settings
 from app.dependencies.auth import get_current_user, require_admin
 
 router = APIRouter(prefix="/api/users", tags=["用户"])
-
-# 短信认证服务开关：开通短信服务后置 True 并接入实际发送通道
-SMS_ENABLED = False
 
 
 @router.post("/register/check-username")
@@ -39,11 +38,14 @@ async def register(data: UserRegister, db: AsyncSession = Depends(get_db)):
     第二步手机验证码校验通过后，本接口一次性完成建号 + 写 phone + 发 token。
     """
     # 手机号+验证码必填：验证通过是注册成功的前置条件
-    if not SMS_ENABLED:
+    if not settings.SMS_ENABLED:
         raise HTTPException(status_code=501, detail="短信服务暂未开通，注册暂不可用，敬请期待")
     if not data.phone or not data.sms_code:
         raise HTTPException(status_code=400, detail="请先完成手机验证码关联")
-    # TODO: 校验 data.sms_code 与下发验证码一致（短信通道接入后补充）
+    # 阿里云端核验验证码（SendSmsVerifyCode 动态生成的验证码由此接口校验）
+    check = aliyun_sms.check_sms_verify_code(data.phone.strip(), data.sms_code.strip())
+    if not check["ok"]:
+        raise HTTPException(status_code=400, detail=check["detail"])
     phone = data.phone.strip()
 
     username = data.username.strip()
@@ -101,20 +103,29 @@ async def login(data: UserLogin, db: AsyncSession = Depends(get_db)):
 # ========== 短信登录/注册（预留：短信认证服务开通后接入） ==========
 
 @router.post("/sms/send")
-async def send_sms(data: SmsSendRequest):
-    """发送短信验证码（预留接口，短信服务开通后接入实际通道）"""
-    if not SMS_ENABLED:
-        raise HTTPException(status_code=501, detail="短信登录暂未开放，敬请期待")
-    # TODO: 接入短信服务商，生成验证码存 Redis/内存 并下发
-    return {"detail": "验证码已发送"}
+async def send_sms(data: SmsSendRequest, db: AsyncSession = Depends(get_db)):
+    """发送短信验证码（阿里云号码认证服务，验证码由阿里云端生成与核验）"""
+    if not settings.SMS_ENABLED:
+        raise HTTPException(status_code=501, detail="短信服务暂未开通，敬请期待")
+    # 手机号已被注册时不再下发（避免泄露注册信息 + 省短信费）
+    result = await db.execute(select(User).where(User.phone == data.phone))
+    if result.scalars().first():
+        raise HTTPException(status_code=400, detail="该手机号已被注册，请直接登录")
+    send = aliyun_sms.send_sms_verify_code(data.phone)
+    if not send["ok"]:
+        raise HTTPException(status_code=400, detail=send["detail"])
+    return {"detail": send["detail"]}
 
 
 @router.post("/sms/login", response_model=Token)
 async def sms_login(data: SmsLoginRequest, db: AsyncSession = Depends(get_db)):
     """短信验证码登录/自动注册（预留接口）"""
-    if not SMS_ENABLED:
+    if not settings.SMS_ENABLED:
         raise HTTPException(status_code=501, detail="短信登录暂未开放，敬请期待")
-    # TODO: 校验验证码 → 已注册直接登录 / 未注册自动创建账号
+    check = aliyun_sms.check_sms_verify_code(data.phone.strip(), data.sms_code.strip())
+    if not check["ok"]:
+        raise HTTPException(status_code=401, detail=check["detail"])
+    # TODO: 已注册直接登录 / 未注册自动创建账号
     raise HTTPException(status_code=501, detail="短信登录暂未开放，敬请期待")
 
 
@@ -124,14 +135,15 @@ async def bind_phone(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """已注册用户绑定/关联手机号（注册流程第二步，预留接口）
+    """已注册用户绑定/关联手机号（个人中心补绑场景）
 
-    账号密码注册完成后，通过手机验证码关联手机号。
-    短信服务开通后：校验验证码一致才写入 phone；手机号被占用时返回 400。
+    通过阿里云端核验验证码一致后才写入 phone；手机号被占用时返回 400。
     """
-    if not SMS_ENABLED:
+    if not settings.SMS_ENABLED:
         raise HTTPException(status_code=501, detail="短信服务暂未开通，可稍后在个人中心绑定")
-    # TODO: 校验 data.sms_code 与下发验证码一致
+    check = aliyun_sms.check_sms_verify_code(data.phone.strip(), data.sms_code.strip())
+    if not check["ok"]:
+        raise HTTPException(status_code=400, detail=check["detail"])
     phone = data.phone.strip()
     exists = await db.execute(
         select(User).where(User.phone == phone, User.id != current_user.id)
