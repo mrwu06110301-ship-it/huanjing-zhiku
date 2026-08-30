@@ -23,6 +23,9 @@ from app.services import aliyun_sms, wechat
 from app.config import settings
 from app.dependencies.auth import get_current_user, require_admin
 
+# 内部测试账号白名单：未绑手机号也可直接密码登录（不触发短信补绑流程）
+PHONE_EXEMPT_ACCOUNTS = {"wuzhuangzhuang", "Zhao"}
+
 router = APIRouter(prefix="/api/users", tags=["用户"])
 
 
@@ -86,10 +89,11 @@ async def register(data: UserRegister, db: AsyncSession = Depends(get_db)):
 
 @router.post("/login", response_model=Token)
 async def login(data: UserLogin, db: AsyncSession = Depends(get_db)):
-    """密码登录：账号支持 用户名/手机号/邮箱
+    """密码登录：账号支持 用户名/手机号
 
     密码正确但账号未绑定手机号（老账号）→ 返回 pending_sms + 10 分钟票据，
     前端引导跳短信验证补绑手机号后再完成登录。
+    内部测试账号白名单（PHONE_EXEMPT_ACCOUNTS）未绑手机号可直接登录。
     """
     account = (data.account or data.username or "").strip()
     if not account:
@@ -103,8 +107,8 @@ async def login(data: UserLogin, db: AsyncSession = Depends(get_db)):
     if not user.is_active:
         raise HTTPException(status_code=403, detail="账号已被禁用，请联系管理员")
 
-    # 首次密码登录且未绑手机号 → 需先短信验证补绑（老账号迁移引导）
-    if not user.phone:
+    # 未绑手机号 → 需先短信验证补绑（老账号迁移引导）；内部测试账号白名单豁免
+    if not user.phone and user.username not in PHONE_EXEMPT_ACCOUNTS:
         ticket = create_access_token(
             {"sub": str(user.id), "scope": "pending_sms"}, minutes=10
         )
