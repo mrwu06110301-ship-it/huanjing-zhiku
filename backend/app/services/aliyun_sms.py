@@ -54,8 +54,11 @@ def _rpc_call(action: str, business_params: dict) -> dict:
     }
     params["Signature"] = _sign(params, settings.SMS_ACCESS_KEY_SECRET)
     resp = httpx.get(ENDPOINT, params=params, timeout=10)
-    resp.raise_for_status()
-    return resp.json()
+    # 阿里云业务错误（签名无效/未开通等）也返回 JSON body，不抛异常，交给上层解析 Code
+    try:
+        return resp.json()
+    except Exception:
+        return {"Code": f"HTTP_{resp.status_code}", "Message": resp.text[:200]}
 
 
 def _utc_timestamp() -> str:
