@@ -650,5 +650,16 @@ const modules = [
   .modules-grid { grid-template-columns: 1fr; }
   .articles-grid { grid-template-columns: 1fr; }
   .tools-grid { grid-template-columns: 1fr; }
+  /* 工具卡：描述最多 2 行截断，避免长文本撑版 */
+  .tool-card { padding: 13px 14px; gap: 11px; }
+  .tool-icon-wrap { width: 42px; height: 42px; }
+  .tool-info p {
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    line-height: 1.5;
+  }
 }
 </style>
