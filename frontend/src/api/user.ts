@@ -8,10 +8,17 @@ export function register(data: {
   email?: string;
   password: string;
   nickname?: string;
-  phone?: string;
-  sms_code?: string;
+  phone: string;
+  sms_code: string;
 }): Promise<{ data: { access_token: string } }> {
   return request.post("/users/register", data);
+}
+
+/** 注册第一步：用户名占用预校验（不创建账号） */
+export function checkUsername(data: {
+  username: string;
+}): Promise<{ data: { detail: string; username: string } }> {
+  return request.post("/users/register/check-username", data);
 }
 
 /** 登录：account 支持用户名/手机号/邮箱 */
@@ -35,7 +42,7 @@ export function smsLogin(data: {
   return request.post("/users/sms/login", data);
 }
 
-/** 绑定/关联手机号（注册第二步：验证码校验后写入 phone） */
+/** 已注册用户绑定/关联手机号（个人中心补绑，注册流程已改为验证前置） */
 export function bindPhone(data: {
   phone: string;
   sms_code: string;

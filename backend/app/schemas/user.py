@@ -5,13 +5,18 @@ from datetime import datetime
 
 
 class UserRegister(BaseModel):
-    """注册：username 必填；email 可选（老接口兼容）；phone+sms_code 预留短信注册"""
+    """注册：username/password/phone/sms_code 必填（手机验证通过才创建账号）"""
     username: str = Field(..., min_length=3, max_length=50)
     email: str = Field(default="", max_length=100)
     password: str = Field(..., min_length=6, max_length=100)
     nickname: str = Field(default="", max_length=50)
     phone: str = Field(default="", max_length=20)
     sms_code: str = Field(default="", max_length=10)
+
+
+class UsernameCheck(BaseModel):
+    """注册第一步：用户名占用预校验"""
+    username: str = Field(..., min_length=3, max_length=50)
 
 
 class UserLogin(BaseModel):

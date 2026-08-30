@@ -8,7 +8,7 @@ from app.database import get_db
 from app.models.user import User
 from app.schemas.user import (
     UserRegister, UserLogin, UserOut, Token, UserUpdate, PasswordChange,
-    SmsSendRequest, SmsLoginRequest, WechatLoginRequest,
+    SmsSendRequest, SmsLoginRequest, WechatLoginRequest, UsernameCheck,
 )
 from app.services.auth import hash_password, verify_password, create_access_token
 from app.dependencies.auth import get_current_user, require_admin
@@ -19,37 +19,56 @@ router = APIRouter(prefix="/api/users", tags=["用户"])
 SMS_ENABLED = False
 
 
+@router.post("/register/check-username")
+async def check_username(data: UsernameCheck, db: AsyncSession = Depends(get_db)):
+    """注册第一步：用户名占用预校验（不创建账号）"""
+    username = data.username.strip()
+    if len(username) < 3 or len(username) > 50:
+        raise HTTPException(status_code=400, detail="用户名需 3-50 个字符")
+    result = await db.execute(select(User).where(User.username == username))
+    if result.scalars().first():
+        raise HTTPException(status_code=400, detail="用户名已被注册")
+    return {"detail": "用户名可用", "username": username}
+
+
 @router.post("/register", response_model=Token, status_code=status.HTTP_201_CREATED)
 async def register(data: UserRegister, db: AsyncSession = Depends(get_db)):
-    """注册：用户名+密码；email 可选；phone+sms_code 预留短信注册"""
-    # 短信注册通道（预留）：短信服务开通后启用校验
-    if data.phone and SMS_ENABLED and not data.sms_code:
-        raise HTTPException(status_code=400, detail="请填写短信验证码")
+    """注册：手机验证码关联通过后才创建账号并签发 token（自动登录）
 
+    流程：第一步仅预校验用户名（/register/check-username，不建号）；
+    第二步手机验证码校验通过后，本接口一次性完成建号 + 写 phone + 发 token。
+    """
+    # 手机号+验证码必填：验证通过是注册成功的前置条件
+    if not SMS_ENABLED:
+        raise HTTPException(status_code=501, detail="短信服务暂未开通，注册暂不可用，敬请期待")
+    if not data.phone or not data.sms_code:
+        raise HTTPException(status_code=400, detail="请先完成手机验证码关联")
+    # TODO: 校验 data.sms_code 与下发验证码一致（短信通道接入后补充）
+    phone = data.phone.strip()
+
+    username = data.username.strip()
     # 用户名唯一性检查
-    result = await db.execute(select(User).where(User.username == data.username))
+    result = await db.execute(select(User).where(User.username == username))
     if result.scalars().first():
         raise HTTPException(status_code=400, detail="用户名已被注册")
 
-    # email 可选：填写了才查重
+    # 手机号唯一性检查
+    result = await db.execute(select(User).where(User.phone == phone))
+    if result.scalars().first():
+        raise HTTPException(status_code=400, detail="手机号已被注册")
+
+    # email 可选：填写了才查重（个人中心补填场景兼容）
     email = (data.email or "").strip()
     if email:
         result = await db.execute(select(User).where(User.email == email))
         if result.scalars().first():
             raise HTTPException(status_code=400, detail="邮箱已被注册")
 
-    # 手机号可选：填写了才查重（短信服务开通后为必填）
-    phone = (data.phone or "").strip()
-    if phone:
-        result = await db.execute(select(User).where(User.phone == phone))
-        if result.scalars().first():
-            raise HTTPException(status_code=400, detail="手机号已被注册")
-
     user = User(
-        username=data.username,
+        username=username,
         email=email,
         phone=phone,
-        nickname=data.nickname or data.username,
+        nickname=data.nickname or username,
         hashed_password=hash_password(data.password),
     )
     db.add(user)

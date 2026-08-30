@@ -2,17 +2,17 @@
 import { ref, computed } from "vue";
 import { useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
-import { register, sendSms, bindPhone, getMe } from "@/api/user";
+import { register, sendSms, checkUsername, getMe } from "@/api/user";
 import { ElMessage } from "element-plus";
 import BrandLogo from "@/components/BrandLogo.vue";
 
 const router = useRouter();
 const auth = useAuthStore();
 
-/** 注册步骤：1=账号密码 → 2=手机验证码关联（必须完成） */
+/** 注册步骤：1=账号密码（预校验） → 2=手机验证码关联（验证通过才真正注册） */
 const step = ref<1 | 2>(1);
 
-// ==================== 第一步：账号密码注册 ====================
+// ==================== 第一步：账号密码预校验 ====================
 const form = ref({
   username: "",
   password: "",
@@ -28,7 +28,7 @@ function checkAgreement(): boolean {
   return true;
 }
 
-async function handleRegister() {
+async function handleNext() {
   if (!checkAgreement()) return;
   if (!form.value.username || !form.value.password) {
     ElMessage.warning("请输入用户名和密码");
@@ -40,33 +40,20 @@ async function handleRegister() {
   }
   loading.value = true;
   try {
-    // 第一步：创建账号（昵称/邮箱后置到个人中心补填）
-    const res = await register({
-      username: form.value.username.trim(),
-      password: form.value.password,
-    });
-    // 拿到 token 即已完成账号创建，直接进入登录态
-    auth.token = res.data.access_token;
-    localStorage.setItem("hjzk_token", res.data.access_token);
-    try {
-      const meRes = await getMe();
-      auth.setLogin(res.data.access_token, meRes.data);
-    } catch {
-      auth.setLogin(res.data.access_token, {} as any);
-    }
-    ElMessage.success("账号创建成功，请关联手机号");
+    // 仅预校验用户名占用，不创建账号
+    await checkUsername({ username: form.value.username.trim() });
     step.value = 2;
   } catch (err: any) {
-    ElMessage.error(err?.response?.data?.detail || "注册失败");
+    ElMessage.error(err?.response?.data?.detail || "校验失败");
   } finally {
     loading.value = false;
   }
 }
 
-// ==================== 第二步：手机验证码关联 ====================
+// ==================== 第二步：手机验证码关联（通过后才注册） ====================
 const SMS_ENABLED = false; // 短信认证服务开通后改为 true
 const phoneForm = ref({ phone: "", code: "" });
-const bindLoading = ref(false);
+const registerLoading = ref(false);
 const countdown = ref(0);
 let countdownTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -88,31 +75,38 @@ async function handleSendSms() {
   }
 }
 
-async function handleBindPhone() {
+async function handleRegister() {
   if (!phoneValid.value) { ElMessage.warning("请输入正确的手机号"); return; }
   if (!phoneForm.value.code) { ElMessage.warning("请输入验证码"); return; }
-  bindLoading.value = true;
+  registerLoading.value = true;
   try {
-    await bindPhone({ phone: phoneForm.value.phone, sms_code: phoneForm.value.code });
-    ElMessage.success("手机号关联成功，欢迎加入！");
+    // 手机验证码通过后才真正创建账号并自动登录
+    const res = await register({
+      username: form.value.username.trim(),
+      password: form.value.password,
+      phone: phoneForm.value.phone,
+      sms_code: phoneForm.value.code,
+    });
+    auth.token = res.data.access_token;
+    localStorage.setItem("hjzk_token", res.data.access_token);
+    try {
+      const meRes = await getMe();
+      auth.setLogin(res.data.access_token, meRes.data);
+    } catch {
+      auth.setLogin(res.data.access_token, {} as any);
+    }
+    ElMessage.success("注册成功，欢迎加入！");
     router.push("/");
   } catch (err: any) {
-    // 短信未开通（501）时给出引导，不阻断进入首页
-    if (err?.response?.status === 501) {
-      ElMessage.info("短信服务暂未开通，已跳过手机关联，可稍后在个人中心绑定");
-      router.push("/");
-    } else {
-      ElMessage.error(err?.response?.data?.detail || "关联失败");
-    }
+    ElMessage.error(err?.response?.data?.detail || "注册失败");
   } finally {
-    bindLoading.value = false;
+    registerLoading.value = false;
   }
 }
 
-/** 暂时跳过（短信未开通期间的兜底入口） */
-function skipBind() {
-  ElMessage.info("已跳过手机关联，可稍后在个人中心绑定");
-  router.push("/");
+/** 返回上一步修改账号信息 */
+function backToStep1() {
+  step.value = 1;
 }
 </script>
 
@@ -123,23 +117,23 @@ function skipBind() {
         <div class="auth-logo">
           <BrandLogo />
         </div>
-        <h2>{{ step === 1 ? "注册账号" : "关联手机号" }}</h2>
-        <p>{{ step === 1 ? "加入产品小吴知识库社区" : "验证通过即完成注册" }}</p>
+        <h2>{{ step === 1 ? "注册账号" : "验证手机号" }}</h2>
+        <p>{{ step === 1 ? "加入产品小吴知识库社区" : "验证通过即完成注册并自动登录" }}</p>
       </div>
 
       <!-- 步骤指示器 -->
       <div class="steps">
         <span :class="['step', { active: step >= 1, done: step > 1 }]">
-          <i class="step-num">1</i>账号密码
+          <i class="step-num">{{ step > 1 ? "✓" : "1" }}</i>账号密码
         </span>
         <span class="step-line" :class="{ passed: step > 1 }"></span>
         <span :class="['step', { active: step >= 2 }]">
-          <i class="step-num">2</i>手机关联
+          <i class="step-num">2</i>手机验证
         </span>
       </div>
 
-      <!-- 第一步：账号密码（仅用户名+密码，昵称/邮箱后置） -->
-      <el-form v-if="step === 1" @keyup.enter="handleRegister">
+      <!-- 第一步：账号密码（仅预校验，不创建账号） -->
+      <el-form v-if="step === 1" @keyup.enter="handleNext">
         <el-form-item>
           <el-input v-model="form.username" placeholder="用户名（3-50 个字符）" size="large" />
         </el-form-item>
@@ -147,15 +141,15 @@ function skipBind() {
           <el-input v-model="form.password" type="password" placeholder="密码（至少 6 位）" size="large" show-password />
         </el-form-item>
         <el-form-item>
-          <el-button type="primary" size="large" :loading="loading" @click="handleRegister" style="width: 100%">
-            注册
+          <el-button type="primary" size="large" :loading="loading" @click="handleNext" style="width: 100%">
+            下一步
           </el-button>
         </el-form-item>
-        <div class="step-tip">下一步需通过手机验证码完成关联；昵称、邮箱可登录后在个人中心补填</div>
+        <div class="step-tip">下一步需通过手机验证码完成注册；昵称、邮箱可登录后在个人中心补填</div>
       </el-form>
 
-      <!-- 第二步：手机验证码关联 -->
-      <el-form v-else @keyup.enter="handleBindPhone">
+      <!-- 第二步：手机验证码，验证通过才创建账号 -->
+      <el-form v-else @keyup.enter="handleRegister">
         <el-form-item>
           <el-input v-model="phoneForm.phone" placeholder="请输入手机号" size="large" maxlength="11">
             <template #prefix><span class="field-label">手机号</span></template>
@@ -173,14 +167,13 @@ function skipBind() {
           </div>
         </el-form-item>
         <el-form-item>
-          <el-button type="primary" size="large" :loading="bindLoading" @click="handleBindPhone" style="width: 100%">
-            完成关联
+          <el-button type="primary" size="large" :loading="registerLoading" @click="handleRegister" style="width: 100%">
+            完成注册
           </el-button>
         </el-form-item>
-        <div v-if="!SMS_ENABLED" class="sms-hint">
-          短信服务暂未开通，可先
-          <a @click.prevent="skipBind" href="#">跳过</a>
-          ，稍后在个人中心绑定
+        <div class="step-tip">
+          验证通过即注册成功并自动登录 ·
+          <a @click.prevent="backToStep1" href="#">返回修改账号</a>
         </div>
       </el-form>
 
@@ -344,6 +337,11 @@ function skipBind() {
   line-height: 1.7;
   margin-top: -6px;
 }
+.step-tip a {
+  color: var(--primary);
+  font-weight: 600;
+  cursor: pointer;
+}
 
 /* 短信行 */
 .sms-row {
@@ -353,17 +351,6 @@ function skipBind() {
 }
 .sms-row .el-input { flex: 1; }
 .sms-btn { flex-shrink: 0; width: 118px; }
-.sms-hint {
-  text-align: center;
-  font-size: 12.5px;
-  color: var(--text-muted);
-  margin-top: -6px;
-}
-.sms-hint a {
-  color: var(--primary);
-  font-weight: 600;
-  cursor: pointer;
-}
 
 /* 协议勾选 */
 .agree-row {
