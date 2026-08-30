@@ -24,6 +24,8 @@ class User(Base):
     role: Mapped[str] = mapped_column(String(20), default="user")
     can_upload_video: Mapped[bool] = mapped_column(Boolean, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # 短信登录自动建号的账号为随机密码，登录后需引导补设账号密码
+    need_password_setup: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at = mapped_column(DateTime, default=datetime.now)
     updated_at = mapped_column(DateTime, default=datetime.now, onupdate=datetime.now)
 

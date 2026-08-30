@@ -11,8 +11,14 @@ from app.models.user import User
 from app.schemas.user import (
     UserRegister, UserLogin, UserOut, Token, UserUpdate, PasswordChange,
     SmsSendRequest, SmsLoginRequest, WechatLoginRequest, UsernameCheck,
+    PasswordSetup,
 )
-from app.services.auth import hash_password, verify_password, create_access_token
+from app.services.auth import (
+    hash_password,
+    verify_password,
+    create_access_token,
+    decode_access_token,
+)
 from app.services import aliyun_sms, wechat
 from app.config import settings
 from app.dependencies.auth import get_current_user, require_admin
@@ -85,7 +91,11 @@ async def register(data: UserRegister, db: AsyncSession = Depends(get_db)):
 
 @router.post("/login", response_model=Token)
 async def login(data: UserLogin, db: AsyncSession = Depends(get_db)):
-    """登录：账号+密码（账号支持 用户名/手机号/邮箱）"""
+    """密码登录：账号支持 用户名/手机号/邮箱
+
+    密码正确但账号未绑定手机号（老账号）→ 返回 pending_sms + 10 分钟票据，
+    前端引导跳短信验证补绑手机号后再完成登录。
+    """
     account = (data.account or data.username or "").strip()
     if not account:
         raise HTTPException(status_code=400, detail="请输入账号")
@@ -97,6 +107,15 @@ async def login(data: UserLogin, db: AsyncSession = Depends(get_db)):
     user = result.scalars().first()
     if not user or not verify_password(data.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="账号或密码错误")
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="账号已被禁用，请联系管理员")
+
+    # 首次密码登录且未绑手机号 → 需先短信验证补绑（老账号迁移引导）
+    if not user.phone:
+        ticket = create_access_token(
+            {"sub": str(user.id), "scope": "pending_sms"}, minutes=10
+        )
+        return Token(access_token=ticket, token_type="pending_sms")
 
     token = create_access_token({"sub": str(user.id)})
     return Token(access_token=token)
@@ -117,10 +136,10 @@ async def send_sms(data: SmsSendRequest, db: AsyncSession = Depends(get_db)):
 
 @router.post("/sms/login", response_model=Token)
 async def sms_login(data: SmsLoginRequest, db: AsyncSession = Depends(get_db)):
-    """短信验证码登录：已注册直接登录，未注册自动创建账号
+    """短信验证码登录/自动注册
 
-    自动建号规则：username=手机号（冲突则加随机后缀）、nickname=手机号、
-    随机密码（用户不可知，可后续在个人中心改密）、email 留空。
+    - 手机号已注册 → 直接登录（返回 need_password 标记：账号还是随机密码时前端引导补设）
+    - 未注册 → 自动创建账号（username=手机号，随机密码），返回 need_password 引导补设账号密码
     """
     if not settings.SMS_ENABLED:
         raise HTTPException(status_code=501, detail="短信登录暂未开放，敬请期待")
@@ -129,32 +148,117 @@ async def sms_login(data: SmsLoginRequest, db: AsyncSession = Depends(get_db)):
     if not check["ok"]:
         raise HTTPException(status_code=401, detail=check["detail"])
 
-    # 已注册（手机号匹配）→ 直接登录
     result = await db.execute(select(User).where(User.phone == phone))
     user = result.scalars().first()
     if user:
         if not user.is_active:
             raise HTTPException(status_code=403, detail="账号已被禁用，请联系管理员")
         token = create_access_token({"sub": str(user.id)})
-        return Token(access_token=token)
+        return Token(access_token=token, token_type="need_password" if user.need_password_setup else "bearer")
 
-    # 未注册 → 自动创建账号
+    # 未注册 → 自动创建账号（username=手机号，冲突加随机后缀）
     username = phone
     result = await db.execute(select(User).where(User.username == username))
     if result.scalars().first():
-        username = f"{phone}_{uuid.uuid4().hex[:4]}"  # 手机号被占作用户名时加随机后缀
+        username = f"{phone}_{uuid.uuid4().hex[:4]}"
     user = User(
         username=username,
         email="",
         phone=phone,
         nickname=phone,
         hashed_password=hash_password(uuid.uuid4().hex + uuid.uuid4().hex),
+        need_password_setup=True,  # 标记：登录后引导补设密码
     )
     db.add(user)
     await db.flush()
     await db.refresh(user)
     token = create_access_token({"sub": str(user.id)})
+    return Token(access_token=token, token_type="need_password")
+
+
+@router.post("/sms/verify-login", response_model=Token)
+async def sms_verify_login(data: SmsLoginRequest, db: AsyncSession = Depends(get_db)):
+    """首次密码登录补绑手机号：pending_sms 票据 + 验证码 → 绑定手机号并签发正式 token
+
+    流程：密码登录返回 pending_sms 票据 → 前端跳短信验证 → 本接口核验通过后
+    写入 phone（释放 pending_sms 票据，换发正式 token）。
+    """
+    if not settings.SMS_ENABLED:
+        raise HTTPException(status_code=501, detail="短信服务暂未开通，敬请期待")
+    if not data.pending_token:
+        raise HTTPException(status_code=401, detail="登录状态已失效，请重新登录")
+    payload = decode_access_token(data.pending_token)
+    if not payload or payload.get("scope") != "pending_sms":
+        raise HTTPException(status_code=401, detail="验证已过期，请重新登录")
+    if not payload.get("sub"):
+        raise HTTPException(status_code=401, detail="登录状态异常，请重新登录")
+
+    phone = data.phone.strip()
+    check = aliyun_sms.check_sms_verify_code(phone, data.sms_code.strip())
+    if not check["ok"]:
+        raise HTTPException(status_code=400, detail=check["detail"])
+
+    result = await db.execute(select(User).where(User.id == int(payload["sub"])))
+    user = result.scalars().first()
+    if not user or not user.is_active:
+        raise HTTPException(status_code=401, detail="账号不存在或已禁用")
+
+    # 手机号被其他账号占用 → 拒绝绑定
+    exists = await db.execute(
+        select(User).where(User.phone == phone, User.id != user.id)
+    )
+    if exists.scalars().first():
+        raise HTTPException(status_code=400, detail="该手机号已被其他账号绑定")
+
+    user.phone = phone
+    db.add(user)
+    await db.commit()
+    token = create_access_token({"sub": str(user.id)})
     return Token(access_token=token)
+
+
+@router.post("/auth/setup-password")
+async def setup_password(
+    data: PasswordSetup,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """短信登录后的账号密码补设：设置用户名（可选）+ 密码，清除 need_password_setup 标记"""
+    username = (data.username or "").strip()
+    if username and username != current_user.username:
+        if len(username) < 3 or len(username) > 50:
+            raise HTTPException(status_code=400, detail="用户名需 3-50 个字符")
+        result = await db.execute(select(User).where(User.username == username))
+        if result.scalars().first():
+            raise HTTPException(status_code=400, detail="用户名已被注册")
+        current_user.username = username
+    current_user.hashed_password = hash_password(data.new_password)
+    current_user.need_password_setup = False
+    db.add(current_user)
+    await db.commit()
+    return {"detail": "密码设置成功", "username": current_user.username}
+
+
+@router.post("/auth/forgot-password")
+async def forgot_password(data: SmsLoginRequest, db: AsyncSession = Depends(get_db)):
+    """找回密码：手机验证码核验通过 → 重置为用户提交的新密码"""
+    if not settings.SMS_ENABLED:
+        raise HTTPException(status_code=501, detail="短信服务暂未开通，敬请期待")
+    phone = data.phone.strip()
+    check = aliyun_sms.check_sms_verify_code(phone, data.sms_code.strip())
+    if not check["ok"]:
+        raise HTTPException(status_code=400, detail=check["detail"])
+    result = await db.execute(select(User).where(User.phone == phone))
+    user = result.scalars().first()
+    if not user:
+        raise HTTPException(status_code=404, detail="该手机号未绑定任何账号")
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="账号已被禁用，请联系管理员")
+    user.hashed_password = hash_password(data.new_password.get_secret_value())
+    user.need_password_setup = False
+    db.add(user)
+    await db.commit()
+    return {"detail": "密码重置成功，请使用新密码登录"}
 
 
 @router.post("/bind-phone")

@@ -1,6 +1,6 @@
 """用户相关 Schema"""
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, SecretStr
 from datetime import datetime
 
 
@@ -32,9 +32,19 @@ class SmsSendRequest(BaseModel):
 
 
 class SmsLoginRequest(BaseModel):
-    """短信验证码登录/注册（预留）"""
+    """短信验证码登录/注册/验证/找回（多场景复用）"""
     phone: str = Field(..., min_length=11, max_length=11)
     sms_code: str = Field(..., min_length=4, max_length=10)
+    # sms/verify-login 场景：密码登录返回的 pending_sms 短时效票据
+    pending_token: str = Field(default="", max_length=1024)
+    # forgot-password 场景：重置后的新密码
+    new_password: SecretStr | None = None
+
+
+class PasswordSetup(BaseModel):
+    """短信登录后补设账号密码"""
+    username: str = Field(default="", max_length=50)
+    new_password: SecretStr = Field(..., min_length=6, max_length=100)
 
 
 class WechatLoginRequest(BaseModel):
@@ -71,5 +81,10 @@ class PasswordChange(BaseModel):
 
 
 class Token(BaseModel):
+    """登录凭据。token_type 额外标记：
+    - bearer：正式登录态
+    - pending_sms：密码正确但未绑手机号，需短信验证补绑（10 分钟票据）
+    - need_password：短信登录的账号为随机密码，前端引导补设账号密码
+    """
     access_token: str
     token_type: str = "bearer"

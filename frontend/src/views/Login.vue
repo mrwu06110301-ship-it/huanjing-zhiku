@@ -2,13 +2,25 @@
 import { ref, computed } from "vue";
 import { useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
-import { login as loginApi, sendSms, smsLogin, getMe } from "@/api/user";
+import {
+  login as loginApi, sendSms, smsLogin, smsVerifyLogin,
+  setupPassword, forgotPassword, getMe,
+} from "@/api/user";
 import { ElMessage } from "element-plus";
 import BrandLogo from "@/components/BrandLogo.vue";
 import WechatLogin from "@/components/WechatLogin.vue";
 
 const router = useRouter();
 const auth = useAuthStore();
+
+/**
+ * 登录视图状态：
+ * - login：主登录页（密码/短信 Tab）
+ * - bindSms：密码登录检测到未绑手机号 → 短信验证补绑后完成登录
+ * - setupPassword：短信登录到随机密码账号 → 补设账号密码后进入
+ * - forgot：找回密码（手机验证码 → 重置新密码）
+ */
+const view = ref<"login" | "bindSms" | "setupPassword" | "forgot">("login");
 
 /** 登录方式 Tab：password / sms */
 const activeTab = ref<"password" | "sms">("password");
@@ -31,6 +43,13 @@ async function handleLogin() {
       account: form.value.account.trim(),
       password: form.value.password,
     });
+    if (res.data.token_type === "pending_sms") {
+      // 首次密码登录且未绑手机号 → 跳短信验证补绑
+      pendingToken.value = res.data.access_token;
+      ElMessage.info("为保障账号安全，请先通过短信验证绑定手机号");
+      view.value = "bindSms";
+      return;
+    }
     await finishLogin(res.data.access_token);
   } catch (err: unknown) {
     const resp = (err as { response?: { data?: { detail?: string } } }).response;
@@ -40,7 +59,7 @@ async function handleLogin() {
   }
 }
 
-// ==================== 短信登录（预留：短信服务开通后启用） ====================
+// ==================== 短信验证（补绑 / 找回 密码共用发送逻辑） ====================
 const SMS_ENABLED = true; // 阿里云号码认证服务已接入
 const smsForm = ref({ phone: "", code: "" });
 const smsLoading = ref(false);
@@ -49,33 +68,139 @@ let countdownTimer: ReturnType<typeof setInterval> | null = null;
 
 const phoneValid = computed(() => /^1[3-9]\d{9}$/.test(smsForm.value.phone));
 
+async function sendCode(phone: string) {
+  await sendSms(phone);
+  ElMessage.success("验证码已发送");
+  countdown.value = 60;
+  countdownTimer = setInterval(() => {
+    countdown.value -= 1;
+    if (countdown.value <= 0 && countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
+  }, 1000);
+}
+
 async function handleSendSms() {
   if (!phoneValid.value) { ElMessage.warning("请输入正确的手机号"); return; }
   if (countdown.value > 0) return;
   try {
-    await sendSms(smsForm.value.phone);
-    ElMessage.success("验证码已发送");
-    countdown.value = 60;
-    countdownTimer = setInterval(() => {
-      countdown.value -= 1;
-      if (countdown.value <= 0 && countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
-    }, 1000);
+    await sendCode(smsForm.value.phone);
   } catch (err: any) {
     ElMessage.error(err?.response?.data?.detail || "验证码发送失败");
   }
 }
 
+// ==================== 首次密码登录：短信验证补绑手机号 ====================
+const pendingToken = ref("");
+
+async function handleBindSms() {
+  if (!phoneValid.value) { ElMessage.warning("请输入正确的手机号"); return; }
+  if (!smsForm.value.code) { ElMessage.warning("请输入验证码"); return; }
+  smsLoading.value = true;
+  try {
+    const res = await smsVerifyLogin({
+      phone: smsForm.value.phone,
+      sms_code: smsForm.value.code,
+      pending_token: pendingToken.value,
+    });
+    ElMessage.success("手机号绑定成功");
+    await finishLogin(res.data.access_token);
+  } catch (err: any) {
+    ElMessage.error(err?.response?.data?.detail || "验证失败");
+  } finally {
+    smsLoading.value = false;
+  }
+}
+
+// ==================== 短信登录 ====================
 async function handleSmsLogin() {
   if (!phoneValid.value) { ElMessage.warning("请输入正确的手机号"); return; }
   if (!smsForm.value.code) { ElMessage.warning("请输入验证码"); return; }
   smsLoading.value = true;
   try {
     const res = await smsLogin({ phone: smsForm.value.phone, sms_code: smsForm.value.code });
+    if (res.data.token_type === "need_password") {
+      // 新账号/随机密码账号 → 引导补设账号密码
+      pendingToken.value = res.data.access_token;
+      ElMessage.info("请设置您的账号密码，方便日后密码登录");
+      view.value = "setupPassword";
+      return;
+    }
     await finishLogin(res.data.access_token);
   } catch (err: any) {
     ElMessage.error(err?.response?.data?.detail || "登录失败");
   } finally {
     smsLoading.value = false;
+  }
+}
+
+// ==================== 补设账号密码（短信登录的新账号） ====================
+const setupForm = ref({ username: "", password: "", confirm: "" });
+const setupLoading = ref(false);
+
+async function handleSetupPassword() {
+  if (setupForm.value.password.length < 6) {
+    ElMessage.warning("密码至少 6 位");
+    return;
+  }
+  if (setupForm.value.password !== setupForm.value.confirm) {
+    ElMessage.warning("两次输入的密码不一致");
+    return;
+  }
+  setupLoading.value = true;
+  try {
+    await setupPassword({
+      username: setupForm.value.username.trim(),
+      new_password: setupForm.value.password,
+    });
+    ElMessage.success("设置成功，欢迎加入！");
+    await finishLogin(pendingToken.value);
+  } catch (err: any) {
+    ElMessage.error(err?.response?.data?.detail || "设置失败");
+  } finally {
+    setupLoading.value = false;
+  }
+}
+
+// ==================== 找回密码 ====================
+const forgotForm = ref({ phone: "", code: "", password: "", confirm: "" });
+const forgotLoading = ref(false);
+const forgotCountdown = ref(0);
+let forgotTimer: ReturnType<typeof setInterval> | null = null;
+
+async function handleForgotSend() {
+  const phone = forgotForm.value.phone;
+  if (!/^1[3-9]\d{9}$/.test(phone)) { ElMessage.warning("请输入正确的手机号"); return; }
+  if (forgotCountdown.value > 0) return;
+  try {
+    await sendCode(phone);
+    forgotCountdown.value = 60;
+    forgotTimer = setInterval(() => {
+      forgotCountdown.value -= 1;
+      if (forgotCountdown.value <= 0 && forgotTimer) { clearInterval(forgotTimer); forgotTimer = null; }
+    }, 1000);
+  } catch (err: any) {
+    ElMessage.error(err?.response?.data?.detail || "验证码发送失败");
+  }
+}
+
+async function handleForgotSubmit() {
+  const f = forgotForm.value;
+  if (!/^1[3-9]\d{9}$/.test(f.phone)) { ElMessage.warning("请输入正确的手机号"); return; }
+  if (!f.code) { ElMessage.warning("请输入验证码"); return; }
+  if (f.password.length < 6) { ElMessage.warning("新密码至少 6 位"); return; }
+  if (f.password !== f.confirm) { ElMessage.warning("两次输入的密码不一致"); return; }
+  forgotLoading.value = true;
+  try {
+    await forgotPassword({ phone: f.phone, sms_code: f.code, new_password: f.password });
+    ElMessage.success("密码重置成功，请使用新密码登录");
+    // 回登录页并预填手机号
+    form.value.account = f.phone;
+    forgotForm.value = { phone: "", code: "", password: "", confirm: "" };
+    view.value = "login";
+    activeTab.value = "password";
+  } catch (err: any) {
+    ElMessage.error(err?.response?.data?.detail || "重置失败");
+  } finally {
+    forgotLoading.value = false;
   }
 }
 
@@ -108,10 +233,15 @@ async function finishLogin(token: string) {
         <div class="auth-logo">
           <BrandLogo />
         </div>
-        <h2>产品小吴知识库</h2>
-        <p>让现场监测，触手可感</p>
+        <h2>{{ view === "login" ? "产品小吴知识库" : view === "bindSms" ? "验证手机号" : view === "setupPassword" ? "设置账号密码" : "找回密码" }}</h2>
+        <p>{{ view === "login" ? "让现场监测，触手可感"
+          : view === "bindSms" ? "验证通过即完成登录"
+          : view === "setupPassword" ? "设置后可使用密码登录"
+          : "通过绑定手机号重置密码" }}</p>
       </div>
 
+      <!-- ============ 主登录视图 ============ -->
+      <template v-if="view === 'login'">
       <!-- 登录方式 Tab -->
       <div class="auth-tabs">
         <span
@@ -152,6 +282,7 @@ async function finishLogin(token: string) {
             登录
           </el-button>
         </el-form-item>
+        <div class="forgot-row"><a @click.prevent="view = 'forgot'" href="#">忘记密码？</a></div>
       </el-form>
 
       <!-- 短信登录表单（预留） -->
@@ -179,11 +310,88 @@ async function finishLogin(token: string) {
         </el-form-item>
         <div v-if="!SMS_ENABLED" class="sms-hint">短信登录暂未开放，当前请使用密码登录</div>
       </el-form>
+      </template>
 
-      <!-- 注册 + 其他方式登录（微信登录需企业主体开放平台，个人站点暂不开放；代码保留，具备条件后改 WECHAT_LOGIN_ENABLED=true 即恢复） -->
-      <div class="alt-row">
-        <button class="alt-btn register" @click="router.push('/register')">注册</button>
-        <button v-if="WECHAT_LOGIN_ENABLED" class="alt-btn wechat" @click="handleWechatLogin">
+      <!-- ============ 视图：首次密码登录 → 短信验证补绑手机号 ============ -->
+      <el-form v-else-if="view === 'bindSms'" @keyup.enter="handleBindSms">
+        <el-form-item>
+          <el-input v-model="smsForm.phone" placeholder="请输入要绑定的手机号" size="large" maxlength="11">
+            <template #prefix><span class="field-label">手机号</span></template>
+          </el-input>
+        </el-form-item>
+        <el-form-item>
+          <div class="sms-row">
+            <el-input v-model="smsForm.code" placeholder="请输入验证码" size="large" maxlength="6">
+              <template #prefix><span class="field-label">验证码</span></template>
+            </el-input>
+            <el-button
+              type="primary" plain size="large" class="sms-btn"
+              :disabled="countdown > 0" @click="handleSendSms"
+            >{{ countdown > 0 ? `${countdown}s 后重发` : "获取验证码" }}</el-button>
+          </div>
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" size="large" :loading="smsLoading" @click="handleBindSms" style="width: 100%">
+            验证并登录
+          </el-button>
+        </el-form-item>
+        <div class="step-tip">绑定后手机号可用于登录和找回密码 · <a @click.prevent="view = 'login'" href="#">返回登录</a></div>
+      </el-form>
+
+      <!-- ============ 视图：短信登录新账号 → 补设账号密码 ============ -->
+      <el-form v-else-if="view === 'setupPassword'" @keyup.enter="handleSetupPassword">
+        <el-form-item>
+          <el-input v-model="setupForm.username" placeholder="设置用户名（3-50 个字符，可留空使用手机号）" size="large" />
+        </el-form-item>
+        <el-form-item>
+          <el-input v-model="setupForm.password" type="password" placeholder="设置密码（至少 6 位）" size="large" show-password />
+        </el-form-item>
+        <el-form-item>
+          <el-input v-model="setupForm.confirm" type="password" placeholder="确认密码" size="large" show-password />
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" size="large" :loading="setupLoading" @click="handleSetupPassword" style="width: 100%">
+            完成设置并进入
+          </el-button>
+        </el-form-item>
+        <div class="step-tip">设置后即可使用 用户名/手机号 + 密码 登录</div>
+      </el-form>
+
+      <!-- ============ 视图：找回密码 ============ -->
+      <el-form v-else @keyup.enter="handleForgotSubmit">
+        <el-form-item>
+          <el-input v-model="forgotForm.phone" placeholder="请输入绑定的手机号" size="large" maxlength="11">
+            <template #prefix><span class="field-label">手机号</span></template>
+          </el-input>
+        </el-form-item>
+        <el-form-item>
+          <div class="sms-row">
+            <el-input v-model="forgotForm.code" placeholder="请输入验证码" size="large" maxlength="6">
+              <template #prefix><span class="field-label">验证码</span></template>
+            </el-input>
+            <el-button
+              type="primary" plain size="large" class="sms-btn"
+              :disabled="forgotCountdown > 0" @click="handleForgotSend"
+            >{{ forgotCountdown > 0 ? `${forgotCountdown}s 后重发` : "获取验证码" }}</el-button>
+          </div>
+        </el-form-item>
+        <el-form-item>
+          <el-input v-model="forgotForm.password" type="password" placeholder="设置新密码（至少 6 位）" size="large" show-password />
+        </el-form-item>
+        <el-form-item>
+          <el-input v-model="forgotForm.confirm" type="password" placeholder="确认新密码" size="large" show-password />
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" size="large" :loading="forgotLoading" @click="handleForgotSubmit" style="width: 100%">
+            重置密码
+          </el-button>
+        </el-form-item>
+        <div class="step-tip"><a @click.prevent="view = 'login'" href="#">返回登录</a></div>
+      </el-form>
+
+      <!-- 其他方式登录（微信登录需企业主体开放平台，个人站点暂不开放；代码保留，具备条件后改 WECHAT_LOGIN_ENABLED=true 即恢复） -->
+      <div v-if="view === 'login' && WECHAT_LOGIN_ENABLED" class="alt-row">
+        <button class="alt-btn wechat" @click="handleWechatLogin">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" style="margin-right:6px">
             <path d="M8.69 3.5C4.98 3.5 2 6.05 2 9.2c0 1.77.96 3.35 2.46 4.4l-.62 1.85 2.16-1.08c.56.15 1.15.24 1.76.26a5.3 5.3 0 0 1-.21-1.48c0-3 2.87-5.44 6.4-5.44.22 0 .43.01.64.03C14.14 5.43 11.7 3.5 8.69 3.5zM6.4 6.5a.85.85 0 1 1 0 1.7.85.85 0 0 1 0-1.7zm4.6 0a.85.85 0 1 1 0 1.7.85.85 0 0 1 0-1.7zm3.99 2.21c-3.06 0-5.54 2.05-5.54 4.58 0 2.53 2.48 4.58 5.54 4.58.5 0 .99-.06 1.45-.17l1.86.93-.53-1.59c1.29-.87 2.12-2.2 2.12-3.75 0-2.53-2.49-4.58-5.55-4.58h.65zm-2.1 2.04a.72.72 0 1 1 0 1.44.72.72 0 0 1 0-1.44zm3.5 0a.72.72 0 1 1 0 1.44.72.72 0 0 1 0-1.44z"/>
           </svg>
@@ -192,7 +400,7 @@ async function finishLogin(token: string) {
       </div>
 
       <!-- 协议 -->
-      <p class="agreement">
+      <p v-if="view === 'login'" class="agreement">
         未注册的手机号，验证通过后将自动注册账号<br />
         登录或完成注册即代表你同意
         <router-link to="/terms" target="_blank">用户协议</router-link>
@@ -200,7 +408,7 @@ async function finishLogin(token: string) {
         <router-link to="/privacy" target="_blank">隐私政策</router-link>
       </p>
 
-      <div class="auth-footer">
+      <div v-if="view === 'login'" class="auth-footer">
         <span>还没有账号？</span>
         <router-link to="/register">立即注册</router-link>
       </div>
@@ -335,6 +543,15 @@ async function finishLogin(token: string) {
   font-size: 12.5px;
   color: var(--text-muted);
   margin-top: -6px;
+}
+.forgot-row {
+  text-align: right;
+  font-size: 13px;
+  margin-top: -8px;
+}
+.forgot-row a {
+  color: var(--primary);
+  cursor: pointer;
 }
 
 /* 注册 + 微信登录行 */

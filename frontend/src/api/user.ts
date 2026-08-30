@@ -21,25 +21,51 @@ export function checkUsername(data: {
   return request.post("/users/register/check-username", data);
 }
 
-/** 登录：account 支持用户名/手机号/邮箱 */
+/** 登录：account 支持用户名/手机号/邮箱；token_type=pending_sms 表示需短信验证补绑 */
 export function login(data: {
   account: string;
   password: string;
-}): Promise<{ data: { access_token: string } }> {
+}): Promise<{ data: { access_token: string; token_type: string } }> {
   return request.post("/users/login", data);
 }
 
-/** 发送短信验证码（预留：短信服务开通前返回 501） */
+/** 发送短信验证码 */
 export function sendSms(phone: string): Promise<{ data: any }> {
   return request.post("/users/sms/send", { phone });
 }
 
-/** 短信验证码登录/自动注册（预留） */
+/** 短信验证码登录/自动注册；token_type=need_password 表示需补设账号密码 */
 export function smsLogin(data: {
   phone: string;
   sms_code: string;
-}): Promise<{ data: { access_token: string } }> {
+}): Promise<{ data: { access_token: string; token_type: string } }> {
   return request.post("/users/sms/login", data);
+}
+
+/** 首次密码登录补绑手机号（pending_sms 票据 + 验证码 → 正式 token） */
+export function smsVerifyLogin(data: {
+  phone: string;
+  sms_code: string;
+  pending_token: string;
+}): Promise<{ data: { access_token: string } }> {
+  return request.post("/users/sms/verify-login", data);
+}
+
+/** 短信登录后补设账号密码 */
+export function setupPassword(data: {
+  username?: string;
+  new_password: string;
+}): Promise<{ data: { detail: string; username: string } }> {
+  return request.post("/users/auth/setup-password", data);
+}
+
+/** 找回密码：手机验证码核验 → 重置新密码 */
+export function forgotPassword(data: {
+  phone: string;
+  sms_code: string;
+  new_password: string;
+}): Promise<{ data: { detail: string } }> {
+  return request.post("/users/auth/forgot-password", data);
 }
 
 /** 已注册用户绑定/关联手机号（个人中心补绑，注册流程已改为验证前置） */
