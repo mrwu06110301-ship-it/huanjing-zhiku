@@ -2,29 +2,53 @@
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, or_
 
 from app.database import get_db
 from app.models.user import User
-from app.schemas.user import UserRegister, UserLogin, UserOut, Token, UserUpdate, PasswordChange
+from app.schemas.user import (
+    UserRegister, UserLogin, UserOut, Token, UserUpdate, PasswordChange,
+    SmsSendRequest, SmsLoginRequest, WechatLoginRequest,
+)
 from app.services.auth import hash_password, verify_password, create_access_token
 from app.dependencies.auth import get_current_user, require_admin
 
 router = APIRouter(prefix="/api/users", tags=["用户"])
 
+# 短信认证服务开关：开通短信服务后置 True 并接入实际发送通道
+SMS_ENABLED = False
+
 
 @router.post("/register", response_model=Token, status_code=status.HTTP_201_CREATED)
 async def register(data: UserRegister, db: AsyncSession = Depends(get_db)):
-    # 检查用户名/邮箱是否已存在
-    result = await db.execute(
-        select(User).where((User.username == data.username) | (User.email == data.email))
-    )
+    """注册：用户名+密码；email 可选；phone+sms_code 预留短信注册"""
+    # 短信注册通道（预留）：短信服务开通后启用校验
+    if data.phone and SMS_ENABLED and not data.sms_code:
+        raise HTTPException(status_code=400, detail="请填写短信验证码")
+
+    # 用户名唯一性检查
+    result = await db.execute(select(User).where(User.username == data.username))
     if result.scalars().first():
-        raise HTTPException(status_code=400, detail="用户名或邮箱已存在")
+        raise HTTPException(status_code=400, detail="用户名已被注册")
+
+    # email 可选：填写了才查重
+    email = (data.email or "").strip()
+    if email:
+        result = await db.execute(select(User).where(User.email == email))
+        if result.scalars().first():
+            raise HTTPException(status_code=400, detail="邮箱已被注册")
+
+    # 手机号可选：填写了才查重（短信服务开通后为必填）
+    phone = (data.phone or "").strip()
+    if phone:
+        result = await db.execute(select(User).where(User.phone == phone))
+        if result.scalars().first():
+            raise HTTPException(status_code=400, detail="手机号已被注册")
 
     user = User(
         username=data.username,
-        email=data.email,
+        email=email,
+        phone=phone,
         nickname=data.nickname or data.username,
         hashed_password=hash_password(data.password),
     )
@@ -38,13 +62,50 @@ async def register(data: UserRegister, db: AsyncSession = Depends(get_db)):
 
 @router.post("/login", response_model=Token)
 async def login(data: UserLogin, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(User).where(User.username == data.username))
+    """登录：账号+密码（账号支持 用户名/手机号/邮箱）"""
+    account = (data.account or data.username or "").strip()
+    if not account:
+        raise HTTPException(status_code=400, detail="请输入账号")
+    result = await db.execute(
+        select(User).where(
+            or_(User.username == account, User.phone == account, User.email == account)
+        )
+    )
     user = result.scalars().first()
     if not user or not verify_password(data.password, user.hashed_password):
-        raise HTTPException(status_code=401, detail="用户名或密码错误")
+        raise HTTPException(status_code=401, detail="账号或密码错误")
 
     token = create_access_token({"sub": str(user.id)})
     return Token(access_token=token)
+
+
+# ========== 短信登录/注册（预留：短信认证服务开通后接入） ==========
+
+@router.post("/sms/send")
+async def send_sms(data: SmsSendRequest):
+    """发送短信验证码（预留接口，短信服务开通后接入实际通道）"""
+    if not SMS_ENABLED:
+        raise HTTPException(status_code=501, detail="短信登录暂未开放，敬请期待")
+    # TODO: 接入短信服务商，生成验证码存 Redis/内存 并下发
+    return {"detail": "验证码已发送"}
+
+
+@router.post("/sms/login", response_model=Token)
+async def sms_login(data: SmsLoginRequest, db: AsyncSession = Depends(get_db)):
+    """短信验证码登录/自动注册（预留接口）"""
+    if not SMS_ENABLED:
+        raise HTTPException(status_code=501, detail="短信登录暂未开放，敬请期待")
+    # TODO: 校验验证码 → 已注册直接登录 / 未注册自动创建账号
+    raise HTTPException(status_code=501, detail="短信登录暂未开放，敬请期待")
+
+
+# ========== 微信扫码登录（预留：微信开放平台接入后启用） ==========
+
+@router.post("/wechat/login", response_model=Token)
+async def wechat_login(data: WechatLoginRequest, db: AsyncSession = Depends(get_db)):
+    """微信扫码授权登录（预留接口，微信开放平台审核通过后接入）"""
+    # TODO: code 换 access_token → 拉用户信息 → 按 openid 查找/创建用户
+    raise HTTPException(status_code=501, detail="微信登录暂未开放，敬请期待")
 
 
 @router.get("/me", response_model=UserOut)

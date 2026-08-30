@@ -80,6 +80,16 @@ const router = createRouter({
       component: () => import("@/views/Register.vue"),
     },
     {
+      path: "/terms",
+      name: "Terms",
+      component: () => import("@/views/TermsPage.vue"),
+    },
+    {
+      path: "/privacy",
+      name: "Privacy",
+      component: () => import("@/views/PrivacyPage.vue"),
+    },
+    {
       path: "/admin/categories",
       name: "CategoryManage",
       component: () => import("@/views/CategoryManage.vue"),

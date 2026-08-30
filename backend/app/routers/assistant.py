@@ -12,11 +12,32 @@ import sqlite3
 from pathlib import Path
 
 import httpx
-from fastapi import APIRouter
+from fastapi import APIRouter, Request, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from app.database import get_db
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from app.models.user import User
+
 router = APIRouter(prefix="/api/assistant", tags=["AI助手"])
+
+
+async def _require_user(request: Request, db: AsyncSession) -> User:
+    """AI 问答需登录：从请求头解析 token，未登录抛 401"""
+    from app.services.auth import decode_access_token
+    auth_header = request.headers.get("authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="请先登录后使用 AI 助手")
+    payload = decode_access_token(auth_header[7:])
+    if not payload or not payload.get("sub"):
+        raise HTTPException(status_code=401, detail="登录已过期，请重新登录")
+    result = await db.execute(select(User).where(User.id == int(payload["sub"])))
+    user = result.scalar_one_or_none()
+    if not user or not user.is_active:
+        raise HTTPException(status_code=401, detail="请先登录后使用 AI 助手")
+    return user
 
 ZHIPU_BASE = os.getenv("ZHIPU_BASE_URL", "https://open.bigmodel.cn/api/coding/paas/v4")
 CHAT_MODEL = os.getenv("ZHIPU_CHAT_MODEL", "glm-5.3-Flash")
@@ -178,7 +199,13 @@ def _build_prompt(question: str, chunks: list[dict]) -> str:
 
 
 @router.post("/chat")
-async def chat(req: ChatRequest):
+async def chat(
+    req: ChatRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    # AI 问答登录墙：评论、AI 功能必须注册登录后使用
+    await _require_user(request, db)
     key = os.getenv("ZHIPU_API_KEY", "")
     if not key:
         return {"detail": "AI 助手未配置"}

@@ -3,6 +3,10 @@ import { ref, nextTick, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { marked } from "marked";
 import Icon from "@/components/Icon.vue";
+import { useAuthStore } from "@/stores/auth";
+import { ElMessage } from "element-plus";
+
+const auth = useAuthStore();
 
 // marked 配置：换行+打断（流式渲染友好）
 marked.setOptions({ gfm: true, breaks: true });
@@ -53,8 +57,15 @@ onMounted(async () => {
 });
 
 function toggle() {
-  open.value = !open.value;
-  if (open.value) scrollBottom();
+  // AI 助手登录墙：注册登录后才能使用
+  if (open.value) { open.value = false; return; }
+  if (!auth.isLoggedIn()) {
+    ElMessage.warning("请先登录后使用 AI 助手");
+    router.push("/login");
+    return;
+  }
+  open.value = true;
+  scrollBottom();
 }
 
 function scrollBottom() {
@@ -82,6 +93,12 @@ function sourceLabel(t: string) {
 async function send() {
   const q = input.value.trim();
   if (!q || thinking.value) return;
+  // 双保险：发送前再查一次登录态（后端 /chat 也有 401 校验）
+  if (!auth.isLoggedIn()) {
+    ElMessage.warning("请先登录后使用 AI 助手");
+    router.push("/login");
+    return;
+  }
   input.value = "";
   msgs.value.push({ role: "user", content: q });
   msgs.value.push({ role: "assistant", content: "", showReasoning: true });

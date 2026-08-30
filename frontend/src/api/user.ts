@@ -8,15 +8,36 @@ export function register(data: {
   email?: string;
   password: string;
   nickname?: string;
+  phone?: string;
+  sms_code?: string;
 }): Promise<{ data: { access_token: string } }> {
   return request.post("/users/register", data);
 }
 
+/** 登录：account 支持用户名/手机号/邮箱 */
 export function login(data: {
-  username: string;
+  account: string;
   password: string;
 }): Promise<{ data: { access_token: string } }> {
   return request.post("/users/login", data);
+}
+
+/** 发送短信验证码（预留：短信服务开通前返回 501） */
+export function sendSms(phone: string): Promise<{ data: any }> {
+  return request.post("/users/sms/send", { phone });
+}
+
+/** 短信验证码登录/自动注册（预留） */
+export function smsLogin(data: {
+  phone: string;
+  sms_code: string;
+}): Promise<{ data: { access_token: string } }> {
+  return request.post("/users/sms/login", data);
+}
+
+/** 微信扫码授权登录（预留） */
+export function wechatLogin(code: string): Promise<{ data: { access_token: string } }> {
+  return request.post("/users/wechat/login", { code });
 }
 
 export function getMe(): Promise<{ data: UserOut }> {

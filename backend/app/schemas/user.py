@@ -5,15 +5,36 @@ from datetime import datetime
 
 
 class UserRegister(BaseModel):
+    """注册：username 必填；email 可选（老接口兼容）；phone+sms_code 预留短信注册"""
     username: str = Field(..., min_length=3, max_length=50)
-    email: str = Field(..., min_length=5, max_length=100)
+    email: str = Field(default="", max_length=100)
     password: str = Field(..., min_length=6, max_length=100)
     nickname: str = Field(default="", max_length=50)
+    phone: str = Field(default="", max_length=20)
+    sms_code: str = Field(default="", max_length=10)
 
 
 class UserLogin(BaseModel):
-    username: str
+    """登录：account 兼容用户名/手机号/邮箱（老字段 username 保留兼容）"""
+    username: str = ""
+    account: str = ""
     password: str
+
+
+class SmsSendRequest(BaseModel):
+    """短信验证码发送（预留，短信服务开通前返回未开放）"""
+    phone: str = Field(..., min_length=11, max_length=11)
+
+
+class SmsLoginRequest(BaseModel):
+    """短信验证码登录/注册（预留）"""
+    phone: str = Field(..., min_length=11, max_length=11)
+    sms_code: str = Field(..., min_length=4, max_length=10)
+
+
+class WechatLoginRequest(BaseModel):
+    """微信扫码登录（预留）"""
+    code: str = Field(..., min_length=1, max_length=100)
 
 
 class UserOut(BaseModel):
