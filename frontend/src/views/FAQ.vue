@@ -205,10 +205,14 @@ function handleDelete(id: number) {
       <el-collapse v-model="activeNames" accordion>
         <el-collapse-item v-for="f in filtered" :key="f.id" :name="f.id">
           <template #title>
+            <span class="faq-q-badge">Q</span>
             <span class="faq-question">{{ f.question }}</span>
             <span v-if="f.category_name" class="faq-cat-badge">{{ f.category_name }}</span>
           </template>
-          <div class="faq-answer">{{ f.answer }}</div>
+          <div class="faq-qa-row">
+            <span class="faq-a-badge">A</span>
+            <div class="faq-answer">{{ f.answer || "暂无解答，欢迎有经验的同行补充。" }}</div>
+          </div>
           <div class="faq-meta">
             <span><Icon name="user" :size="12" /> {{ f.author_name }}</span>
             <span><Icon name="clock" :size="12" /> {{ f.created_at?.substring(0, 10) }}</span>
@@ -234,11 +238,11 @@ function handleDelete(id: number) {
             placeholder="如：烟尘采样时采样嘴反向安装会出现什么现象？"
           />
         </el-form-item>
-        <el-form-item label="解决办法">
+        <el-form-item label="详情或解决办法">
           <el-input
             v-model="faqForm.answer"
             type="textarea" :rows="5" maxlength="5000" show-word-limit
-            placeholder="填写问题的处理办法、排查步骤或经验总结"
+            placeholder="填写问题的详情说明、处理办法、排查步骤或经验总结"
           />
         </el-form-item>
         <el-form-item>
@@ -306,6 +310,14 @@ function handleDelete(id: number) {
   padding: 8px 24px 24px; box-shadow: var(--shadow); border: 1px solid var(--border-light);
 }
 
+.faq-q-badge, .faq-a-badge {
+  width: 22px; height: 22px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 7px; font-size: 12.5px; font-weight: 800; line-height: 1;
+}
+.faq-q-badge { background: var(--gradient-primary); color: #fff; box-shadow: 0 2px 6px var(--primary-glow); }
+.faq-a-badge { background: rgba(6, 182, 212, 0.14); color: #0891b2; margin-top: 3px; }
+
 .faq-question {
   font-size: 16px; font-weight: 600; color: var(--text);
 }
@@ -314,9 +326,16 @@ function handleDelete(id: number) {
   background: rgba(37, 99, 235, 0.08); border-radius: 10px; padding: 2px 10px; flex-shrink: 0;
 }
 
+/* 问答行：A 徽标 + 答案，浅底色块突出"答"的区域 */
+.faq-qa-row {
+  display: flex; align-items: flex-start; gap: 10px;
+  background: var(--bg-soft); border-radius: 10px;
+  padding: 12px 14px; margin: 4px 0 2px;
+}
 .faq-answer {
+  flex: 1; min-width: 0;
   line-height: 1.9; color: var(--text-light); font-size: 15px;
-  padding: 4px 0; white-space: pre-wrap;
+  white-space: pre-wrap;
 }
 
 .faq-meta {
