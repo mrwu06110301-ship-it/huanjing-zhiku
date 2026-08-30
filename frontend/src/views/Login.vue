@@ -40,7 +40,7 @@ async function handleLogin() {
 }
 
 // ==================== 短信登录（预留：短信服务开通后启用） ====================
-const SMS_ENABLED = false; // 短信认证服务开通后改为 true
+const SMS_ENABLED = true; // 阿里云号码认证服务已接入
 const smsForm = ref({ phone: "", code: "" });
 const smsLoading = ref(false);
 const countdown = ref(0);

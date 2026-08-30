@@ -51,7 +51,7 @@ async function handleNext() {
 }
 
 // ==================== 第二步：手机验证码关联（通过后才注册） ====================
-const SMS_ENABLED = false; // 短信认证服务开通后改为 true
+const SMS_ENABLED = true; // 阿里云号码认证服务已接入
 const phoneForm = ref({ phone: "", code: "" });
 const registerLoading = ref(false);
 const countdown = ref(0);
