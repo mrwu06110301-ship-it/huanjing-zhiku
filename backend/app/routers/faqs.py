@@ -4,7 +4,7 @@ import json
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, or_
+from sqlalchemy import select, func, or_, and_
 
 from app.database import get_db
 from app.models.faq import FAQ
@@ -73,6 +73,38 @@ def _make_out(
     )
 
 
+def _faq_search_cond(keyword: str):
+    """FAQ 全量搜索条件：空格拆词 AND 组合 + 空白压缩兜底
+
+    - 覆盖 question 与 answer（全量搜索）
+    - 多词：\"采样 人员\" → 每词分别 LIKE（question/answer 任一命中）后 AND
+    - 空白压缩兜底：\"HJ630\" 命中原文 \"HJ 630\"、\"HJ  630\"（把两边空白压掉再比对）
+    """
+    conds = []
+    for term in keyword.split():
+        like = f"%{term}%"
+        conds.append(or_(FAQ.question.like(like), FAQ.answer.like(like)))
+    # 空白压缩后的整串匹配（处理关键词内空格与原文不一致的情况）
+    norm_kw = "".join(keyword.split())
+    if norm_kw and len(norm_kw) != len(keyword):
+        compact = or_(FAQ.question.like(f"%{norm_kw}%"), FAQ.answer.like(f"%{norm_kw}%"))
+        conds.append(compact)
+    return and_(*conds) if conds else None
+
+
+def _split_search_terms(keyword: str) -> list[str]:
+    """把无空格的连续中文串按 2-gram 公共前缀切成单字/词元，辅助召回
+
+    纯兜底：整串/空格拆词都搜不到时，用单字 AND 保证"人员独立监测"这类
+    连续输入也能召回（AND 语义保证相关性不劣化）。
+    """
+    norm = "".join(keyword.split())
+    # 已有空格分词或长度 <=2 无需切分
+    if len(keyword.split()) > 1 or len(norm) <= 2:
+        return keyword.split()
+    return list(norm)
+
+
 @router.get("")
 async def list_faqs(
     page: int = Query(1, ge=1),
@@ -93,8 +125,15 @@ async def list_faqs(
         query = query.where(FAQ.category_id == category_id)
         count_query = count_query.where(FAQ.category_id == category_id)
     if keyword and keyword.strip():
-        kw = f"%{keyword.strip()}%"
-        cond = or_(FAQ.question.like(kw), FAQ.answer.like(kw))
+        kw = keyword.strip()
+        # 先按常规语义搜索（空格拆词 AND + 压缩空白兜底）；零命中时降级为单字 AND 召回
+        primary = await db.execute(count_query.where(_faq_search_cond(kw)))
+        if (primary.scalar() or 0) > 0 or not _split_search_terms(kw):
+            cond = _faq_search_cond(kw)
+        else:
+            terms = _split_search_terms(kw)
+            conds = [or_(FAQ.question.like(f"%{t}%"), FAQ.answer.like(f"%{t}%")) for t in terms]
+            cond = and_(*conds)
         query = query.where(cond)
         count_query = count_query.where(cond)
 
