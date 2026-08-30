@@ -22,9 +22,13 @@ from app.config import settings
 ENDPOINT = "https://dypnsapi.aliyuncs.com"
 
 
-def _percent_encode(value: str) -> str:
-    """阿里云 RPC 签名专用编码（RFC3986，+ → %20，* → %2A，%7E → ~）"""
-    return urllib.parse.quote(value, safe="-_.~")
+def _percent_encode(value) -> str:
+    """阿里云 RPC 签名专用编码（RFC3986，+ → %20，* → %2A，%7E → ~）
+
+    参数值统一 str() 化：CodeLength/CodeType/ValidTime 等业务参数可能是 int，
+    直接传给 urllib.parse.quote 会抛 quote_from_bytes() expected bytes
+    """
+    return urllib.parse.quote(str(value), safe="-_.~")
 
 
 def _sign(params: dict, access_key_secret: str) -> str:
@@ -78,7 +82,8 @@ def send_sms_verify_code(phone: str) -> dict:
         "SignName": settings.SMS_SIGN_NAME,
         "TemplateCode": settings.SMS_TEMPLATE_CODE,
         "TemplateParam": json.dumps(
-            {"code": "##code##", "min": settings.SMS_CODE_TTL_MIN}, ensure_ascii=False
+            {"code": "##code##", "min": str(settings.SMS_CODE_TTL_MIN)},
+            ensure_ascii=False,
         ),
         "CodeLength": 6,
         "CodeType": 1,  # 纯数字
@@ -118,7 +123,11 @@ _ERROR_MAP = {
     "MOBILE_NUMBER_ILLEGAL": "手机号码格式错误",
     "BUSINESS_LIMIT_CONTROL": "该手机号今日发送次数已达上限，请明日再试",
     "FREQUENCY_FAIL": "发送太频繁，请稍后再试",
+    "biz.FREQUENCY": "发送太频繁，请稍后再试",
+    "UNKNOWN": "短信发送失败，请联系管理员检查短信服务配置",
+    "isv.OUT_OF_SERVICE": "短信服务账户余额不足，请联系管理员充值",
     "INVALID_PARAMETERS": "参数错误，请检查签名/模板配置",
+    "isv.INVALID_PARAMETERS": "参数错误，请检查签名/模板配置",
     "FUNCTION_NOT_OPENED": "短信认证功能未开通，请到号码认证控制台开启",
     "InvalidAccessKeyId.NotFound": "AccessKey 无效，请检查 SMS_ACCESS_KEY_ID",
     "SignatureDoesNotMatch": "签名计算失败，请检查 AccessKey Secret",
