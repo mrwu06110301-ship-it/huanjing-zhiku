@@ -14,6 +14,15 @@ class FAQCreate(BaseModel):
     is_pinned: bool = False
 
 
+class FAQUpdate(BaseModel):
+    """管理员编辑 FAQ（exclude_unset 局部更新）"""
+    question: str | None = Field(None, min_length=1, max_length=500)
+    answer: str | None = None
+    category_id: int | None = None
+    is_pinned: bool | None = None
+    is_public: bool | None = None
+
+
 class FAQOut(BaseModel):
     id: int
     question: str

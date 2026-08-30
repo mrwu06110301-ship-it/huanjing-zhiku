@@ -31,3 +31,17 @@ export function createFAQ(data: {
 export function deleteFAQ(id: number) {
   return request.delete(`/faqs/${id}`);
 }
+
+/** 编辑 FAQ（仅管理员） */
+export function updateFAQ(
+  id: number,
+  data: {
+    question?: string;
+    answer?: string;
+    category_id?: number | null;
+    is_pinned?: boolean;
+    is_public?: boolean;
+  }
+): Promise<{ data: FAQOut }> {
+  return request.put(`/faqs/${id}`, data);
+}

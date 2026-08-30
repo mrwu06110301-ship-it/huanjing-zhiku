@@ -8,7 +8,7 @@ from app.database import get_db
 from app.models.faq import FAQ
 from app.models.user import User
 from app.models.category import Category
-from app.schemas.faq import FAQCreate, FAQOut
+from app.schemas.faq import FAQCreate, FAQUpdate, FAQOut
 from app.dependencies.auth import get_current_user, require_admin
 
 router = APIRouter(prefix="/api/faqs", tags=["常见问题"])
@@ -100,6 +100,27 @@ async def create_faq(
         raise HTTPException(status_code=403, detail="您没有新增问题的权限，请联系管理员授权")
     faq = FAQ(**data.model_dump(), author_id=current_user.id)
     db.add(faq)
+    await db.flush()
+    await db.refresh(faq)
+
+    cat_name, author_name = await _get_cat_author(faq, db)
+    return _make_out(faq, cat_name, author_name)
+
+
+@router.put("/{faq_id}", response_model=FAQOut)
+async def update_faq(
+    faq_id: int,
+    data: FAQUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """编辑 FAQ — 仅管理员"""
+    result = await db.execute(select(FAQ).where(FAQ.id == faq_id))
+    faq = result.scalars().first()
+    if not faq:
+        raise HTTPException(status_code=404, detail="FAQ不存在")
+    for field, value in data.model_dump(exclude_unset=True).items():
+        setattr(faq, field, value)
     await db.flush()
     await db.refresh(faq)
 

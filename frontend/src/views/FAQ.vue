@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from "vue";
-import { getFAQs, createFAQ, deleteFAQ } from "@/api/faq";
+import { getFAQs, createFAQ, deleteFAQ, updateFAQ } from "@/api/faq";
 import { getCategories, createCategory } from "@/api/category";
 import type { FAQOut, CategoryOut } from "@/types";
 import { checkUploadPermission } from "@/api/video";
@@ -21,6 +21,10 @@ const loading = ref(false);
 const activeNames = ref<string | number | undefined>(undefined);
 /** 是否具备新增权限（管理员或被授权上传权限的账号，与论坛/视频一致） */
 const canUpload = ref(false);
+/** 分页状态 */
+const page = ref(1);
+const pageSize = ref(10);
+const total = ref(0);
 
 const filtered = computed(() => {
   // 搜索已改后端 keyword 全量查询，此处直接返回列表
@@ -30,21 +34,39 @@ const filtered = computed(() => {
 async function loadFAQs() {
   loading.value = true;
   try {
-    const params: Record<string, unknown> = { page: 1, page_size: 50 };
+    const params: Record<string, unknown> = { page: page.value, page_size: pageSize.value };
     if (activeCategory.value) params.category_id = activeCategory.value;
     if (searchQuery.value.trim()) params.keyword = searchQuery.value.trim();
     const res = await getFAQs(params as any);
     faqs.value = res.data.items || [];
+    total.value = res.data.total || 0;
+    // 当前页超出总页数（如删除/筛选后）回退到最后一页
+    const maxPage = Math.max(1, Math.ceil(total.value / pageSize.value));
+    if (page.value > maxPage) {
+      page.value = maxPage;
+      loading.value = false;
+      return loadFAQs();
+    }
   } finally {
     loading.value = false;
   }
 }
 
-/** 搜索输入防抖：后端全量模糊搜索（问题/答案） */
+function handlePageChange(p: number) {
+  page.value = p;
+  loadFAQs();
+  // 翻页后回到列表顶部
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+/** 搜索输入防抖：后端全量模糊搜索（问题/答案），搜索时回到第 1 页 */
 let searchTimer: ReturnType<typeof setTimeout> | null = null;
 function onSearchInput() {
   if (searchTimer) clearTimeout(searchTimer);
-  searchTimer = setTimeout(loadFAQs, 400);
+  searchTimer = setTimeout(() => {
+    page.value = 1;
+    loadFAQs();
+  }, 400);
 }
 
 onMounted(async () => {
@@ -62,6 +84,7 @@ onMounted(async () => {
 
 function switchCategory(catId: number | null) {
   activeCategory.value = activeCategory.value === catId ? null : catId;
+  page.value = 1;
   loadFAQs();
 }
 
@@ -131,6 +154,49 @@ function removeCategory(cat: CategoryOut) {
       ElMessage.error(e?.response?.data?.detail || "删除分类失败（需管理员权限）");
     }
   }).catch(() => {});
+}
+
+// ==================== 编辑 FAQ（管理员） ====================
+const editVisible = ref(false);
+const editSubmitting = ref(false);
+const editingId = ref<number | null>(null);
+const editForm = ref({
+  question: "",
+  answer: "",
+  category_id: null as number | null,
+});
+
+function openEdit(f: FAQOut) {
+  editingId.value = f.id;
+  editForm.value = {
+    question: f.question,
+    answer: f.answer || "",
+    category_id: f.category_id ?? null,
+  };
+  editVisible.value = true;
+}
+
+async function submitEdit() {
+  if (!editingId.value) return;
+  if (!editForm.value.question.trim()) {
+    ElMessage.warning("请填写问题描述");
+    return;
+  }
+  editSubmitting.value = true;
+  try {
+    await updateFAQ(editingId.value, {
+      question: editForm.value.question.trim(),
+      answer: editForm.value.answer.trim(),
+      category_id: editForm.value.category_id,
+    });
+    ElMessage.success("已保存");
+    editVisible.value = false;
+    loadFAQs();
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.detail || "保存失败");
+  } finally {
+    editSubmitting.value = false;
+  }
 }
 
 async function submitFAQ() {
@@ -205,9 +271,12 @@ function handleDelete(id: number) {
       <el-collapse v-model="activeNames" accordion>
         <el-collapse-item v-for="f in filtered" :key="f.id" :name="f.id">
           <template #title>
-            <span class="faq-q-badge">Q</span>
-            <span class="faq-question">{{ f.question }}</span>
-            <span v-if="f.category_name" class="faq-cat-badge">{{ f.category_name }}</span>
+            <span class="faq-title-line">
+              <span class="faq-q-badge">Q</span>
+              <span class="faq-question">{{ f.question }}</span>
+              <span v-if="f.category_name" class="faq-cat-badge">{{ f.category_name }}</span>
+              <span v-if="auth.isAdmin()" class="faq-edit" @click.stop="openEdit(f)">编辑</span>
+            </span>
           </template>
           <div class="faq-qa-row">
             <span class="faq-a-badge">A</span>
@@ -226,6 +295,16 @@ function handleDelete(id: number) {
         </el-collapse-item>
       </el-collapse>
       <el-empty v-if="!loading && filtered.length === 0" description="暂无问题" />
+      <div v-if="total > pageSize" class="faq-pagination">
+        <el-pagination
+          :current-page="page"
+          :page-size="pageSize"
+          :total="total"
+          layout="prev, pager, next, jumper, total"
+          background
+          @current-change="handlePageChange"
+        />
+      </div>
     </div>
 
     <!-- 新增 FAQ 对话框 -->
@@ -283,6 +362,33 @@ function handleDelete(id: number) {
       </div>
       <div class="manage-tip">分类与管理员「分类管理」共用同一数据源，删除后该分类下的问题将变为未分类。</div>
     </el-dialog>
+
+    <!-- 编辑 FAQ 对话框（管理员） -->
+    <el-dialog v-model="editVisible" title="编辑问题" width="560px" destroy-on-close>
+      <el-form label-position="top">
+        <el-form-item label="问题描述 *">
+          <el-input
+            v-model="editForm.question"
+            type="textarea" :rows="2" maxlength="500" show-word-limit
+          />
+        </el-form-item>
+        <el-form-item label="详情或解决办法">
+          <el-input
+            v-model="editForm.answer"
+            type="textarea" :rows="5" maxlength="5000" show-word-limit
+          />
+        </el-form-item>
+        <el-form-item label="分类">
+          <el-select v-model="editForm.category_id" clearable placeholder="请选择分类" style="width:100%">
+            <el-option v-for="c in categories" :key="c.id" :value="c.id" :label="c.name" />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="editVisible = false">取消</el-button>
+        <el-button type="primary" :loading="editSubmitting" @click="submitEdit">保存</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -318,13 +424,25 @@ function handleDelete(id: number) {
 .faq-q-badge { background: var(--gradient-primary); color: #fff; box-shadow: 0 2px 6px var(--primary-glow); }
 .faq-a-badge { background: rgba(6, 182, 212, 0.14); color: #0891b2; margin-top: 3px; }
 
+/* 标题行：Q 徽标 + 问题 + 分类徽标 + 编辑，同行内联 */
+.faq-title-line {
+  display: flex; align-items: center; gap: 10px;
+  min-width: 0; flex: 1; padding-right: 8px;
+}
 .faq-question {
   font-size: 16px; font-weight: 600; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .faq-cat-badge {
-  margin-left: 10px; font-size: 11.5px; font-weight: 500; color: var(--primary);
+  font-size: 11.5px; font-weight: 500; color: var(--primary);
   background: rgba(37, 99, 235, 0.08); border-radius: 10px; padding: 2px 10px; flex-shrink: 0;
 }
+.faq-edit {
+  margin-left: auto; flex-shrink: 0;
+  font-size: 12px; color: var(--primary); cursor: pointer;
+  opacity: 0.75; transition: all 0.2s;
+}
+.faq-edit:hover { opacity: 1; }
 
 /* 问答行：A 徽标 + 答案，浅底色块突出"答"的区域 */
 .faq-qa-row {
@@ -347,6 +465,11 @@ function handleDelete(id: number) {
 .faq-delete { margin-left: auto; cursor: pointer; transition: color 0.2s; }
 .faq-delete:hover { color: #ef4444; }
 
+/* 分页 */
+.faq-pagination {
+  display: flex; justify-content: center; padding: 20px 0 4px;
+}
+
 /* 分类选项管理 */
 .manage-add { display: flex; gap: 10px; margin-bottom: 14px; }
 .manage-list { max-height: 260px; overflow-y: auto; }
@@ -365,5 +488,7 @@ function handleDelete(id: number) {
   .search-wrap { margin-left: 0; }
   .local-search { width: 100%; }
   .faq-list { padding: 8px 16px 20px; }
+  .faq-question { font-size: 14.5px; white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  .faq-edit { display: none; }
 }
 </style>
