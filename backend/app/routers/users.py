@@ -1,5 +1,7 @@
 """用户路由 — 注册、登录、查看"""
 
+import uuid
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_
@@ -100,17 +102,13 @@ async def login(data: UserLogin, db: AsyncSession = Depends(get_db)):
     return Token(access_token=token)
 
 
-# ========== 短信登录/注册（预留：短信认证服务开通后接入） ==========
+# ========== 短信登录/注册（阿里云号码认证服务） ==========
 
 @router.post("/sms/send")
 async def send_sms(data: SmsSendRequest, db: AsyncSession = Depends(get_db)):
     """发送短信验证码（阿里云号码认证服务，验证码由阿里云端生成与核验）"""
     if not settings.SMS_ENABLED:
         raise HTTPException(status_code=501, detail="短信服务暂未开通，敬请期待")
-    # 手机号已被注册时不再下发（避免泄露注册信息 + 省短信费）
-    result = await db.execute(select(User).where(User.phone == data.phone))
-    if result.scalars().first():
-        raise HTTPException(status_code=400, detail="该手机号已被注册，请直接登录")
     send = aliyun_sms.send_sms_verify_code(data.phone)
     if not send["ok"]:
         raise HTTPException(status_code=400, detail=send["detail"])
@@ -119,14 +117,44 @@ async def send_sms(data: SmsSendRequest, db: AsyncSession = Depends(get_db)):
 
 @router.post("/sms/login", response_model=Token)
 async def sms_login(data: SmsLoginRequest, db: AsyncSession = Depends(get_db)):
-    """短信验证码登录/自动注册（预留接口）"""
+    """短信验证码登录：已注册直接登录，未注册自动创建账号
+
+    自动建号规则：username=手机号（冲突则加随机后缀）、nickname=手机号、
+    随机密码（用户不可知，可后续在个人中心改密）、email 留空。
+    """
     if not settings.SMS_ENABLED:
         raise HTTPException(status_code=501, detail="短信登录暂未开放，敬请期待")
-    check = aliyun_sms.check_sms_verify_code(data.phone.strip(), data.sms_code.strip())
+    phone = data.phone.strip()
+    check = aliyun_sms.check_sms_verify_code(phone, data.sms_code.strip())
     if not check["ok"]:
         raise HTTPException(status_code=401, detail=check["detail"])
-    # TODO: 已注册直接登录 / 未注册自动创建账号
-    raise HTTPException(status_code=501, detail="短信登录暂未开放，敬请期待")
+
+    # 已注册（手机号匹配）→ 直接登录
+    result = await db.execute(select(User).where(User.phone == phone))
+    user = result.scalars().first()
+    if user:
+        if not user.is_active:
+            raise HTTPException(status_code=403, detail="账号已被禁用，请联系管理员")
+        token = create_access_token({"sub": str(user.id)})
+        return Token(access_token=token)
+
+    # 未注册 → 自动创建账号
+    username = phone
+    result = await db.execute(select(User).where(User.username == username))
+    if result.scalars().first():
+        username = f"{phone}_{uuid.uuid4().hex[:4]}"  # 手机号被占作用户名时加随机后缀
+    user = User(
+        username=username,
+        email="",
+        phone=phone,
+        nickname=phone,
+        hashed_password=hash_password(uuid.uuid4().hex + uuid.uuid4().hex),
+    )
+    db.add(user)
+    await db.flush()
+    await db.refresh(user)
+    token = create_access_token({"sub": str(user.id)})
+    return Token(access_token=token)
 
 
 @router.post("/bind-phone")
