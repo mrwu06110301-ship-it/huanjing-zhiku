@@ -46,6 +46,7 @@ class MessageOut(BaseModel):
     like_count: int = 0
     liked: bool = False
     reply: str = ""
+    reply_count: int = 0
     parent_id: int | None = None
     created_at: str | None = None
 
@@ -53,7 +54,10 @@ class MessageOut(BaseModel):
         from_attributes = True
 
 
-async def _format_messages(messages: list[Message], db: AsyncSession, current_user_id: int | None = None) -> list[MessageOut]:
+async def _format_messages(
+    messages: list[Message], db: AsyncSession, current_user_id: int | None = None,
+    reply_counts: dict[int, int] | None = None,
+) -> list[MessageOut]:
     """格式化留言列表"""
     author_ids = list(set(m.author_id for m in messages if m.author_id))
     author_map: dict[int, str] = {}
@@ -80,10 +84,24 @@ async def _format_messages(messages: list[Message], db: AsyncSession, current_us
             author_name=author_map.get(m.author_id) if m.author_id else None,
             like_count=int(m.like_count or 0), liked=liked,
             reply=m.reply.replace("__SYSTEM__", "") if is_system else (m.reply or ""),
+            reply_count=(reply_counts or {}).get(m.id, 0),
             parent_id=m.parent_id,
             created_at=str(m.created_at) if m.created_at else None,
         ))
     return result
+
+
+async def _get_reply_counts(db: AsyncSession, ids: list[int]) -> dict[int, int]:
+    """批量取留言的回复数量"""
+    if not ids:
+        return {}
+    from sqlalchemy import func
+    rows = await db.execute(
+        select(Message.parent_id, func.count(Message.id))
+        .where(Message.parent_id.in_(ids))
+        .group_by(Message.parent_id)
+    )
+    return {pid: cnt for pid, cnt in rows.all()}
 
 
 # ========== 公开 API ==========
@@ -108,7 +126,8 @@ async def get_messages(
         query = query.order_by(Message.created_at.desc())
     result = await db.execute(query.offset(offset).limit(page_size))
     messages = result.scalars().all()
-    return await _format_messages(messages, db)
+    reply_counts = await _get_reply_counts(db, [m.id for m in messages])
+    return await _format_messages(messages, db, reply_counts=reply_counts)
 
 
 @router.post("", response_model=MessageOut, status_code=201)

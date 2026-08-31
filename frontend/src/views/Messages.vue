@@ -209,7 +209,9 @@ function isSystemReply(msg: MessageOut): boolean {
               <Icon :name="msg.liked ? 'heartFill' : 'heart'" :size="14" /> {{ msg.like_count || 0 }}
             </button>
             <button class="action-btn" @click="toggleReplies(msg.id)">
-              <Icon name="message" :size="14" /> {{ expandedReplies[msg.id] ? `收起回复(${expandedReplies[msg.id].length})` : `查看回复` }}
+              <Icon name="message" :size="14" />
+              {{ expandedReplies[msg.id] ? `收起回复` : `查看回复` }}
+              <span class="reply-count-badge" :class="{ has: (msg.reply_count || 0) > 0 }">{{ msg.reply_count || 0 }}</span>
             </button>
             <button
               v-if="auth.isLoggedIn()"
@@ -352,6 +354,13 @@ function isSystemReply(msg: MessageOut): boolean {
 }
 .action-btn:hover { background: var(--bg); border-color: var(--primary-light); color: var(--primary); }
 .action-btn.liked { color: #ef4444; border-color: #fecaca; background: #fef2f2; }
+.reply-count-badge {
+  min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px;
+  background: var(--border-light); color: var(--text-muted);
+  font-size: 11px; font-weight: 600; line-height: 18px; text-align: center;
+  display: inline-block;
+}
+.reply-count-badge.has { background: var(--primary); color: #fff; }
 
 .reply-form { display: flex; gap: 8px; margin-top: 12px; align-items: center; }
 .reply-form .el-input { flex: 1; }

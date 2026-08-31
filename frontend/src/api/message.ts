@@ -12,6 +12,7 @@ export interface MessageOut {
   like_count: number;
   liked: boolean;
   reply: string;
+  reply_count: number;
   parent_id: number | null;
   created_at: string | null;
 }
