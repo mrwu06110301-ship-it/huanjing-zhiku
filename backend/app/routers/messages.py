@@ -153,8 +153,9 @@ async def get_messages(
     page_size: int = 50,
     sort: str = "time",
     db: AsyncSession = Depends(get_db),
+    current_user: User | None = Depends(get_optional_user),
 ):
-    """获取所有顶级留言（即发即显）；sort=time 按时间倒序 / sort=likes 按点赞数倒序"""
+    """获取所有顶级留言（即发即显）；sort=time 按时间倒序 / sort=likes 按点赞数倒序；登录后返回 liked"""
     offset = (page - 1) * page_size
     query = select(Message).where(Message.parent_id.is_(None))
     if sort == "likes":
@@ -170,7 +171,11 @@ async def get_messages(
     top_ids = [m.id for m in messages]
     reply_counts = await _get_reply_counts(db, top_ids)
     reply_previews = await _get_reply_previews(db, top_ids)
-    return await _format_messages(messages, db, reply_counts=reply_counts, reply_previews=reply_previews)
+    return await _format_messages(
+        messages, db,
+        current_user_id=current_user.id if current_user else None,
+        reply_counts=reply_counts, reply_previews=reply_previews,
+    )
 
 
 @router.post("", response_model=MessageOut, status_code=201)
@@ -296,14 +301,15 @@ async def reply_message(
 async def get_message_replies(
     message_id: int,
     db: AsyncSession = Depends(get_db),
+    current_user: User | None = Depends(get_optional_user),
 ):
-    """获取留言的所有回复"""
+    """获取留言的所有回复（登录后返回 liked）"""
     result = await db.execute(
         select(Message).where(Message.parent_id == message_id)
         .order_by(Message.created_at.asc())
     )
     replies = result.scalars().all()
-    return await _format_messages(replies, db)
+    return await _format_messages(replies, db, current_user.id if current_user else None)
 
 
 # ========== 管理员 API ==========

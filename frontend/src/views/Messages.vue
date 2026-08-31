@@ -126,14 +126,6 @@ async function loadReplies(msgId: number) {
   finally { loadingReplies.value[msgId] = false; }
 }
 
-function toggleReplies(msgId: number) {
-  if (expandedReplies.value[msgId]) {
-    delete expandedReplies.value[msgId];
-  } else {
-    loadReplies(msgId);
-  }
-}
-
 // 管理员删除
 async function handleDelete(id: number) {
   try {
@@ -226,17 +218,12 @@ function isSystemReply(msg: MessageOut): boolean {
             <button class="action-btn" :class="{ liked: msg.liked }" @click="toggleLike(msg)">
               <Icon :name="msg.liked ? 'heartFill' : 'heart'" :size="14" /> {{ msg.like_count || 0 }}
             </button>
-            <button v-if="msg.reply_count > 0" class="action-btn" @click="toggleReplies(msg.id)">
-              <Icon name="message" :size="14" />
-              {{ expandedReplies[msg.id] ? `收起回复` : `全部回复` }}
-              <span class="reply-count-badge has">{{ msg.reply_count }}</span>
-            </button>
             <button
               v-if="auth.isLoggedIn()"
               class="action-btn"
               @click="replyingTo = replyingTo === msg.id ? null : msg.id"
             >
-              <Icon name="reply" :size="14" /> 写回复
+              <Icon name="reply" :size="14" /> 回复
             </button>
           </div>
 
@@ -262,6 +249,14 @@ function isSystemReply(msg: MessageOut): boolean {
             <button v-if="hasMoreReplies(msg)" class="more-replies-btn" @click="loadReplies(msg.id)">
               查看更多回复（共 {{ msg.reply_count }} 条）
               <Icon name="arrowDown" :size="13" />
+            </button>
+            <button
+              v-else-if="expandedReplies[msg.id]"
+              class="more-replies-btn"
+              @click="delete expandedReplies[msg.id]"
+            >
+              收起回复
+              <Icon name="arrowUp" :size="13" />
             </button>
           </div>
         </div>
