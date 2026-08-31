@@ -18,6 +18,8 @@ const submitting = ref(false);
 
 const form = ref({ content: "", contact: "" });
 const activeTab = ref<"all" | "mine">("all");
+// 排序：time 时间倒序 / likes 点赞数倒序
+const sortBy = ref<"time" | "likes">("time");
 
 // 回复
 const replyingTo = ref<number | null>(null);
@@ -33,10 +35,16 @@ onMounted(() => {
 async function loadAll() {
   loading.value = true;
   try {
-    const res = await getMessages({ page: 1, page_size: 50 });
+    const res = await getMessages({ page: 1, page_size: 50, sort: sortBy.value });
     publishedMessages.value = res.data;
   } catch { /* ignore */ }
   finally { loading.value = false; }
+}
+
+function switchSort(s: "time" | "likes") {
+  if (sortBy.value === s) return;
+  sortBy.value = s;
+  loadAll();
 }
 
 async function loadMyMessages() {
@@ -171,7 +179,17 @@ function isSystemReply(msg: MessageOut): boolean {
 
     <!-- 全部留言 -->
     <div v-if="activeTab === 'all'" class="msg-list">
-      <h3 class="list-title"><Icon name="message" :size="17" /> 全部留言 ({{ publishedMessages.length }})</h3>
+      <div class="list-title-row">
+        <h3 class="list-title"><Icon name="message" :size="17" /> 全部留言 ({{ publishedMessages.length }})</h3>
+        <div class="sort-switch">
+          <button :class="['sort-btn', { active: sortBy === 'time' }]" @click="switchSort('time')">
+            <Icon name="clock" :size="13" /> 最新
+          </button>
+          <button :class="['sort-btn', { active: sortBy === 'likes' }]" @click="switchSort('likes')">
+            <Icon name="hot" :size="13" /> 最热
+          </button>
+        </div>
+      </div>
       <div v-if="loading" class="loading">加载中...</div>
       <div v-else-if="publishedMessages.length === 0" class="empty">暂无留言，来做第一个吧！</div>
       <div v-else>
@@ -191,14 +209,14 @@ function isSystemReply(msg: MessageOut): boolean {
               <Icon :name="msg.liked ? 'heartFill' : 'heart'" :size="14" /> {{ msg.like_count || 0 }}
             </button>
             <button class="action-btn" @click="toggleReplies(msg.id)">
-              <Icon name="message" :size="14" /> 回复 <span v-if="expandedReplies[msg.id]?.length">({{ expandedReplies[msg.id].length }})</span>
+              <Icon name="message" :size="14" /> {{ expandedReplies[msg.id] ? `收起回复(${expandedReplies[msg.id].length})` : `查看回复` }}
             </button>
             <button
               v-if="auth.isLoggedIn()"
               class="action-btn"
               @click="replyingTo = replyingTo === msg.id ? null : msg.id"
             >
-              <Icon name="reply" :size="14" /> 回复
+              <Icon name="reply" :size="14" /> 写回复
             </button>
           </div>
 
@@ -293,7 +311,16 @@ function isSystemReply(msg: MessageOut): boolean {
   background: var(--white); border-radius: var(--radius-lg); padding: 24px 28px;
   box-shadow: var(--shadow); border: 1px solid var(--border-light);
 }
-.list-title { font-size: 16px; font-weight: 600; color: var(--text); margin-bottom: 18px; display: flex; align-items: center; gap: 8px; }
+.list-title-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; flex-wrap: wrap; }
+.list-title { font-size: 16px; font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 8px; }
+.sort-switch { display: flex; gap: 0; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.sort-btn {
+  padding: 6px 14px; border: none; background: var(--white); cursor: pointer;
+  font-size: 13px; color: var(--text-light); transition: all 0.2s var(--ease);
+  display: flex; align-items: center; gap: 4px;
+}
+.sort-btn + .sort-btn { border-left: 1px solid var(--border); }
+.sort-btn.active { background: var(--primary); color: #fff; font-weight: 600; }
 .loading, .empty { text-align: center; color: var(--text-muted); padding: 40px 0; }
 
 /* 留言卡片 */

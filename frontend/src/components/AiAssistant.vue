@@ -117,9 +117,19 @@ async function send() {
 
     const resp = await fetch("/api/assistant/chat", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        // 登录墙：必须携带 token，否则后端 401
+        ...(auth.token ? { Authorization: `Bearer ${auth.token}` } : {}),
+      },
       body: JSON.stringify({ question: q, history }),
     });
+    if (resp.status === 401) {
+      aiMsg.error = true;
+      aiMsg.content = "登录已过期，请重新登录后再使用 AI 助手";
+      ElMessage.warning("登录已过期，请重新登录");
+      return;
+    }
     if (!resp.ok || !resp.body) throw new Error(`HTTP ${resp.status}`);
 
     const reader = resp.body.getReader();

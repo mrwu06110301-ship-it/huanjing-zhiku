@@ -280,63 +280,93 @@ function handleImportFile(ev: Event) {
   const reader = new FileReader();
   reader.onload = () => {
     try {
-      const text = (reader.result as string).replace(/^\uFEFF/, "");
-      const lines = text.split(/\r?\n/).filter((l) => l.trim());
-      // 定位两个区块
-      let baseIdx = -1;
-      let dataIdx = -1;
-      lines.forEach((l, i) => {
-        if (l.includes("【基本信息】")) baseIdx = i;
-        if (l.includes("【过程数据】")) dataIdx = i;
-      });
-      if (baseIdx < 0 || dataIdx < 0) throw new Error("模板格式不正确");
-      // 基本信息：键值对
-      const kv: Record<string, string> = {};
-      for (let i = baseIdx + 1; i < dataIdx; i++) {
-        const cells = parseCsvLine(lines[i]);
-        if (cells.length >= 2 && cells[0]) kv[cells[0].trim()] = cells[1]?.trim() ?? "";
-      }
-      const findKey = (kw: string) => Object.keys(kv).find((k) => k.includes(kw));
-      form.measureTime = kv[findKey("测量时间") ?? ""] ?? "";
-      form.longitude = num(kv[findKey("经度") ?? ""]);
-      form.latitude = num(kv[findKey("纬度") ?? ""]);
-      form.measureHeight = num(kv[findKey("测量高度") ?? ""]) ?? 2;
-      form.totalCloud = num(kv[findKey("总云量") ?? ""]);
-      form.lowCloud = num(kv[findKey("低云量") ?? ""]);
-      const regionStr = kv[findKey("区域") ?? ""] ?? "";
-      form.region = regionStr.includes("农") ? "rural" : "urban";
-      // 过程数据
-      const header = parseCsvLine(lines[dataIdx + 1]);
-      const colOf = (kw: string) => header.findIndex((h) => h.includes(kw));
-      const cIdx = colOf("风速"), dIdx = colOf("风向"), pIdx = colOf("大气压"), tIdx = colOf("温度"), hIdx = colOf("湿度");
-      const newRows: Row[] = [];
-      for (let i = dataIdx + 2; i < lines.length; i++) {
-        const cells = parseCsvLine(lines[i]);
-        const ws = num(cells[cIdx]);
-        const wd = num(cells[dIdx]);
-        if (ws === null || wd === null) continue;
-        newRows.push({
-          windSpeed: ws,
-          windDir: wd,
-          pressure: num(cells[pIdx]) ?? 0,
-          temperature: num(cells[tIdx]) ?? 0,
-          humidity: num(cells[hIdx]) ?? 0,
+      // 编码兼容：Excel 另存的 CSV 常为 GBK/GB18030 编码，utf-8 解码会乱码导致"模板格式不正确"
+      let text = (reader.result as string).replace(/^\uFEFF/, "");
+      if (!text.includes("【基本信息】")) {
+        // utf-8 下找不到区块标记时，尝试按 GBK 重新解码（FileReader readAsArrayBuffer → TextDecoder）
+        tryRedecodeGbk(file).then((retryText) => {
+          if (retryText) doImport(retryText.replace(/^\uFEFF/, ""));
+          else doImport(text);
         });
+        return;
       }
-      if (newRows.length < 2) throw new Error("过程数据不足（至少 2 组有效风速风向）");
-      // 填充到 10 行
-      const padded = [...newRows];
-      while (padded.length < 10) {
-        padded.push({ windSpeed: null as unknown as number, windDir: null as unknown as number, pressure: null as unknown as number, temperature: null as unknown as number, humidity: null as unknown as number });
-      }
-      rows.value = padded.slice(0, Math.max(10, newRows.length));
-      ElMessage.success(`导入成功：${newRows.length} 组过程数据`);
+      doImport(text);
     } catch (e: any) {
       ElMessage.error(e?.message || "导入失败，请使用下载的模板填写");
+      if (fileInput.value) fileInput.value.value = "";
     }
-    if (fileInput.value) fileInput.value.value = "";
   };
   reader.readAsText(file, "utf-8");
+}
+
+/** 用 GBK 重新解码文件（Excel 中文版另存的 CSV 默认 ANSI/GBK 编码） */
+async function tryRedecodeGbk(file: File): Promise<string | null> {
+  try {
+    const buf = await file.arrayBuffer();
+    const gbkText = new TextDecoder("gb18030").decode(buf);
+    // 解码后能找到区块标记才认为编码猜对了
+    return gbkText.includes("【基本信息】") ? gbkText : null;
+  } catch {
+    return null;
+  }
+}
+
+function doImport(text: string) {
+  try {
+    const lines = text.split(/\r?\n/).filter((l) => l.trim());
+    // 定位两个区块
+    let baseIdx = -1;
+    let dataIdx = -1;
+    lines.forEach((l, i) => {
+      if (l.includes("【基本信息】")) baseIdx = i;
+      if (l.includes("【过程数据】")) dataIdx = i;
+    });
+    if (baseIdx < 0 || dataIdx < 0) throw new Error("模板格式不正确");
+    // 基本信息：键值对
+    const kv: Record<string, string> = {};
+    for (let i = baseIdx + 1; i < dataIdx; i++) {
+      const cells = parseCsvLine(lines[i]);
+      if (cells.length >= 2 && cells[0]) kv[cells[0].trim()] = cells[1]?.trim() ?? "";
+    }
+    const findKey = (kw: string) => Object.keys(kv).find((k) => k.includes(kw));
+    form.measureTime = kv[findKey("测量时间") ?? ""] ?? "";
+    form.longitude = num(kv[findKey("经度") ?? ""]);
+    form.latitude = num(kv[findKey("纬度") ?? ""]);
+    form.measureHeight = num(kv[findKey("测量高度") ?? ""]) ?? 2;
+    form.totalCloud = num(kv[findKey("总云量") ?? ""]);
+    form.lowCloud = num(kv[findKey("低云量") ?? ""]);
+    const regionStr = kv[findKey("区域") ?? ""] ?? "";
+    form.region = regionStr.includes("农") ? "rural" : "urban";
+    // 过程数据
+    const header = parseCsvLine(lines[dataIdx + 1]);
+    const colOf = (kw: string) => header.findIndex((h) => h.includes(kw));
+    const cIdx = colOf("风速"), dIdx = colOf("风向"), pIdx = colOf("大气压"), tIdx = colOf("温度"), hIdx = colOf("湿度");
+    const newRows: Row[] = [];
+    for (let i = dataIdx + 2; i < lines.length; i++) {
+      const cells = parseCsvLine(lines[i]);
+      const ws = num(cells[cIdx]);
+      const wd = num(cells[dIdx]);
+      if (ws === null || wd === null) continue;
+      newRows.push({
+        windSpeed: ws,
+        windDir: wd,
+        pressure: num(cells[pIdx]) ?? 0,
+        temperature: num(cells[tIdx]) ?? 0,
+        humidity: num(cells[hIdx]) ?? 0,
+      });
+    }
+    if (newRows.length < 2) throw new Error("过程数据不足（至少 2 组有效风速风向）");
+    // 填充到 10 行
+    const padded = [...newRows];
+    while (padded.length < 10) {
+      padded.push({ windSpeed: null as unknown as number, windDir: null as unknown as number, pressure: null as unknown as number, temperature: null as unknown as number, humidity: null as unknown as number });
+    }
+    rows.value = padded.slice(0, Math.max(10, newRows.length));
+    ElMessage.success(`导入成功：${newRows.length} 组过程数据`);
+  } catch (e: any) {
+    ElMessage.error(e?.message || "导入失败，请使用下载的模板填写");
+  }
+  if (fileInput.value) fileInput.value.value = "";
 }
 
 function triggerImport() {

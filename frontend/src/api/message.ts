@@ -16,8 +16,8 @@ export interface MessageOut {
   created_at: string | null;
 }
 
-/** 获取公开留言（已审核通过） */
-export function getMessages(params?: { page?: number; page_size?: number }): Promise<{ data: MessageOut[] }> {
+/** 获取公开留言（已审核通过）；sort=time 时间倒序 / likes 点赞倒序 */
+export function getMessages(params?: { page?: number; page_size?: number; sort?: string }): Promise<{ data: MessageOut[] }> {
   return request.get("/messages", { params });
 }
 

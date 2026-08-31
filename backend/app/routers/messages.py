@@ -78,7 +78,7 @@ async def _format_messages(messages: list[Message], db: AsyncSession, current_us
             id=m.id, content=m.content, contact=m.contact,
             author_id=m.author_id,
             author_name=author_map.get(m.author_id) if m.author_id else None,
-            like_count=m.like_count, liked=liked,
+            like_count=int(m.like_count or 0), liked=liked,
             reply=m.reply.replace("__SYSTEM__", "") if is_system else (m.reply or ""),
             parent_id=m.parent_id,
             created_at=str(m.created_at) if m.created_at else None,
@@ -92,15 +92,21 @@ async def _format_messages(messages: list[Message], db: AsyncSession, current_us
 async def get_messages(
     page: int = 1,
     page_size: int = 50,
+    sort: str = "time",
     db: AsyncSession = Depends(get_db),
 ):
-    """获取所有顶级留言（即发即显）"""
+    """获取所有顶级留言（即发即显）；sort=time 按时间倒序 / sort=likes 按点赞数倒序"""
     offset = (page - 1) * page_size
-    result = await db.execute(
-        select(Message).where(Message.parent_id.is_(None))
-        .order_by(Message.like_count.desc(), Message.created_at.desc())
-        .offset(offset).limit(page_size)
-    )
+    query = select(Message).where(Message.parent_id.is_(None))
+    if sort == "likes":
+        # like_count 是 TEXT 列，CAST 成整数再排序才是数值序
+        from sqlalchemy import cast, Integer
+        query = query.order_by(
+            cast(Message.like_count, Integer).desc(), Message.created_at.desc()
+        )
+    else:
+        query = query.order_by(Message.created_at.desc())
+    result = await db.execute(query.offset(offset).limit(page_size))
     messages = result.scalars().all()
     return await _format_messages(messages, db)
 
@@ -185,11 +191,12 @@ async def like_message(
     uid = str(current_user.id)
     if uid in [str(u) for u in like_users]:
         like_users = [u for u in like_users if str(u) != uid]
-        message.like_count = max(0, message.like_count - 1)
+        message.like_count = max(0, int(message.like_count or 0) - 1)
         action = "unliked"
     else:
         like_users.append(current_user.id)
-        message.like_count += 1
+        # like_count 列在历史库里是 TEXT 类型，必须先转 int 再运算，否则 str+int TypeError
+        message.like_count = int(message.like_count or 0) + 1
         action = "liked"
 
     message.like_users = json.dumps(like_users, ensure_ascii=False)

@@ -17,6 +17,7 @@ import {
   TrendTwo, Layers, Filter, Rocket, Star, Mail, Phone, Send, Copy,
   Refresh, LinkTwo, EditOne, Magic, Shield, Key, Login,
   DatabaseConfig, Server, CloudStorage, Lightning, Chimney, Wind, Flask, WaterLevel,
+  Sort,
 } from "@icon-park/vue-next";
 
 const props = withDefaults(defineProps<{
@@ -65,6 +66,8 @@ const ICON_MAP: Record<string, unknown> = {
   heartFill: Like,
   reply: Undo,
   robot: Robot,
+  sort: Sort,
+  hot: Fire,
   // 内容类型
   doc: DocDetail,
   play: PlayOne,
