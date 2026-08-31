@@ -2,6 +2,14 @@
 
 import request from "./request";
 
+/** 回复预览（列表默认展示） */
+export interface ReplyPreview {
+  id: number;
+  content: string;
+  author_name: string | null;
+  created_at: string | null;
+}
+
 export interface MessageOut {
   id: number;
   content: string;
@@ -13,6 +21,7 @@ export interface MessageOut {
   liked: boolean;
   reply: string;
   reply_count: number;
+  replies_preview: ReplyPreview[];
   parent_id: number | null;
   created_at: string | null;
 }

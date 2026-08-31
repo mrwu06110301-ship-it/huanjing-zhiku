@@ -37,6 +37,14 @@ class MessageCreate(BaseModel):
     contact: str = ""
 
 
+class ReplyPreview(BaseModel):
+    """回复预览（留言列表默认展示前几条）"""
+    id: int
+    content: str
+    author_name: str | None = None
+    created_at: str | None = None
+
+
 class MessageOut(BaseModel):
     id: int
     content: str
@@ -47,6 +55,7 @@ class MessageOut(BaseModel):
     liked: bool = False
     reply: str = ""
     reply_count: int = 0
+    replies_preview: list[ReplyPreview] = []
     parent_id: int | None = None
     created_at: str | None = None
 
@@ -57,9 +66,13 @@ class MessageOut(BaseModel):
 async def _format_messages(
     messages: list[Message], db: AsyncSession, current_user_id: int | None = None,
     reply_counts: dict[int, int] | None = None,
+    reply_previews: dict[int, list[Message]] | None = None,
 ) -> list[MessageOut]:
     """格式化留言列表"""
-    author_ids = list(set(m.author_id for m in messages if m.author_id))
+    all_msgs = list(messages)
+    for previews in (reply_previews or {}).values():
+        all_msgs.extend(previews)
+    author_ids = list(set(m.author_id for m in all_msgs if m.author_id))
     author_map: dict[int, str] = {}
     if author_ids:
         ar = await db.execute(select(User.id, User.nickname, User.username).where(User.id.in_(author_ids)))
@@ -78,6 +91,15 @@ async def _format_messages(
 
         is_system = m.reply == "__SYSTEM__" or (m.reply or "").startswith("__SYSTEM__")
 
+        previews = [
+            ReplyPreview(
+                id=r.id, content=r.content,
+                author_name=author_map.get(r.author_id) if r.author_id else None,
+                created_at=str(r.created_at) if r.created_at else None,
+            )
+            for r in (reply_previews or {}).get(m.id, [])
+        ]
+
         result.append(MessageOut(
             id=m.id, content=m.content, contact=m.contact,
             author_id=m.author_id,
@@ -85,6 +107,7 @@ async def _format_messages(
             like_count=int(m.like_count or 0), liked=liked,
             reply=m.reply.replace("__SYSTEM__", "") if is_system else (m.reply or ""),
             reply_count=(reply_counts or {}).get(m.id, 0),
+            replies_preview=previews,
             parent_id=m.parent_id,
             created_at=str(m.created_at) if m.created_at else None,
         ))
@@ -102,6 +125,24 @@ async def _get_reply_counts(db: AsyncSession, ids: list[int]) -> dict[int, int]:
         .group_by(Message.parent_id)
     )
     return {pid: cnt for pid, cnt in rows.all()}
+
+
+async def _get_reply_previews(db: AsyncSession, ids: list[int], limit: int = 2) -> dict[int, list[Message]]:
+    """批量取每条留言的前 limit 条回复（按时间正序，用于默认展示）"""
+    if not ids:
+        return {}
+    rows = await db.execute(
+        select(Message).where(Message.parent_id.in_(ids))
+        .order_by(Message.parent_id, Message.created_at.asc(), Message.id.asc())
+    )
+    out: dict[int, list[Message]] = {}
+    for r in rows.scalars().all():
+        if r.parent_id is None:
+            continue
+        bucket = out.setdefault(r.parent_id, [])
+        if len(bucket) < limit:
+            bucket.append(r)
+    return out
 
 
 # ========== 公开 API ==========
@@ -126,8 +167,10 @@ async def get_messages(
         query = query.order_by(Message.created_at.desc())
     result = await db.execute(query.offset(offset).limit(page_size))
     messages = result.scalars().all()
-    reply_counts = await _get_reply_counts(db, [m.id for m in messages])
-    return await _format_messages(messages, db, reply_counts=reply_counts)
+    top_ids = [m.id for m in messages]
+    reply_counts = await _get_reply_counts(db, top_ids)
+    reply_previews = await _get_reply_previews(db, top_ids)
+    return await _format_messages(messages, db, reply_counts=reply_counts, reply_previews=reply_previews)
 
 
 @router.post("", response_model=MessageOut, status_code=201)

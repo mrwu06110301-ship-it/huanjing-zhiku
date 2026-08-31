@@ -24,8 +24,26 @@ const sortBy = ref<"time" | "likes">("time");
 // 回复
 const replyingTo = ref<number | null>(null);
 const replyText = ref("");
+// 展开全部回复的留言 id 集合（默认只展示后端返回的前几条预览）
 const expandedReplies = ref<Record<number, MessageOut[]>>({});
 const loadingReplies = ref<Record<number, boolean>>({});
+const PREVIEW_COUNT = 2;
+
+/** 当前该留言应展示的回复列表：未展开用预览，展开用全量 */
+function visibleReplies(msg: MessageOut): MessageOut[] {
+  if (expandedReplies.value[msg.id]) return expandedReplies.value[msg.id];
+  return (msg.replies_preview || []).map((r) => ({
+    id: r.id, content: r.content, contact: "", author_id: null,
+    author_name: r.author_name, status: "approved", like_count: 0, liked: false,
+    reply: "", reply_count: 0, replies_preview: [],
+    parent_id: msg.id, created_at: r.created_at,
+  }));
+}
+
+/** 是否显示"查看更多回复"：有更多未展示的回复 */
+function hasMoreReplies(msg: MessageOut): boolean {
+  return !expandedReplies.value[msg.id] && (msg.reply_count || 0) > (msg.replies_preview || []).length;
+}
 
 onMounted(() => {
   loadAll();
@@ -208,10 +226,10 @@ function isSystemReply(msg: MessageOut): boolean {
             <button class="action-btn" :class="{ liked: msg.liked }" @click="toggleLike(msg)">
               <Icon :name="msg.liked ? 'heartFill' : 'heart'" :size="14" /> {{ msg.like_count || 0 }}
             </button>
-            <button class="action-btn" @click="toggleReplies(msg.id)">
+            <button v-if="msg.reply_count > 0" class="action-btn" @click="toggleReplies(msg.id)">
               <Icon name="message" :size="14" />
-              {{ expandedReplies[msg.id] ? `收起回复` : `查看回复` }}
-              <span class="reply-count-badge" :class="{ has: (msg.reply_count || 0) > 0 }">{{ msg.reply_count || 0 }}</span>
+              {{ expandedReplies[msg.id] ? `收起回复` : `全部回复` }}
+              <span class="reply-count-badge has">{{ msg.reply_count }}</span>
             </button>
             <button
               v-if="auth.isLoggedIn()"
@@ -229,12 +247,11 @@ function isSystemReply(msg: MessageOut): boolean {
             <el-button size="small" @click="replyingTo = null">取消</el-button>
           </div>
 
-          <!-- 回复列表 -->
-          <div v-if="expandedReplies[msg.id]" class="replies-wrap">
+          <!-- 回复列表：默认展示预览（前 2 条），"查看更多回复"展开全量 -->
+          <div v-if="visibleReplies(msg).length > 0" class="replies-wrap">
             <div v-if="loadingReplies[msg.id]" class="loading">加载中...</div>
-            <div v-else-if="expandedReplies[msg.id].length === 0" class="empty">暂无回复</div>
             <div v-else class="replies-list">
-              <div v-for="reply in expandedReplies[msg.id]" :key="reply.id" class="reply-item">
+              <div v-for="reply in visibleReplies(msg)" :key="reply.id" class="reply-item">
                 <div class="reply-meta">
                   <span class="reply-author"><Icon name="user" :size="12" /> {{ reply.author_name || '匿名' }}</span>
                   <span class="reply-date">{{ formatDate(reply.created_at) }}</span>
@@ -242,6 +259,10 @@ function isSystemReply(msg: MessageOut): boolean {
                 <div class="reply-content">{{ reply.content }}</div>
               </div>
             </div>
+            <button v-if="hasMoreReplies(msg)" class="more-replies-btn" @click="loadReplies(msg.id)">
+              查看更多回复（共 {{ msg.reply_count }} 条）
+              <Icon name="arrowDown" :size="13" />
+            </button>
           </div>
         </div>
       </div>
@@ -371,6 +392,12 @@ function isSystemReply(msg: MessageOut): boolean {
 .reply-author { font-weight: 500; font-size: 13px; color: var(--text); display: flex; align-items: center; gap: 4px; }
 .reply-date { font-size: 11px; color: var(--text-muted); }
 .reply-content { font-size: 14px; color: var(--text-light); line-height: 1.6; }
+.more-replies-btn {
+  margin-top: 10px; padding: 6px 14px; border: none; background: none; cursor: pointer;
+  font-size: 13px; color: var(--primary); display: flex; align-items: center; gap: 4px;
+  border-radius: 6px; transition: background 0.2s var(--ease);
+}
+.more-replies-btn:hover { background: var(--primary-light); }
 
 /* 管理员 */
 .admin-actions { margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--border); }
