@@ -264,15 +264,15 @@ const modules = [
 
 .loading-overlay {
   position: fixed; inset: 0;
-  background: rgba(248, 250, 252, 0.85);
+  background: rgba(10, 16, 29, 0.55);
   backdrop-filter: blur(4px);
   display: flex; align-items: center; justify-content: center;
   z-index: 1000;
 }
 .loading-spinner {
   width: 40px; height: 40px;
-  border: 3px solid rgba(37, 99, 235, 0.12);
-  border-top: 3px solid var(--primary);
+  border: 3px solid rgba(96, 165, 250, 0.18);
+  border-top: 3px solid #60a5fa;
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
