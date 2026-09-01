@@ -258,6 +258,7 @@ a:hover {
 }
 
 /* ======== Utility ======== */
+/* 页头（落在深色主题背景上）：标题白色、副标题浅灰蓝、图标玻璃底 */
 .page-title-icon {
   display: inline-flex;
   align-items: center;
@@ -265,8 +266,9 @@ a:hover {
   width: 44px;
   height: 44px;
   border-radius: var(--radius);
-  background: var(--primary-light);
-  color: var(--primary);
+  background: rgba(96, 165, 250, 0.14);
+  border: 1px solid rgba(96, 165, 250, 0.22);
+  color: #93c5fd;
   margin-bottom: 0;
   flex-shrink: 0;
 }
@@ -283,14 +285,14 @@ a:hover {
 .page-header-main h1 {
   font-size: 26px;
   font-weight: 700;
-  color: var(--text);
+  color: #ffffff;
   margin: 0;
   line-height: 1.3;
 }
 .page-header-sub {
   margin: 6px 0 0 58px;
   font-size: 14px;
-  color: var(--text-light);
+  color: rgba(148, 163, 184, 0.92);
 }
 
 /* ======== 全局统一标签选择（分类筛选 pill）========
