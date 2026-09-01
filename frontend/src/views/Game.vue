@@ -2,8 +2,14 @@
 import { ref, computed } from "vue";
 import { ElMessage } from "element-plus";
 import Icon from "@/components/Icon.vue";
+import bgFlueGas from "@/assets/game/bg-flue-gas.webp";
+import bgDust from "@/assets/game/bg-dust.webp";
+import bgAirQuality from "@/assets/game/bg-air-quality.webp";
+import bgWater from "@/assets/game/bg-water.webp";
+import bgLdar from "@/assets/game/bg-ldar.webp";
+import bgNoise from "@/assets/game/bg-noise.webp";
 
-/** 场景卡数据 — 与现场监测业务挂钩，game 字段预留后续开放 */
+/** 场景卡数据 — 与现场监测业务挂钩，open 字段预留后续开放 */
 interface Scene {
   id: string;
   name: string;
@@ -12,6 +18,7 @@ interface Scene {
   difficulty: 1 | 2 | 3;
   color: string;
   icon: string;
+  bg: string;
   open: boolean;
 }
 
@@ -24,6 +31,7 @@ const scenes = ref<Scene[]>([
     difficulty: 2,
     color: "#f97316",
     icon: "chimney",
+    bg: bgFlueGas,
     open: false,
   },
   {
@@ -34,6 +42,7 @@ const scenes = ref<Scene[]>([
     difficulty: 3,
     color: "#8b5cf6",
     icon: "experiment",
+    bg: bgDust,
     open: false,
   },
   {
@@ -44,6 +53,7 @@ const scenes = ref<Scene[]>([
     difficulty: 1,
     color: "#06b6d4",
     icon: "wind",
+    bg: bgAirQuality,
     open: false,
   },
   {
@@ -54,6 +64,7 @@ const scenes = ref<Scene[]>([
     difficulty: 2,
     color: "#3b82f6",
     icon: "waterLevel",
+    bg: bgWater,
     open: false,
   },
   {
@@ -64,6 +75,7 @@ const scenes = ref<Scene[]>([
     difficulty: 3,
     color: "#ef4444",
     icon: "search",
+    bg: bgLdar,
     open: false,
   },
   {
@@ -74,18 +86,59 @@ const scenes = ref<Scene[]>([
     difficulty: 1,
     color: "#10b981",
     icon: "chart",
+    bg: bgNoise,
     open: false,
   },
 ]);
 
-const activeScene = computed(() => scenes.value.find((s) => s.open));
+/* ---------- 整页场景背景（双图层交叉淡入） ---------- */
+const bgLayerA = ref(true);        // 当前显示 A 还是 B
+const bgUrlA = ref("");
+const bgUrlB = ref("");
+const activeBg = ref<string | null>(null);
+const selectedId = ref<string | null>(null);
+const flashPos = ref({ x: 50, y: 40 });
+const flashKey = ref(0);
 
-function pickScene(s: Scene) {
+const selectedScene = computed(() => scenes.value.find((s) => s.id === selectedId.value));
+
+function pickScene(s: Scene, e: MouseEvent) {
+  selectedId.value = s.id;
+
+  // 点击位置（用于光波闪动起点）
+  const el = e.currentTarget as HTMLElement;
+  const rect = el.getBoundingClientRect();
+  flashPos.value = {
+    x: Math.round(((rect.left + rect.width / 2) / window.innerWidth) * 100),
+    y: Math.round(((rect.top + rect.height / 2) / window.innerHeight) * 100),
+  };
+  flashKey.value += 1;
+
+  // 背景交叉淡入：写入隐藏图层再切换
+  if (activeBg.value !== s.bg) {
+    if (bgLayerA.value) bgUrlB.value = s.bg;
+    else bgUrlA.value = s.bg;
+    bgLayerA.value = !bgLayerA.value;
+    activeBg.value = s.bg;
+  }
+
   ElMessage({
     message: `「${s.name}」场景暂未开放，敬请期待！`,
     type: "warning",
     duration: 2200,
   });
+}
+
+function resetScene() {
+  selectedId.value = null;
+  activeBg.value = null;
+  bgUrlA.value = "";
+  bgUrlB.value = "";
+  bgLayerA.value = true;
+}
+
+function glowStyle(color: string) {
+  return `radial-gradient(ellipse 70% 55% at 50% 115%, color-mix(in srgb, ${color} 22%, transparent), transparent 70%)`;
 }
 
 function difficultyLabel(n: number) {
@@ -95,6 +148,40 @@ function difficultyLabel(n: number) {
 
 <template>
   <div class="game-page">
+    <!-- 整页场景背景（固定层，随卡片点击切换） -->
+    <div class="game-backdrop" aria-hidden="true">
+      <div
+        class="bg-layer"
+        :class="{ on: bgLayerA && !!bgUrlA }"
+        :style="bgUrlA ? { backgroundImage: `url(${bgUrlA})` } : {}"
+      ></div>
+      <div
+        class="bg-layer"
+        :class="{ on: !bgLayerA && !!bgUrlB }"
+        :style="bgUrlB ? { backgroundImage: `url(${bgUrlB})` } : {}"
+      ></div>
+      <!-- 可读性纱罩：保证文字对比度 -->
+      <div class="bg-veil"></div>
+      <!-- 场景主题色氛围光 -->
+      <div
+        v-if="selectedScene"
+        :key="'glow-' + selectedScene.id"
+        class="bg-glow"
+        :style="{ background: glowStyle(selectedScene.color) }"
+      ></div>
+      <!-- 点击光波闪动 -->
+      <div
+        v-if="selectedScene"
+        :key="'flash-' + flashKey"
+        class="bg-flash"
+        :style="{
+          '--fc': selectedScene.color,
+          '--fx': flashPos.x + '%',
+          '--fy': flashPos.y + '%',
+        }"
+      ></div>
+    </div>
+
     <!-- 页头 -->
     <div class="page-header page-header-row">
       <div class="header-left">
@@ -104,7 +191,12 @@ function difficultyLabel(n: number) {
           </div>
           <h1>环监奇兵</h1>
         </div>
-        <p class="page-header-sub">现场监测知识闯关 · 在游戏里练成监测高手（开发中，场景陆续开放）</p>
+        <p class="page-header-sub">现场监测知识闯关 · 点击场景卡，整页氛围随场景切换（开发中，场景陆续开放）</p>
+      </div>
+      <div v-if="selectedScene" class="header-right">
+        <button class="reset-btn" @click="resetScene">
+          <Icon name="refresh" :size="13" /> 恢复默认
+        </button>
       </div>
     </div>
 
@@ -114,8 +206,9 @@ function difficultyLabel(n: number) {
         v-for="s in scenes"
         :key="s.id"
         class="scene-card"
+        :class="{ selected: s.id === selectedId }"
         :style="{ '--sc': s.color }"
-        @click="pickScene(s)"
+        @click="pickScene($event, s)"
       >
         <!-- 未开放角标 -->
         <span class="soon-badge"><Icon name="close" :size="10" /> 敬请期待</span>
@@ -135,9 +228,12 @@ function difficultyLabel(n: number) {
           <p class="scene-desc">{{ s.description }}</p>
         </div>
 
-        <!-- 底部：进入提示（悬停浮现） -->
+        <!-- 底部：进入提示（悬停浮现 / 选中常显） -->
         <div class="scene-footer">
-          <span class="enter-hint">即将开放 <Icon name="arrowRight" :size="13" /></span>
+          <span v-if="s.id === selectedId" class="enter-hint staying">
+            <Icon name="eye" :size="13" /> 正在欣赏此场景
+          </span>
+          <span v-else class="enter-hint">即将开放 <Icon name="arrowRight" :size="13" /></span>
         </div>
       </button>
     </div>
@@ -151,10 +247,89 @@ function difficultyLabel(n: number) {
 </template>
 
 <style scoped>
-.game-page { max-width: 1200px; margin: 0 auto; }
+.game-page {
+  max-width: 1200px;
+  margin: 0 auto;
+  position: relative;
+  z-index: 1;
+}
+
+/* ---------- 整页背景层 ---------- */
+.game-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.bg-layer {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  opacity: 0;
+  transition: opacity 0.9s ease;
+  will-change: opacity;
+}
+.bg-layer.on { opacity: 0.36; }
+.bg-veil {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(248, 250, 252, 0.42) 0%,
+    rgba(248, 250, 252, 0.68) 55%,
+    rgba(248, 250, 252, 0.85) 100%
+  );
+}
+.bg-glow {
+  position: absolute;
+  inset: 0;
+  animation: glowIn 1.1s ease both;
+}
+@keyframes glowIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.bg-flash {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    circle at var(--fx, 50%) var(--fy, 40%),
+    color-mix(in srgb, var(--fc, #2563eb) 40%, transparent),
+    transparent 52%
+  );
+  animation: flashOut 0.75s ease both;
+}
+@keyframes flashOut {
+  0% { opacity: 0; }
+  22% { opacity: 1; }
+  100% { opacity: 0; }
+}
 
 /* 页头 */
 .game-icon { background: linear-gradient(135deg, #fef3c7, #fde68a); color: #d97706; }
+.header-right { flex-shrink: 0; }
+.reset-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--card-border);
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(10px);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s var(--ease);
+}
+.reset-btn:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+  transform: translateY(-1px);
+}
 
 /* 场景网格 */
 .scene-grid {
@@ -164,7 +339,7 @@ function difficultyLabel(n: number) {
   margin-bottom: 24px;
 }
 
-/* 场景卡片 */
+/* 场景卡片（玻璃拟态，压得住背景） */
 .scene-card {
   --sc: var(--primary);
   position: relative;
@@ -173,14 +348,16 @@ function difficultyLabel(n: number) {
   text-align: left;
   border: 1.5px solid var(--card-border);
   border-radius: var(--radius-lg);
-  background: var(--card-bg);
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
   cursor: pointer;
   overflow: hidden;
   transition: transform 0.25s var(--ease), box-shadow 0.25s var(--ease), border-color 0.25s var(--ease);
   padding: 0;
 }
 .scene-card::before {
-  /* 顶部主题色渐变条，悬停时点亮 */
+  /* 顶部主题色渐变条，悬停/选中时点亮 */
   content: "";
   position: absolute;
   top: 0; left: 0; right: 0;
@@ -195,6 +372,14 @@ function difficultyLabel(n: number) {
   box-shadow: 0 14px 32px rgba(15, 23, 42, 0.12);
 }
 .scene-card:hover::before { opacity: 1; }
+
+/* 选中态：常亮 + 主题色投影 */
+.scene-card.selected {
+  border-color: var(--sc);
+  box-shadow: 0 16px 36px color-mix(in srgb, var(--sc) 28%, transparent);
+  transform: translateY(-3px);
+}
+.scene-card.selected::before { opacity: 1; }
 
 /* 敬请期待角标 */
 .soon-badge {
@@ -211,6 +396,7 @@ function difficultyLabel(n: number) {
   gap: 4px;
   box-shadow: 0 2px 6px rgba(15, 23, 42, 0.2);
   letter-spacing: 1px;
+  z-index: 1;
 }
 
 /* 卡头 */
@@ -281,6 +467,7 @@ function difficultyLabel(n: number) {
   transition: all 0.25s var(--ease);
 }
 .scene-card:hover .enter-hint { opacity: 0.75; transform: translateX(0); }
+.enter-hint.staying { opacity: 1; transform: translateX(0); }
 
 /* 底部说明 */
 .game-note {
@@ -288,7 +475,8 @@ function difficultyLabel(n: number) {
   align-items: center;
   gap: 8px;
   padding: 14px 18px;
-  background: var(--primary-light);
+  background: color-mix(in srgb, var(--primary-light, #eff6ff) 88%, transparent);
+  backdrop-filter: blur(10px);
   border-radius: var(--radius);
   font-size: 13px;
   color: var(--text-light);
@@ -303,5 +491,14 @@ function difficultyLabel(n: number) {
   .scene-hero { padding: 18px 18px 0; }
   .scene-body { padding: 14px 18px 0; }
   .scene-footer { padding: 12px 18px 16px; }
+  .bg-layer.on { opacity: 0.3; }
+}
+
+/* 动效弱化偏好 */
+@media (prefers-reduced-motion: reduce) {
+  .bg-layer, .bg-glow, .bg-flash, .scene-card, .scene-icon, .enter-hint, .reset-btn {
+    transition: none;
+    animation: none;
+  }
 }
 </style>

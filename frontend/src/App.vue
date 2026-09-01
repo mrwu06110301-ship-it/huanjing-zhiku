@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import Navbar from "@/components/Navbar.vue";
 import AiAssistant from "@/components/AiAssistant.vue";
+import GlobalBackground from "@/components/GlobalBackground.vue";
 </script>
 
 <template>
   <div class="app-wrapper">
+    <GlobalBackground />
     <Navbar />
     <main class="main-content">
       <router-view />
@@ -111,10 +113,16 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* ======== 全局主题背景（深色氛围层，监测/环保/光学元素） ========
+ * GlobalBackground.vue 固定在 body 上：深蓝夜空渐变 + 网格 + 漂移光斑 + 光束 + 粒子
+ * 正文字号不变，卡片仍为白色浮层。prefers-reduced-motion 时全部静止。
+ */
 .app-wrapper {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+  position: relative;
+  z-index: 1;
 }
 
 .main-content {
