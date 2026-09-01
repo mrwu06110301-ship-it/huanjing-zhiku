@@ -463,7 +463,7 @@ function stopFunTip() {
 .ai-close:hover { background: rgba(255,255,255,0.3); }
 
 /* ---- 消息区 ---- */
-.ai-body { flex: 1; overflow-y: auto; padding: 16px 14px; background: #f4f7fb; }
+.ai-body { flex: 1; overflow-y: auto; padding: 16px 14px; background: var(--bg, #f8fafc); }
 /* 全屏时消息区居中限宽，长文阅读更舒适 */
 .ai-panel.fullscreen .ai-body { padding: 20px 16px; }
 .ai-panel.fullscreen .ai-body > * { max-width: 860px; margin-left: auto; margin-right: auto; }
@@ -521,7 +521,7 @@ function stopFunTip() {
 .msg-text.md :deep(pre code) { background: transparent; color: inherit; padding: 0; }
 .msg-text.md :deep(blockquote) {
   border-left: 3px solid var(--primary, #2563eb); padding: 2px 10px; margin: 6px 0;
-  color: var(--text-light, #475569); background: #f4f7fb; border-radius: 0 6px 6px 0;
+  color: var(--text-light, #475569); background: var(--bg, #f8fafc); border-radius: 0 6px 6px 0;
 }
 .msg-text.md :deep(table) { border-collapse: collapse; margin: 6px 0; font-size: 12px; width: 100%; }
 .msg-text.md :deep(th), .msg-text.md :deep(td) { border: 1px solid var(--border, #e2e8f0); padding: 4px 8px; text-align: left; }

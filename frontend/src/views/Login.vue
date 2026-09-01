@@ -310,12 +310,30 @@ async function finishLogin(token: string) {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: transparent; /* 透出全局浅色氛围层 */
+  background: var(--bg);
   position: relative;
   overflow: hidden;
 }
 
-/* 旧浅色光晕 ::before 已移除，由全局 GlobalBackground 氛围层接管 */
+.auth-page::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background:
+    radial-gradient(ellipse at 30% 20%, rgba(0, 184, 217, 0.06) 0%, transparent 50%),
+    radial-gradient(ellipse at 70% 80%, rgba(0, 230, 168, 0.05) 0%, transparent 50%),
+    radial-gradient(ellipse at 50% 50%, rgba(91, 124, 250, 0.04) 0%, transparent 50%);
+  pointer-events: none;
+  animation: bg-drift 20s ease-in-out infinite alternate;
+}
+
+@keyframes bg-drift {
+  0% { transform: translate(0, 0) rotate(0deg); }
+  100% { transform: translate(2%, 2%) rotate(3deg); }
+}
 
 .auth-card {
   width: 420px;

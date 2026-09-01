@@ -1,12 +1,10 @@
 <script setup lang="ts">
 import Navbar from "@/components/Navbar.vue";
 import AiAssistant from "@/components/AiAssistant.vue";
-import GlobalBackground from "@/components/GlobalBackground.vue";
 </script>
 
 <template>
   <div class="app-wrapper">
-    <GlobalBackground />
     <Navbar />
     <main class="main-content">
       <router-view />
@@ -75,8 +73,7 @@ import GlobalBackground from "@/components/GlobalBackground.vue";
 
   /* ===== Gradients ===== */
   --gradient-primary: linear-gradient(135deg, #2563eb, #06b6d4);
-  /* Hero 深蓝面板渐变（与全局浅色背景形成层次对比） */
-  --gradient-dark: linear-gradient(165deg, #0d1730 0%, #16233f 55%, #0d1730 100%);
+  --gradient-dark: linear-gradient(165deg, #090d16 0%, #101a30 55%, #090d16 100%);
 
   /* ===== Transitions ===== */
   --ease: cubic-bezier(0.25, 0.46, 0.45, 0.94);
@@ -114,16 +111,10 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* ======== 全局主题背景（浅色深化氛围层，监测/环保/光学元素） ========
- * GlobalBackground.vue 固定在 body 上：冷调浅蓝灰渐变 + 网格 + 漂移光斑 + 白光束 + 粒子
- * 背景比纯白深一档，深色文字天然可读、白色卡片协调。prefers-reduced-motion 时全部静止。
- */
 .app-wrapper {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  position: relative;
-  z-index: 1;
 }
 
 .main-content {
@@ -258,11 +249,6 @@ a:hover {
   background-color: var(--primary);
 }
 
-/* 空状态描述（浅色主题背景） */
-.el-empty__description p {
-  color: var(--text-light);
-}
-
 /* ======== Utility ======== */
 .page-title-icon {
   display: inline-flex;
@@ -271,11 +257,10 @@ a:hover {
   width: 44px;
   height: 44px;
   border-radius: var(--radius);
-  background: var(--white);
+  background: var(--primary-light);
   color: var(--primary);
   margin-bottom: 0;
   flex-shrink: 0;
-  border: 1px solid var(--border);
 }
 
 /* 左对齐页头：图标+标题同行，副标题在下，操作按钮靠右 */
