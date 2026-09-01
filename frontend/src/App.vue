@@ -257,6 +257,11 @@ a:hover {
   background-color: var(--primary);
 }
 
+/* 深色主题背景上的空状态（el-empty 直接落在背景上时保持可读） */
+.el-empty__description p {
+  color: rgba(203, 213, 225, 0.9);
+}
+
 /* ======== Utility ======== */
 /* 页头（落在深色主题背景上）：标题白色、副标题浅灰蓝、图标玻璃底 */
 .page-title-icon {
