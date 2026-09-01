@@ -75,7 +75,8 @@ import GlobalBackground from "@/components/GlobalBackground.vue";
 
   /* ===== Gradients ===== */
   --gradient-primary: linear-gradient(135deg, #2563eb, #06b6d4);
-  --gradient-dark: linear-gradient(165deg, #090d16 0%, #101a30 55%, #090d16 100%);
+  /* Hero 深蓝面板渐变（与全局浅色背景形成层次对比） */
+  --gradient-dark: linear-gradient(165deg, #0d1730 0%, #16233f 55%, #0d1730 100%);
 
   /* ===== Transitions ===== */
   --ease: cubic-bezier(0.25, 0.46, 0.45, 0.94);
@@ -113,9 +114,9 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* ======== 全局主题背景（深色氛围层，监测/环保/光学元素） ========
- * GlobalBackground.vue 固定在 body 上：深蓝夜空渐变 + 网格 + 漂移光斑 + 光束 + 粒子
- * 正文字号不变，卡片仍为白色浮层。prefers-reduced-motion 时全部静止。
+/* ======== 全局主题背景（浅色深化氛围层，监测/环保/光学元素） ========
+ * GlobalBackground.vue 固定在 body 上：冷调浅蓝灰渐变 + 网格 + 漂移光斑 + 白光束 + 粒子
+ * 背景比纯白深一档，深色文字天然可读、白色卡片协调。prefers-reduced-motion 时全部静止。
  */
 .app-wrapper {
   min-height: 100vh;
@@ -257,13 +258,12 @@ a:hover {
   background-color: var(--primary);
 }
 
-/* 深色主题背景上的空状态（el-empty 直接落在背景上时保持可读） */
+/* 空状态描述（浅色主题背景） */
 .el-empty__description p {
-  color: rgba(203, 213, 225, 0.9);
+  color: var(--text-light);
 }
 
 /* ======== Utility ======== */
-/* 页头（落在深色主题背景上）：标题白色、副标题浅灰蓝、图标玻璃底 */
 .page-title-icon {
   display: inline-flex;
   align-items: center;
@@ -271,11 +271,11 @@ a:hover {
   width: 44px;
   height: 44px;
   border-radius: var(--radius);
-  background: rgba(96, 165, 250, 0.14);
-  border: 1px solid rgba(96, 165, 250, 0.22);
-  color: #93c5fd;
+  background: var(--white);
+  color: var(--primary);
   margin-bottom: 0;
   flex-shrink: 0;
+  border: 1px solid var(--border);
 }
 
 /* 左对齐页头：图标+标题同行，副标题在下，操作按钮靠右 */
@@ -290,14 +290,14 @@ a:hover {
 .page-header-main h1 {
   font-size: 26px;
   font-weight: 700;
-  color: #ffffff;
+  color: var(--text);
   margin: 0;
   line-height: 1.3;
 }
 .page-header-sub {
   margin: 6px 0 0 58px;
   font-size: 14px;
-  color: rgba(148, 163, 184, 0.92);
+  color: var(--text-light);
 }
 
 /* ======== 全局统一标签选择（分类筛选 pill）========

@@ -266,15 +266,15 @@ const modules = [
 
 .loading-overlay {
   position: fixed; inset: 0;
-  background: rgba(10, 16, 29, 0.55);
+  background: rgba(232, 238, 247, 0.75);
   backdrop-filter: blur(4px);
   display: flex; align-items: center; justify-content: center;
   z-index: 1000;
 }
 .loading-spinner {
   width: 40px; height: 40px;
-  border: 3px solid rgba(96, 165, 250, 0.18);
-  border-top: 3px solid #60a5fa;
+  border: 3px solid rgba(37, 99, 235, 0.12);
+  border-top: 3px solid var(--primary);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
@@ -290,13 +290,14 @@ const modules = [
   align-items: center;
   justify-content: center;  /* 左右两块整体水平居中 */
   gap: 48px;
+  margin-bottom: 40px;      /* 与下方内容拉开 */
 }
 
 .hero-grid-bg {
   position: absolute; inset: 0;
   background-image:
-    linear-gradient(rgba(96, 165, 250, 0.035) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(96, 165, 250, 0.035) 1px, transparent 1px);
+    linear-gradient(rgba(96, 165, 250, 0.16) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(96, 165, 250, 0.16) 1px, transparent 1px);
   background-size: 44px 44px;
   mask-image: radial-gradient(ellipse at 40% 40%, black 20%, transparent 72%);
   -webkit-mask-image: radial-gradient(ellipse at 40% 40%, black 20%, transparent 72%);
@@ -327,10 +328,10 @@ const modules = [
 .hero-badge {
   display: inline-flex; align-items: center; justify-content: center; gap: 7px;
   padding: 6px 14px;
-  background: rgba(96, 165, 250, 0.09);
-  border: 1px solid rgba(96, 165, 250, 0.16);
+  background: rgba(219, 234, 254, 0.16);
+  border: 1px solid rgba(96, 165, 250, 0.38);
   border-radius: 999px;
-  font-size: 12.5px; color: #93c5fd;
+  font-size: 12.5px; color: #dbeafe;
   letter-spacing: 1px;
   margin-bottom: 22px;
   animation: fadeIn 0.5s ease-out 0.15s both;
@@ -376,13 +377,13 @@ const modules = [
   box-shadow: 0 6px 24px rgba(37, 99, 235, 0.45);
 }
 .hero-btn.outline {
-  border: 1px solid rgba(255,255,255,0.16);
-  color: rgba(255,255,255,0.82);
+  border: 1px solid rgba(255,255,255,0.38);
+  color: rgba(255,255,255,0.92);
 }
 .hero-btn.outline:hover {
-  border-color: rgba(96, 165, 250, 0.45);
-  background: rgba(96, 165, 250, 0.07);
-  color: #93c5fd;
+  border-color: rgba(147, 197, 253, 0.75);
+  background: rgba(96, 165, 250, 0.18);
+  color: #eff6ff;
 }
 
 /* ======== Hero 统计面板 ======== */
@@ -438,7 +439,7 @@ const modules = [
 .stat-item:hover .stat-icon {
   background: rgba(96, 165, 250, 0.2);
   border-color: rgba(96, 165, 250, 0.3);
-  color: #93c5fd;
+  color: #dbeafe;
 }
 .stat-body {
   /* 文字区固定宽度（与最长标签对齐），数字在其中水平居中 */

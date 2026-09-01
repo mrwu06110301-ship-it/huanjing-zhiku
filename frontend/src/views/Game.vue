@@ -277,9 +277,9 @@ function difficultyLabel(n: number) {
   inset: 0;
   background: linear-gradient(
     180deg,
-    rgba(10, 16, 29, 0.30) 0%,
-    rgba(10, 16, 29, 0.52) 55%,
-    rgba(10, 16, 29, 0.70) 100%
+    rgba(232, 238, 247, 0.30) 0%,
+    rgba(232, 238, 247, 0.50) 55%,
+    rgba(232, 238, 247, 0.68) 100%
   );
 }
 .bg-glow {

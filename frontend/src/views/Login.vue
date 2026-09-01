@@ -310,7 +310,7 @@ async function finishLogin(token: string) {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: transparent; /* 透出全局深色氛围层 */
+  background: transparent; /* 透出全局浅色氛围层 */
   position: relative;
   overflow: hidden;
 }
