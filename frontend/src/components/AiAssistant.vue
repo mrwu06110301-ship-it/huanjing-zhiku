@@ -33,8 +33,6 @@ interface Msg {
   role: "user" | "assistant";
   content: string;
   sources?: Source[];
-  reasoning?: string;
-  showReasoning?: boolean;
   error?: boolean;
 }
 
@@ -111,10 +109,11 @@ async function send() {
   }
   input.value = "";
   msgs.value.push({ role: "user", content: q });
-  msgs.value.push({ role: "assistant", content: "", showReasoning: true });
+  msgs.value.push({ role: "assistant", content: "" });
   // 关键：必须取数组内的响应式代理，直接持有原始对象修改不触发渲染（流式失效根因）
   const aiMsg = msgs.value[msgs.value.length - 1]!;
   thinking.value = true;
+  startFunTip();
   scrollBottom();
 
   try {
@@ -156,13 +155,7 @@ async function send() {
         try {
           const evt = JSON.parse(line.slice(5));
           if (evt.type === "sources") aiMsg.sources = evt.sources;
-          else if (evt.type === "reasoning") {
-            aiMsg.reasoning = (aiMsg.reasoning || "") + evt.text;
-            scrollBottom();
-          }
           else if (evt.type === "delta") {
-            // 正文开始输出时自动收起思考过程
-            if (!aiMsg.content && aiMsg.showReasoning) aiMsg.showReasoning = false;
             aiMsg.content += evt.text;
             scrollBottom();
           } else if (evt.type === "error") {
@@ -179,6 +172,7 @@ async function send() {
     aiMsg.content = aiMsg.content || "网络异常，请稍后再试";
   } finally {
     thinking.value = false;
+    stopFunTip();
     scrollBottom();
   }
 }
@@ -194,6 +188,32 @@ const QUICK_QS = [
 function askQuick(q: string) {
   input.value = q;
   send();
+}
+
+/* ---- 有趣的等待提示（思考中轮换展示） ---- */
+const FUN_TIPS = [
+  "正在翻阅 1242+ 份监测标准…",
+  "采样枪预热中，请稍等…",
+  "正在核对 HJ 标准限值…",
+  "知识库里搜索答案ing…",
+  "正在计算烟道测点数量…",
+  "滤筒已称重，数据马上到…",
+  "正在请教环保老专家…",
+  "正在校准流量计…",
+  "别急，正在给数据做质控…",
+  "标准答案打包中，马上就好…",
+];
+const funTip = ref(FUN_TIPS[0]);
+let funTimer: ReturnType<typeof setInterval> | null = null;
+function startFunTip() {
+  funTip.value = FUN_TIPS[Math.floor(Math.random() * FUN_TIPS.length)]!;
+  stopFunTip();
+  funTimer = setInterval(() => {
+    funTip.value = FUN_TIPS[Math.floor(Math.random() * FUN_TIPS.length)]!;
+  }, 2500);
+}
+function stopFunTip() {
+  if (funTimer) { clearInterval(funTimer); funTimer = null; }
 }
 </script>
 
@@ -252,12 +272,10 @@ function askQuick(q: string) {
 
         <div v-for="(m, i) in msgs" :key="i" :class="['msg-row', m.role]">
           <div class="msg-bubble">
-            <div v-if="m.reasoning" class="msg-reasoning" :class="{ done: !!m.content }">
-              <button class="r-toggle" @click="m.showReasoning = !m.showReasoning">
-                <span class="r-dot" :class="{ idle: !!m.content }"></span>
-                {{ m.content ? (m.showReasoning ? "▼ 收起思考过程" : "▶ 展开思考过程") : "思考中…" }}
-              </button>
-              <div v-if="m.showReasoning" class="r-body">{{ m.reasoning }}</div>
+            <!-- 等待中且尚无正文：显示有趣的轮换提示 -->
+            <div v-if="thinking && i === msgs.length - 1 && m.role === 'assistant' && !m.content" class="fun-wait">
+              <span class="wait-dots"><i></i><i></i><i></i></span>
+              <span class="wait-text">{{ funTip }}</span>
             </div>
             <!-- AI 消息：markdown 实时渲染；用户消息：纯文本 -->
             <div
@@ -266,7 +284,7 @@ function askQuick(q: string) {
               v-html="renderMd(m.content)"
             ></div>
             <div v-else class="msg-text">{{ m.content }}</div>
-            <span v-if="thinking && i === msgs.length - 1 && m.role === 'assistant'" class="cursor">▋</span>
+            <span v-if="thinking && i === msgs.length - 1 && m.role === 'assistant' && m.content" class="cursor">▋</span>
             <div v-if="m.sources && m.sources.length" class="msg-sources">
               <div class="src-label">来源：</div>
               <span v-for="(s, j) in m.sources" :key="j" class="src-chip" @click="gotoSource(s)">
@@ -498,26 +516,26 @@ function askQuick(q: string) {
 .msg-text.md :deep(a) { color: var(--primary, #2563eb); text-decoration: underline; }
 .msg-text.md :deep(hr) { border: none; border-top: 1px solid var(--border, #e2e8f0); margin: 8px 0; }
 .msg-row.assistant .msg-bubble:has(.msg-sources) { min-width: 60%; }
-.msg-reasoning {
-  font-size: 11px; color: var(--text-muted, #94a3b8); margin-bottom: 6px;
+/* 有趣的等待提示 */
+.fun-wait {
+  display: flex; align-items: center; gap: 8px;
+  color: var(--text-light, #475569); font-size: 13px;
 }
-.r-toggle {
-  border: none; background: none; cursor: pointer; padding: 0;
-  font-size: 11px; color: var(--text-muted, #94a3b8); display: inline-flex; align-items: center; gap: 4px;
-}
-.r-toggle:hover { color: var(--primary, #2563eb); }
-.r-dot {
-  display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+.wait-dots { display: inline-flex; gap: 3px; }
+.wait-dots i {
+  width: 6px; height: 6px; border-radius: 50%;
   background: var(--primary, #2563eb);
-  animation: blink 0.9s infinite; vertical-align: middle;
+  animation: dot-bounce 1.2s infinite;
 }
-.r-dot.idle { animation: none; opacity: 0.5; }
-.r-body {
-  margin-top: 5px; padding: 8px 10px; border-radius: 8px;
-  background: var(--bg, #f8fafc); color: var(--text-light, #475569);
-  font-size: 11.5px; line-height: 1.6; white-space: pre-wrap; word-break: break-word;
-  max-height: 160px; overflow-y: auto;
+.wait-dots i:nth-child(2) { animation-delay: 0.15s; }
+.wait-dots i:nth-child(3) { animation-delay: 0.3s; }
+@keyframes dot-bounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30% { transform: translateY(-4px); opacity: 1; }
 }
+.wait-text { animation: tip-fade 0.4s ease; }
+@keyframes tip-fade { from { opacity: 0; } to { opacity: 1; } }
+
 .cursor { animation: blink 0.9s infinite; color: var(--primary, #2563eb); }
 @keyframes blink { 50% { opacity: 0; } }
 
