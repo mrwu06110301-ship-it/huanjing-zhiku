@@ -41,6 +41,8 @@ interface Msg {
 const router = useRouter();
 const open = ref(false);
 const enabled = ref(false);
+const fullscreen = ref(false); // 对话窗全屏模式
+const showTip = ref(false); // 悬浮球引导气泡
 const input = ref("");
 const thinking = ref(false);
 const msgs = ref<Msg[]>([]);
@@ -51,6 +53,14 @@ onMounted(async () => {
     const res = await fetch("/api/assistant/status");
     const data = await res.json();
     enabled.value = !!data.enabled;
+    // 引导气泡：未使用过 AI 时延迟弹出，点击任意处或 8s 后自动收起
+    try {
+      if (enabled.value && !localStorage.getItem("ai_tip_seen")) {
+        setTimeout(() => { showTip.value = true; }, 1500);
+        setTimeout(() => { showTip.value = false; localStorage.setItem("ai_tip_seen", "1"); }, 9500);
+        document.addEventListener("click", () => { showTip.value = false; localStorage.setItem("ai_tip_seen", "1"); }, { once: true });
+      }
+    } catch { /* localStorage 不可用则不显示引导 */ }
   } catch {
     enabled.value = false;
   }
@@ -190,19 +200,25 @@ function askQuick(q: string) {
 <template>
   <!-- 悬浮按钮 -->
   <transition name="fab-in">
-    <button v-if="enabled && !open" class="ai-fab" @click="toggle" aria-label="AI助手">
-      <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <button v-if="enabled && !open" class="ai-fab" :class="{ glowing: !showTip }" @click="toggle" aria-label="AI助手">
+      <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
         <path d="M12 3l1.8 4.6L18 9l-4.2 1.4L12 15l-1.8-4.6L6 9l4.2-1.4z" fill="currentColor" stroke="none" opacity="0.9"/>
         <path d="M19 14l.9 2.3L22 17l-2.1.7L19 20l-.9-2.3L16 17l2.1-.7z" fill="currentColor" stroke="none" opacity="0.6"/>
         <circle cx="5.5" cy="17.5" r="2" />
       </svg>
       <span class="fab-badge">AI</span>
+      <transition name="tip-in">
+        <span v-if="showTip" class="fab-tip" @click.stop="toggle">
+          <span class="tip-text"><b>小吴 AI 助手</b><br/>问我环境监测问题，秒答！</span>
+          <i class="tip-arrow"></i>
+        </span>
+      </transition>
     </button>
   </transition>
 
   <!-- 对话窗 -->
   <transition name="panel-in">
-    <div v-if="open" class="ai-panel">
+    <div v-if="open" class="ai-panel" :class="{ fullscreen }">
       <div class="ai-head">
         <div class="ai-head-title">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
@@ -212,7 +228,18 @@ function askQuick(q: string) {
           <b>小吴 AI 助手</b>
           <span class="ai-sub">环境监测知识库</span>
         </div>
-        <button class="ai-close" @click="toggle">✕</button>
+        <div class="ai-head-actions">
+          <button class="ai-fs-btn" @click="fullscreen = !fullscreen" :title="fullscreen ? '退出全屏' : '全屏'">
+            <!-- 全屏 / 还原 两种图标 -->
+            <svg v-if="!fullscreen" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/>
+            </svg>
+            <svg v-else viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M8 3v3a2 2 0 0 1-2 2H3M21 8h-3a2 2 0 0 1-2-2V3M3 16h3a2 2 0 0 1 2 2v3M16 21v-3a2 2 0 0 1 2-2h3"/>
+            </svg>
+          </button>
+          <button class="ai-close" @click="toggle">✕</button>
+        </div>
       </div>
 
       <div ref="bodyRef" class="ai-body">
@@ -273,8 +300,8 @@ function askQuick(q: string) {
   right: 22px;
   bottom: 22px;
   z-index: 2000;
-  width: 56px;
-  height: 56px;
+  width: 64px;
+  height: 64px;
   border: none;
   border-radius: 50%;
   background: linear-gradient(135deg, #2563eb, #7c3aed);
@@ -286,11 +313,27 @@ function askQuick(q: string) {
   box-shadow: 0 6px 20px rgba(37, 99, 235, 0.4);
   transition: transform 0.2s var(--ease, ease), box-shadow 0.2s;
 }
-.ai-fab:hover { transform: translateY(-3px) scale(1.05); box-shadow: 0 10px 28px rgba(37, 99, 235, 0.5); }
+.ai-fab:hover { transform: translateY(-3px) scale(1.06); box-shadow: 0 10px 28px rgba(37, 99, 235, 0.5); }
+.ai-fab:active { transform: scale(0.94); }
+/* 呼吸光圈：周期性扩散波纹提示可点击 */
+.ai-fab.glowing::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid rgba(37, 99, 235, 0.55);
+  animation: fab-pulse 2.2s ease-out infinite;
+  pointer-events: none;
+}
+@keyframes fab-pulse {
+  0% { transform: scale(1); opacity: 0.9; }
+  70% { transform: scale(1.55); opacity: 0; }
+  100% { transform: scale(1.55); opacity: 0; }
+}
 .fab-badge {
   position: absolute;
   top: -4px;
-  right: -4px;
+  right: -6px;
   font-size: 10px;
   font-weight: 700;
   background: #06b6d4;
@@ -299,20 +342,69 @@ function askQuick(q: string) {
   letter-spacing: 0.5px;
 }
 
+/* 引导气泡 */
+.fab-tip {
+  position: absolute;
+  right: 76px;
+  bottom: 6px;
+  width: max-content;
+  max-width: 210px;
+  background: var(--white, #fff);
+  color: var(--text, #1e293b);
+  border-radius: 12px;
+  border: 1px solid var(--border, #e2e8f0);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.15);
+  padding: 10px 14px;
+  text-align: left;
+  cursor: pointer;
+  animation: tip-float 2.4s ease-in-out infinite;
+}
+.tip-text { font-size: 12.5px; line-height: 1.6; display: block; }
+.tip-text b { color: var(--primary, #2563eb); font-size: 13px; }
+.tip-arrow {
+  position: absolute;
+  right: -5px;
+  bottom: 18px;
+  width: 9px;
+  height: 9px;
+  background: var(--white, #fff);
+  border-right: 1px solid var(--border, #e2e8f0);
+  border-top: 1px solid var(--border, #e2e8f0);
+  transform: rotate(45deg);
+}
+@keyframes tip-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+.tip-in-enter-active { transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); }
+.tip-in-enter-from { opacity: 0; transform: translateX(12px) scale(0.9); }
+.tip-in-leave-active { transition: all 0.2s ease; }
+.tip-in-leave-to { opacity: 0; transform: translateX(8px); }
+
 /* ---- 对话窗 ---- */
 .ai-panel {
   position: fixed;
   right: 22px;
   bottom: 22px;
   z-index: 2001;
-  width: min(400px, calc(100vw - 24px));
-  height: min(600px, calc(100vh - 60px));
+  width: min(480px, calc(100vw - 24px));
+  height: min(680px, calc(100vh - 60px));
   background: var(--white, #fff);
   border-radius: 16px;
   box-shadow: 0 12px 48px rgba(15, 23, 42, 0.22);
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  transition: width 0.25s ease, height 0.25s ease, border-radius 0.25s ease;
+}
+/* 全屏模式 */
+.ai-panel.fullscreen {
+  right: 0;
+  bottom: 0;
+  width: 100vw;
+  height: 100vh;
+  max-width: 100vw;
+  border-radius: 0;
 }
 .ai-head {
   display: flex;
@@ -324,6 +416,14 @@ function askQuick(q: string) {
 }
 .ai-head-title { display: flex; align-items: center; gap: 8px; font-size: 15px; }
 .ai-sub { font-size: 11px; opacity: 0.75; margin-left: 2px; }
+.ai-head-actions { display: flex; align-items: center; gap: 8px; }
+.ai-fs-btn {
+  border: none; background: rgba(255,255,255,0.15); color: #fff;
+  width: 26px; height: 26px; border-radius: 50%; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.2s;
+}
+.ai-fs-btn:hover { background: rgba(255,255,255,0.3); }
 .ai-close {
   border: none; background: rgba(255,255,255,0.15); color: #fff;
   width: 26px; height: 26px; border-radius: 50%; cursor: pointer; font-size: 13px;
@@ -333,6 +433,10 @@ function askQuick(q: string) {
 
 /* ---- 消息区 ---- */
 .ai-body { flex: 1; overflow-y: auto; padding: 16px 14px; background: var(--bg, #f8fafc); }
+/* 全屏时消息区居中限宽，长文阅读更舒适 */
+.ai-panel.fullscreen .ai-body { padding: 20px 16px; }
+.ai-panel.fullscreen .ai-body > * { max-width: 860px; margin-left: auto; margin-right: auto; }
+.ai-panel.fullscreen .msg-bubble { max-width: 78%; }
 .ai-welcome {
   background: var(--white, #fff);
   border-radius: 12px;
@@ -457,7 +561,9 @@ function askQuick(q: string) {
 .panel-in-leave-to { transform: translateY(16px) scale(0.97); opacity: 0; }
 
 @media (max-width: 768px) {
-  .ai-fab { right: 16px; bottom: 16px; width: 50px; height: 50px; }
-  .ai-panel { right: 12px; bottom: 12px; height: min(560px, calc(100vh - 40px)); }
+  .ai-fab { right: 16px; bottom: 16px; width: 58px; height: 58px; }
+  .fab-tip { right: 68px; max-width: 180px; }
+  /* 移动端默认接近全屏，阅读体验优先 */
+  .ai-panel { right: 8px; bottom: 8px; width: calc(100vw - 16px); height: min(78vh, calc(100vh - 32px)); }
 }
 </style>
