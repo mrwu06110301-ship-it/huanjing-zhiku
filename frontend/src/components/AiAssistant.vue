@@ -94,6 +94,19 @@ function gotoSource(s: Source) {
   open.value = false;
 }
 
+/** AI 回答内站内链接点击：拦截走路由跳转（SPA 不刷新），外部链接正常打开 */
+function onBodyClick(e: MouseEvent) {
+  const a = (e.target as HTMLElement).closest("a");
+  if (!a) return;
+  const href = a.getAttribute("href") || "";
+  if (href.startsWith("/")) {
+    e.preventDefault();
+    open.value = false; // 关闭对话窗再跳转
+    router.push(href);
+  }
+  // 非 / 开头（http/https）走浏览器默认行为，新标签打开
+}
+
 function sourceLabel(t: string) {
   return { article: "文章", standard_meta: "标准", standard_pdf: "标准全文", video: "视频", tool: "工具" }[t] || "资料";
 }
@@ -262,7 +275,7 @@ function stopFunTip() {
         </div>
       </div>
 
-      <div ref="bodyRef" class="ai-body">
+      <div ref="bodyRef" class="ai-body" @click="onBodyClick">
         <div v-if="msgs.length === 0" class="ai-welcome">
           <p>你好！我是产品小吴知识库的 AI 助手，可以回答环境监测相关问题，支持检索站内 <b>1242+ 标准</b>、技术文章和视频。</p>
           <div class="quick-qs">
@@ -514,6 +527,7 @@ function stopFunTip() {
 .msg-text.md :deep(th), .msg-text.md :deep(td) { border: 1px solid var(--border, #e2e8f0); padding: 4px 8px; text-align: left; }
 .msg-text.md :deep(th) { background: var(--bg-soft, #f1f5f9); font-weight: 600; }
 .msg-text.md :deep(a) { color: var(--primary, #2563eb); text-decoration: underline; }
+.msg-text.md :deep(a):active { opacity: 0.7; }
 .msg-text.md :deep(hr) { border: none; border-top: 1px solid var(--border, #e2e8f0); margin: 8px 0; }
 .msg-row.assistant .msg-bubble:has(.msg-sources) { min-width: 60%; }
 /* 有趣的等待提示 */
