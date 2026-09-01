@@ -17,7 +17,7 @@ import {
   TrendTwo, Layers, Filter, Rocket, Star, Mail, Phone, Send, Copy,
   Refresh, LinkTwo, EditOne, Magic, Shield, Key, Login,
   DatabaseConfig, Server, CloudStorage, Lightning, Chimney, Wind, Flask, WaterLevel,
-  Sort,
+  Sort, Game,
 } from "@icon-park/vue-next";
 
 const props = withDefaults(defineProps<{
@@ -113,6 +113,7 @@ const ICON_MAP: Record<string, unknown> = {
   wind: Wind,
   flask: Flask,
   waterLevel: WaterLevel,
+  game: Game,
 };
 
 const comp = computed(() => ICON_MAP[props.name]);
