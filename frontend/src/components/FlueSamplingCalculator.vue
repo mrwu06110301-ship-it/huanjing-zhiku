@@ -38,6 +38,9 @@ type CalcResult = {
 const mode = ref<'c'|'r'>('c');
 const result = ref<CalcResult | null>(null);
 const stdOpen = ref(false);
+const previewOpen = ref(false);
+const previewSrc = ref('');
+const previewTitle = ref('');
 
 function switchTab(m: 'c'|'r') {
   mode.value = m;
@@ -284,9 +287,11 @@ function drawRectangular() {
   const W = canvas.width, H = canvas.height;
   const pad = 60;
   const A = result.value.A!, B = result.value.B!;
-  const s = Math.min((W - 2 * pad) / A, (H - 2 * pad) / B);
+  // 顶部预留采样孔标注空间（孔号 + 箭头），左右留边长标注空间
+  const topPad = pad + 22;
+  const s = Math.min((W - 2 * pad) / A, (H - topPad - pad) / B);
   const rw = A * s, rh = B * s;
-  const ox = (W - rw) / 2, oy = (H - rh) / 2;
+  const ox = (W - rw) / 2, oy = topPad + (H - topPad - pad - rh) / 2;
 
   ctx.clearRect(0, 0, W, H);
   ctx.fillStyle = '#070b12'; ctx.fillRect(0, 0, W, H);
@@ -305,16 +310,18 @@ function drawRectangular() {
 
   ctx.strokeStyle = '#3a5580'; ctx.lineWidth = 3; ctx.strokeRect(ox, oy, rw, rh);
 
-  for (let ja = 0; ja < result.value.nA!; ja++) {
-    const y_hole = oy + (ja + 0.5) * (rh / result.value.nA!);
+  // 采样孔开在 A 边（采样孔侧）：箭头位于顶边，沿 A 方向均布，垂直向下指示探杆插入方向
+  const holes = result.value.nA!;
+  for (let ja = 0; ja < holes; ja++) {
+    const x_hole = ox + (ja + 0.5) * (rw / holes);
     ctx.fillStyle = HOLE_COLORS[ja % HOLE_COLORS.length] + '80';
     ctx.beginPath();
-    ctx.moveTo(ox - 20, y_hole); ctx.lineTo(ox - 8, y_hole - 6); ctx.lineTo(ox - 8, y_hole + 6);
+    ctx.moveTo(x_hole, oy + 20); ctx.lineTo(x_hole - 6, oy + 8); ctx.lineTo(x_hole + 6, oy + 8);
     ctx.closePath(); ctx.fill();
-    // 孔号 — 更大更清晰
+    // 孔号标注在烟道上方，错开箭头位置
     ctx.fillStyle = '#4a9eff';
-    ctx.font = 'bold 13px "JetBrains Mono"'; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
-    ctx.fillText('孔' + (ja + 1), ox - 24, y_hole);
+    ctx.font = 'bold 13px "JetBrains Mono"'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+    ctx.fillText('孔' + (ja + 1), x_hole, oy - 4);
   }
 
   for (const pt of (result.value.points || [])) {
@@ -341,9 +348,9 @@ function drawRectangular() {
 
   ctx.fillStyle = 'rgba(136,150,173,0.7)';
   ctx.font = '12px "JetBrains Mono"'; ctx.textAlign = 'center';
-  ctx.fillText('A = ' + A.toFixed(3) + 'm (' + result.value.nA + '等分)', ox + rw / 2, oy + rh + 28);
+  ctx.fillText('A = ' + A.toFixed(3) + 'm (' + result.value.nA + '等分·采样孔侧)', ox + rw / 2, oy + rh + 28);
   ctx.save(); ctx.translate(ox - 28, oy + rh / 2); ctx.rotate(-Math.PI / 2);
-  ctx.fillText('B = ' + B.toFixed(3) + 'm (' + result.value.nB + '等分)', 0, 0); ctx.restore();
+  ctx.fillText('B = ' + B.toFixed(3) + 'm (' + result.value.nB + '等分·深度方向)', 0, 0); ctx.restore();
 
   ctx.fillStyle = 'rgba(136,150,173,0.5)';
   ctx.font = '11px "Noto Sans SC"'; ctx.textAlign = 'left';
@@ -352,8 +359,60 @@ function drawRectangular() {
   ctx.fillText(result.value.nA + '×' + result.value.nB + ' / ' + result.value.holes + '孔 / ' + result.value.totalPts + '点', W - 12, H - 12);
 
   const hint = document.getElementById('flue-viz-hint');
-  if (hint) hint.textContent = '网格线为等面积分块线 · 彩色圆点为采样测点 · 箭头指示采样孔位置（探杆插入方向）';
+  if (hint) hint.textContent = '网格线为等面积分块线 · 彩色圆点为采样测点 · 顶部箭头指示采样孔位置（探杆垂直插入方向）';
 }
+
+// ==================== 示意图预览与保存 ====================
+// 渲染一张 2x 高清示意图（离屏 canvas，尺寸与比例和页面画布一致）
+function renderHiResCanvas(): HTMLCanvasElement | null {
+  if (!result.value) return null;
+  const src = document.getElementById('flue-canvas') as HTMLCanvasElement | null;
+  if (!src) return null;
+  const scale = 2;
+  const off = document.createElement('canvas');
+  off.width = src.width * scale;
+  off.height = src.height * scale;
+
+  // getElementById 只能查到已挂载元素：必须先挂到 DOM（屏幕外）再借 id 重绘
+  off.style.position = 'fixed';
+  off.style.left = '-99999px';
+  document.body.appendChild(off);
+  const origId = src.id;
+  src.id = 'flue-canvas-backup';
+  off.id = origId;
+  try {
+    if (result.value.type === 'c') drawCircular();
+    else drawRectangular();
+  } finally {
+    off.id = '';
+    src.id = origId;
+    document.body.removeChild(off);
+  }
+  return off;
+}
+
+function openPreview() {
+  if (!result.value) return;
+  const off = renderHiResCanvas();
+  if (!off) return;
+  previewTitle.value = result.value.type === 'c'
+    ? '圆形烟道截面布点示意图'
+    : '矩形烟道截面布点示意图';
+  previewSrc.value = off.toDataURL('image/png');
+  previewOpen.value = true;
+}
+
+function saveImage() {
+  const a = document.createElement('a');
+  const r = result.value;
+  const prefix = r && r.type === 'c' ? '圆形烟道布点' : '矩形烟道布点';
+  a.download = prefix + '_' + new Date().toISOString().slice(0, 10) + '.png';
+  a.href = previewSrc.value || '';
+  if (!a.href) return;
+  a.click();
+}
+
+function closePreview() { previewOpen.value = false; }
 
 function showTable() {
   const panel = document.getElementById('flue-table-panel');
@@ -447,8 +506,31 @@ onMounted(() => { loadFonts(); clearCanvas(); });
 
       <div class="flue-panel flue-viz-panel">
         <h3>截面布点示意图</h3>
-        <canvas id="flue-canvas" width="600" height="600"></canvas>
+        <div class="flue-canvas-wrap" @click="openPreview()" :class="{ clickable: result }" title="点击预览大图">
+          <canvas id="flue-canvas" width="600" height="600"></canvas>
+          <div class="flue-canvas-zoom" v-if="result">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+            点击预览
+          </div>
+        </div>
         <div class="flue-viz-hint" id="flue-viz-hint">输入参数后点击"计算布点方案"</div>
+      </div>
+    </div>
+
+    <!-- 示意图预览弹层 -->
+    <div v-if="previewOpen" class="flue-preview-mask" @click.self="closePreview()">
+      <div class="flue-preview-box">
+        <div class="flue-preview-head">
+          <span class="flue-preview-title">{{ previewTitle }}</span>
+          <div class="flue-preview-actions">
+            <button class="flue-preview-btn primary" @click="saveImage()">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              保存图片
+            </button>
+            <button class="flue-preview-btn" @click="closePreview()">关闭</button>
+          </div>
+        </div>
+        <img :src="previewSrc" class="flue-preview-img" :alt="previewTitle" />
       </div>
     </div>
 
@@ -581,8 +663,26 @@ onMounted(() => { loadFonts(); clearCanvas(); });
 
 /* Canvas */
 .flue-viz-panel{display:flex;flex-direction:column;align-items:center}
-.flue-viz-panel canvas{border-radius:10px;background:var(--bg);border:1px solid var(--border);max-width:100%;height:auto}
+.flue-canvas-wrap{position:relative;border-radius:10px;overflow:hidden;border:1px solid var(--border);max-width:100%;cursor:default}
+.flue-canvas-wrap.clickable{cursor:zoom-in}
+.flue-canvas-wrap canvas{display:block;border-radius:10px;background:var(--bg);max-width:100%;height:auto}
+.flue-canvas-zoom{position:absolute;right:10px;bottom:10px;display:flex;align-items:center;gap:5px;padding:5px 12px;border-radius:20px;background:rgba(7,11,18,.75);backdrop-filter:blur(4px);color:var(--text2);font-size:12px;pointer-events:none;opacity:0;transition:opacity .25s}
+.flue-canvas-wrap:hover .flue-canvas-zoom{opacity:1}
+.flue-canvas-zoom svg{width:14px;height:14px}
 .flue-viz-hint{font-size:11px;color:var(--text3);margin-top:10px;text-align:center}
+
+/* 预览弹层 */
+.flue-preview-mask{position:fixed;inset:0;z-index:3000;background:rgba(3,6,12,.82);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;padding:24px;animation:fluePreviewIn .2s ease}
+@keyframes fluePreviewIn{from{opacity:0}to{opacity:1}}
+.flue-preview-box{background:var(--surface);border:1px solid var(--border);border-radius:14px;max-width:min(860px,94vw);max-height:92vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.6)}
+.flue-preview-head{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 18px;border-bottom:1px solid var(--border);flex-shrink:0}
+.flue-preview-title{font-size:14px;font-weight:600;color:var(--text)}
+.flue-preview-actions{display:flex;gap:8px}
+.flue-preview-btn{display:flex;align-items:center;gap:6px;padding:7px 14px;border-radius:8px;border:1px solid var(--border);background:var(--s2);color:var(--text2);font-family:'Noto Sans SC',sans-serif;font-size:13px;cursor:pointer;transition:all .2s}
+.flue-preview-btn:hover{color:var(--text);border-color:var(--text3)}
+.flue-preview-btn.primary{background:linear-gradient(135deg,var(--accent),#00c48c);border:none;color:#060a10;font-weight:700}
+.flue-preview-btn.primary:hover{box-shadow:0 4px 16px rgba(0,232,160,.3);color:#060a10}
+.flue-preview-img{display:block;max-width:100%;max-height:calc(92vh - 60px);object-fit:contain;margin:0 auto}
 
 /* Table */
 .flue-table-panel{margin-bottom:20px;overflow-x:auto}
