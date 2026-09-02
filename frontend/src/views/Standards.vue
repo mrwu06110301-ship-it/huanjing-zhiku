@@ -188,15 +188,98 @@ function switchCat(id: number | null) {
   loadStandards();
 }
 
-/** 统一走 kkFileView 在线预览（服务器已开启缓存持久化，二次预览秒开） */
+/** 统一走 kkFileView 在线预览（服务器已开启缓存持久化，二次预览秒开）
+ * 大文件首次预览需服务器转换 10~60s：先探测缓存，未缓存时在页内显示转换进度，
+ * 完成后给出打开按钮（异步上下文 window.open 会被移动端拦截，需用户点击兜底） */
+type PreviewState = "probing" | "converting" | "ready";
+const previewWait = ref<{ state: PreviewState; title: string; seconds: number; url: string } | null>(null);
+let previewTimer: ReturnType<typeof setInterval> | null = null;
+let previewPoll: ReturnType<typeof setInterval> | null = null;
+let previewGuard: ReturnType<typeof setTimeout> | null = null;
+
+function clearPreviewTimers() {
+  if (previewTimer) { clearInterval(previewTimer); previewTimer = null; }
+  if (previewPoll) { clearInterval(previewPoll); previewPoll = null; }
+  if (previewGuard) { clearTimeout(previewGuard); previewGuard = null; }
+}
+
+function closePreviewWait() {
+  clearPreviewTimers();
+  previewWait.value = null;
+}
+
+/** 轮询探测 kkFileView 是否已完成转换：请求转换产物第一页 0.jpg */
+function probeConverted(fileKey: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    const url = `${window.location.origin}/preview/${fileKey}/0.jpg?t=${Date.now()}`;
+    const timer = setTimeout(() => { img.src = ""; resolve(false); }, 8000);
+    img.onload = () => { clearTimeout(timer); resolve(img.naturalWidth > 10); };
+    img.onerror = () => { clearTimeout(timer); resolve(false); };
+    img.src = url;
+  });
+}
+
+/** ready 状态：自动尝试开新页（桌面通常放行），被拦截时用户点按钮 */
+function tryOpenPreview(url: string) {
+  const win = window.open(url, "_blank", "noopener");
+  if (win) {
+    // 打开成功，短暂展示后收起
+    setTimeout(() => closePreviewWait(), 600);
+  }
+  // win 为 null 说明被弹窗拦截，保留 ready 状态让用户点击
+}
+
 function openPdf(s: StandardOut) {
   if (!s.file_url) return;
   recordStandardView(s.id); // 异步计数，不阻塞预览
   s.view_count = (s.view_count || 0) + 1; // 本地即时更新
+
   const absUrl = `${window.location.origin}${s.file_url}`;
+  // file_url 形如 /uploads/<uuid>.pdf → kkFileView 转换缓存目录以文件名（去扩展名）命名
+  const fileKey = s.file_url.split("/").pop()!.replace(/\.[^.]+$/, "");
   const previewUrl = `${window.location.origin}/preview/onlinePreview?url=${encodeURIComponent(btoa(absUrl))}`;
-  window.open(previewUrl, "_blank", "noopener");
+
+  clearPreviewTimers();
+  previewWait.value = { state: "probing", title: s.title, seconds: 0, url: previewUrl };
+
+  probeConverted(fileKey).then(async (cached) => {
+    if (cached) {
+      // 已有转换缓存：秒开
+      if (previewWait.value) previewWait.value.state = "ready";
+      tryOpenPreview(previewUrl);
+      return;
+    }
+    // 未缓存：进入转换等待，后台触发 onlinePreview（fetch 发出即触发服务器转换，断连不影响服务端落盘）
+    if (previewWait.value) previewWait.value.state = "converting";
+    let seconds = 0;
+    previewTimer = setInterval(() => {
+      seconds += 1;
+      if (previewWait.value) previewWait.value.seconds = seconds;
+    }, 1000);
+    fetch(previewUrl, { mode: "no-cors" }).catch(() => {});
+    // 每 3s 探测转换产物
+    previewPoll = setInterval(async () => {
+      const done = await probeConverted(fileKey);
+      if (done && previewWait.value) {
+        clearPreviewTimers();
+        previewWait.value.state = "ready";
+        tryOpenPreview(previewUrl);
+      }
+    }, 3000);
+    // 最长 3 分钟兜底
+    previewGuard = setTimeout(() => {
+      if (previewWait.value && previewWait.value.state === "converting") {
+        closePreviewWait();
+        ElMessage.warning("转换超时，请稍后重试或下载后查看");
+      }
+    }, 180000);
+  });
 }
+
+onBeforeUnmount(() => {
+  clearPreviewTimers();
+});
 </script>
 
 <template>
@@ -271,6 +354,32 @@ function openPdf(s: StandardOut) {
           加载更多（{{ standards.length }}/{{ total }}）
         </template>
       </button>
+    </div>
+
+    <!-- 首次预览转换等待层 -->
+    <div v-if="previewWait" class="preview-wait-mask">
+      <div class="preview-wait-card">
+        <template v-if="previewWait.state !== 'ready'">
+          <div class="pw-spinner"></div>
+          <h4>{{ previewWait.state === 'probing' ? '正在检查文档缓存...' : '正在转换文档' }}</h4>
+          <p class="pw-title">{{ previewWait.title }}</p>
+          <p v-if="previewWait.state === 'converting'" class="pw-tip">已等待 {{ previewWait.seconds }}s，完成后自动打开预览</p>
+          <p v-else class="pw-tip">即将开始...</p>
+          <p v-if="previewWait.state === 'converting'" class="pw-sub">大文件首次转换约需 10~60 秒，请勿关闭页面</p>
+          <button class="pw-cancel" @click="closePreviewWait">取消</button>
+        </template>
+        <template v-else>
+          <div class="pw-done">
+            <Icon name="info" :size="34" />
+          </div>
+          <h4>转换完成</h4>
+          <p class="pw-title">{{ previewWait.title }}</p>
+          <button class="pw-open-btn" @click="tryOpenPreview(previewWait.url)">
+            <Icon name="eye" :size="15" /> 打开预览
+          </button>
+          <p class="pw-sub">若未自动打开，请点击上方按钮</p>
+        </template>
+      </div>
     </div>
 
     <!-- 批量上传弹窗 -->
@@ -441,6 +550,107 @@ function openPdf(s: StandardOut) {
   border-color: var(--primary); color: var(--primary); box-shadow: var(--shadow-md);
 }
 .load-more-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* ======== 首次预览转换等待层 ======== */
+.preview-wait-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  padding: 20px;
+}
+.preview-wait-card {
+  width: min(360px, 92vw);
+  background: var(--white);
+  border-radius: var(--radius-lg);
+  padding: 32px 24px 26px;
+  text-align: center;
+  box-shadow: var(--shadow-xl);
+  animation: pwIn 0.25s var(--ease);
+}
+@keyframes pwIn {
+  from { opacity: 0; transform: translateY(12px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.pw-spinner {
+  width: 44px;
+  height: 44px;
+  margin: 0 auto 18px;
+  border: 3px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: pwSpin 0.8s linear infinite;
+}
+@keyframes pwSpin { to { transform: rotate(360deg); } }
+.preview-wait-card h4 {
+  font-size: 16px;
+  color: var(--text);
+  margin: 0 0 10px;
+}
+.pw-title {
+  font-size: 13px;
+  color: var(--text-light);
+  margin: 0 0 16px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pw-tip {
+  font-size: 13.5px;
+  color: var(--primary);
+  margin: 0 0 6px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.pw-sub {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0;
+}
+.pw-done {
+  width: 52px;
+  height: 52px;
+  margin: 0 auto 14px;
+  border-radius: 50%;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  color: #059669;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.pw-open-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 30px;
+  margin: 4px 0 10px;
+  background: var(--gradient-primary);
+  color: #fff;
+  border: none;
+  border-radius: 22px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s var(--ease);
+}
+.pw-open-btn:hover { opacity: 0.9; transform: translateY(-1px); }
+.pw-cancel {
+  margin-top: 14px;
+  padding: 7px 22px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: all 0.2s var(--ease);
+}
+.pw-cancel:hover { color: var(--text-light); border-color: var(--text-muted); }
 
 @media (max-width: 768px) {
   .page-header { padding: 24px 0 16px; }
