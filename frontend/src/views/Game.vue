@@ -8,6 +8,7 @@ import bgAirQuality from "@/assets/game/bg-air-quality.webp";
 import bgWater from "@/assets/game/bg-water.webp";
 import bgLdar from "@/assets/game/bg-ldar.webp";
 import bgNoise from "@/assets/game/bg-noise.webp";
+import bgHomeImg from "@/assets/game/bg-home.webp";
 
 /** 场景卡数据 — 与现场监测业务挂钩，open 字段预留后续开放 */
 interface Scene {
@@ -91,18 +92,19 @@ const scenes = ref<Scene[]>([
   },
 ]);
 
-/* ---------- 整页场景背景（双图层交叉淡入） ---------- */
+/* ---------- 整页场景背景（双图层交叉淡入，主页有默认背景） ---------- */
+const bgHome = bgHomeImg;
 const bgLayerA = ref(true);        // 当前显示 A 还是 B
-const bgUrlA = ref("");
+const bgUrlA = ref(bgHome);        // 初始：主页默认背景占位 A 层
 const bgUrlB = ref("");
-const activeBg = ref<string | null>(null);
+const activeBg = ref<string | null>(bgHome);
 const selectedId = ref<string | null>(null);
 const flashPos = ref({ x: 50, y: 40 });
 const flashKey = ref(0);
 
 const selectedScene = computed(() => scenes.value.find((s) => s.id === selectedId.value));
 
-function pickScene(s: Scene, e: MouseEvent) {
+function pickScene(e: MouseEvent, s: Scene) {
   selectedId.value = s.id;
 
   // 点击位置（用于光波闪动起点）
@@ -131,10 +133,11 @@ function pickScene(s: Scene, e: MouseEvent) {
 
 function resetScene() {
   selectedId.value = null;
-  activeBg.value = null;
-  bgUrlA.value = "";
-  bgUrlB.value = "";
-  bgLayerA.value = true;
+  activeBg.value = bgHome;
+  // 回到主页背景：写入隐藏图层交叉淡入
+  if (bgLayerA.value) bgUrlB.value = bgHome;
+  else bgUrlA.value = bgHome;
+  bgLayerA.value = !bgLayerA.value;
 }
 
 function glowStyle(color: string) {
@@ -162,6 +165,8 @@ function difficultyLabel(n: number) {
       ></div>
       <!-- 可读性纱罩：保证文字对比度 -->
       <div class="bg-veil"></div>
+      <!-- 顶部天幕：压暗页头区域，白字标题在任何背景上都可读 -->
+      <div class="bg-top-scrim"></div>
       <!-- 场景主题色氛围光 -->
       <div
         v-if="selectedScene"
@@ -191,7 +196,7 @@ function difficultyLabel(n: number) {
           </div>
           <h1>环监奇兵</h1>
         </div>
-        <p class="page-header-sub">现场监测知识闯关 · 点击场景卡，整页氛围随场景切换（开发中，场景陆续开放）</p>
+        <p class="page-header-sub">现场监测知识闯关 · 点击场景卡，抢先体验场景氛围，游戏开放后即可进入挑战</p>
       </div>
       <div v-if="selectedScene" class="header-right">
         <button class="reset-btn" @click="resetScene">
@@ -258,7 +263,9 @@ function difficultyLabel(n: number) {
 .game-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 0;
+  /* -1：垫到本层叠上下文所有静态内容（页头/卡片/说明）之下，
+     否则 fixed+z:0 会绘制在非定位的页头之上，背景不透明时标题被盖死 */
+  z-index: -1;
   overflow: hidden;
   pointer-events: none;
 }
@@ -271,16 +278,29 @@ function difficultyLabel(n: number) {
   transition: opacity 0.9s ease;
   will-change: opacity;
 }
-.bg-layer.on { opacity: 0.36; }
+.bg-layer.on { opacity: 1; }
 .bg-veil {
   position: absolute;
   inset: 0;
+  /* 顶部几乎全透（保标题区），往下轻纱防卡片区花 */
   background: linear-gradient(
     180deg,
-    rgba(248, 250, 252, 0.42) 0%,
-    rgba(248, 250, 252, 0.68) 55%,
-    rgba(248, 250, 252, 0.85) 100%
+    rgba(248, 250, 252, 0.08) 0%,
+    rgba(248, 250, 252, 0.18) 55%,
+    rgba(248, 250, 252, 0.42) 100%
   );
+}
+.bg-top-scrim {
+  position: absolute;
+  inset: 0;
+  /* 只压顶部 220px：深蓝渐变过渡到全透，模拟天空上半区自然变深 */
+  background: linear-gradient(
+    180deg,
+    rgba(15, 35, 72, 0.52) 0%,
+    rgba(15, 35, 72, 0.28) 55%,
+    transparent 100%
+  );
+  height: 220px;
 }
 .bg-glow {
   position: absolute;
@@ -329,6 +349,35 @@ function difficultyLabel(n: number) {
   border-color: var(--primary);
   color: var(--primary);
   transform: translateY(-1px);
+}
+/* 页头标题：无卡片底，文字自体凸显（白描边 + 深投影 + 主色高亮） */
+.page-header-row .header-left {
+  background: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+}
+.page-header-row .page-title-icon.game-icon {
+  box-shadow: 0 3px 12px rgba(15, 23, 42, 0.18);
+}
+.page-header-row h1 {
+  color: #fff;
+  /* 描边用 text-stroke（合成层属性，无字体交换丢绘问题），阴影仅 2 层 */
+  -webkit-text-stroke: 4px rgba(15, 35, 72, 0.9);
+  paint-order: stroke fill;
+  text-shadow:
+    0 3px 10px rgba(15, 23, 42, 0.55),
+    0 0 22px rgba(15, 35, 72, 0.4);
+  letter-spacing: 1px;
+}
+.page-header-row .page-header-sub {
+  color: #fff;
+  font-weight: 600;
+  -webkit-text-stroke: 2.5px rgba(15, 35, 72, 0.85);
+  paint-order: stroke fill;
+  text-shadow: 0 2px 6px rgba(15, 23, 42, 0.5);
 }
 
 /* 场景网格 */
@@ -491,7 +540,7 @@ function difficultyLabel(n: number) {
   .scene-hero { padding: 18px 18px 0; }
   .scene-body { padding: 14px 18px 0; }
   .scene-footer { padding: 12px 18px 16px; }
-  .bg-layer.on { opacity: 0.3; }
+  .bg-layer.on { opacity: 1; }
 }
 
 /* 动效弱化偏好 */
