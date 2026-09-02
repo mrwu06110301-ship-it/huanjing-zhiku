@@ -127,6 +127,17 @@ function calcRectangular() {
   else if (area <= 20.0) { nA = 4; nB = 5; }
   else { nA = Math.max(2, Math.ceil(A)); nB = Math.max(2, Math.ceil(B)); }
 
+  // GB/T 16157 表4：等面积小块长边长度上限（按断面面积分档）
+  // 细长烟道按固定网格会分出长边超限的长条块，沿超限方向加密分块
+  const edgeLimit = area < 0.1 ? 0.32
+    : area <= 0.5 ? 0.35
+    : area <= 1.0 ? 0.50
+    : area <= 4.0 ? 0.67
+    : area <= 9.0 ? 0.75
+    : 1.0; // >9m² 按 ≤1m 分块（对应 S＞20 规则，从严适用）
+  nA = Math.max(nA, Math.ceil(A / edgeLimit - 1e-9));
+  nB = Math.max(nB, Math.ceil(B / edgeLimit - 1e-9));
+
   const points: any[] = [];
   let pid = 1;
   for (let ja = 0; ja < nA; ja++) {
@@ -562,16 +573,17 @@ onMounted(() => { loadFonts(); clearCanvas(); });
           <div class="flue-std-section">
             <h5>矩形烟道分块与测点数</h5>
             <p>将矩形烟道断面分成适当数量的等面积小块，各块中心即为测点。</p>
-            <table class="flue-std-table"><thead><tr><th>断面面积 S (m²)</th><th>等面积小块</th><th>采样点数</th><th>测孔数</th></tr></thead><tbody>
-              <tr><td>S ≤ 0.5</td><td>2×2</td><td>4</td><td>2</td></tr>
-              <tr><td>0.5 ＜ S ≤ 1</td><td>2×3</td><td>6</td><td>2~3</td></tr>
-              <tr><td>1 ＜ S ≤ 4</td><td>3×3</td><td>9</td><td>3</td></tr>
-              <tr><td>4 ＜ S ≤ 9</td><td>3×4</td><td>12</td><td>3~4</td></tr>
-              <tr><td>9 ＜ S ≤ 16</td><td>4×4</td><td>16</td><td>4</td></tr>
-              <tr><td>16 ＜ S ≤ 20</td><td>4×5</td><td>20</td><td>4~5</td></tr>
-              <tr><td>S ＞ 20</td><td>按≤1m分块</td><td>按面积计算</td><td>按需</td></tr>
+            <table class="flue-std-table"><thead><tr><th>烟道断面面积 (m²)</th><th>等面积小块长边长度 (m)</th><th>等面积小块</th><th>测点总数</th><th>测孔数</th></tr></thead><tbody>
+              <tr><td>＜0.1</td><td>＜0.32</td><td>1×1</td><td>1</td><td>1</td></tr>
+              <tr><td>0.1~0.5</td><td>＜0.35</td><td>2×2</td><td>1~4</td><td>1~2</td></tr>
+              <tr><td>0.5~1.0</td><td>＜0.50</td><td>2×3</td><td>4~6</td><td>2~3</td></tr>
+              <tr><td>1.0~4.0</td><td>＜0.67</td><td>3×3</td><td>6~9</td><td>3</td></tr>
+              <tr><td>4.0~9.0</td><td>＜0.75</td><td>3×4</td><td>9~16</td><td>3~4</td></tr>
+              <tr><td>9.0~16.0</td><td>≤1.0</td><td>4×4</td><td>16</td><td>4</td></tr>
+              <tr><td>16.0~20.0</td><td>≤1.0</td><td>4×5</td><td>20</td><td>4~5</td></tr>
+              <tr><td>＞20</td><td>≤1.0</td><td>按≤1m分块</td><td>按面积计算</td><td>按需</td></tr>
             </tbody></table>
-            <div class="flue-note">当矩形烟道断面面积小于0.3m²，流速分布比较均匀、对称的，可取断面中心作为测点。</div>
+            <div class="flue-note">当矩形烟道断面面积小于0.3m²，流速分布比较均匀、对称的，可取断面中心作为测点。细长断面按"等面积小块长边长度"限值加密分块（工具已自动处理）。</div>
           </div>
           <div class="flue-std-section">
             <h5>采样位置要求</h5>
