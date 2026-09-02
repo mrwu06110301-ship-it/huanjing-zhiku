@@ -4,7 +4,7 @@ import { useAuthStore } from "@/stores/auth";
 import {
   getMessages, getMyMessages,
   createMessage, likeMessage, replyToMessage, getMessageReplies,
-  deleteMessage, formatDate,
+  deleteMessage, deleteMessageReply, formatDate,
   type MessageOut,
 } from "@/api/message";
 import { ElMessage } from "element-plus";
@@ -136,6 +136,28 @@ async function handleDelete(id: number) {
   } catch { ElMessage.error("删除失败"); }
 }
 
+/** 是否显示回复删除按钮：管理员可删任意回复；作者可删自己的回复（仅已展开全量时） */
+function canDeleteReply(reply: MessageOut): boolean {
+  if (!auth.isLoggedIn()) return false;
+  if (auth.isAdmin()) return true;
+  return reply.author_id !== null && reply.author_id === auth.user?.id;
+}
+
+/** 删除回复：仅展开全量后允许（预览态没有 author_id，无法本地判断权限） */
+async function handleDeleteReply(msg: MessageOut, replyId: number) {
+  if (!expandedReplies.value[msg.id]) {
+    // 预览态先展开全量再操作
+    await loadReplies(msg.id);
+  }
+  try {
+    await deleteMessageReply(msg.id, replyId);
+    ElMessage.success("回复已删除");
+    // 刷新全量回复 + 留言列表（reply_count 变化）
+    await loadReplies(msg.id);
+    loadAll();
+  } catch { ElMessage.error("删除失败"); }
+}
+
 function isSystemReply(msg: MessageOut): boolean {
   return !msg.content && !!msg.reply;
 }
@@ -242,6 +264,14 @@ function isSystemReply(msg: MessageOut): boolean {
                 <div class="reply-meta">
                   <span class="reply-author"><Icon name="user" :size="12" /> {{ reply.author_name || '匿名' }}</span>
                   <span class="reply-date">{{ formatDate(reply.created_at) }}</span>
+                  <button
+                    v-if="canDeleteReply(reply)"
+                    class="reply-delete-btn"
+                    title="删除回复"
+                    @click="handleDeleteReply(msg, reply.id)"
+                  >
+                    <Icon name="delete" :size="12" />
+                  </button>
                 </div>
                 <div class="reply-content">{{ reply.content }}</div>
               </div>
@@ -383,9 +413,18 @@ function isSystemReply(msg: MessageOut): boolean {
 .replies-wrap { margin-top: 12px; padding-left: 24px; border-left: 2px solid var(--border-light); }
 .replies-list { display: flex; flex-direction: column; gap: 10px; }
 .reply-item { padding: 12px 14px; background: var(--bg-soft); border-radius: 8px; }
-.reply-meta { display: flex; gap: 10px; margin-bottom: 4px; }
+.reply-meta { display: flex; gap: 10px; margin-bottom: 4px; align-items: center; }
 .reply-author { font-weight: 500; font-size: 13px; color: var(--text); display: flex; align-items: center; gap: 4px; }
 .reply-date { font-size: 11px; color: var(--text-muted); }
+.reply-delete-btn {
+  margin-left: auto;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px;
+  border: none; border-radius: 6px;
+  background: transparent; color: var(--text-muted);
+  cursor: pointer; transition: all 0.2s var(--ease);
+}
+.reply-delete-btn:hover { background: rgba(239, 68, 68, 0.1); color: #ef4444; }
 .reply-content { font-size: 14px; color: var(--text-light); line-height: 1.6; }
 .more-replies-btn {
   margin-top: 10px; padding: 6px 14px; border: none; background: none; cursor: pointer;

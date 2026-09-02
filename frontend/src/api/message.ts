@@ -76,6 +76,11 @@ export function deleteMessage(id: number) {
   return request.delete(`/messages/${id}`);
 }
 
+/** 删除回复（管理员可删任意回复，作者可删自己的回复） */
+export function deleteMessageReply(messageId: number, replyId: number) {
+  return request.delete(`/messages/${messageId}/replies/${replyId}`);
+}
+
 export function formatDate(dateStr: string | null) {
   if (!dateStr) return "";
   const d = new Date(dateStr);

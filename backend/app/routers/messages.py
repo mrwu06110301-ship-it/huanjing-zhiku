@@ -347,3 +347,25 @@ async def delete_message(
 
     await db.delete(message)
     return {"detail": "删除成功"}
+
+
+@router.delete("/{message_id}/replies/{reply_id}")
+async def delete_reply(
+    message_id: int,
+    reply_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """删除回复：管理员可删任意回复，作者仅可删自己的回复"""
+    result = await db.execute(
+        select(Message).where(Message.id == reply_id, Message.parent_id == message_id)
+    )
+    reply = result.scalars().first()
+    if not reply:
+        raise HTTPException(status_code=404, detail="回复不存在")
+
+    if current_user.role != "admin" and reply.author_id != current_user.id:
+        raise HTTPException(status_code=403, detail="无权删除该回复")
+
+    await db.delete(reply)
+    return {"detail": "删除成功"}
