@@ -250,57 +250,110 @@
       </template>
     </div>
 
-    <!-- ===== 第六关 · 质控报告 ===== -->
+    <!-- ===== 第六关 · 紫外法气态污染物 ===== -->
     <div v-else-if="stage === 'level6' && mode === 'play'" class="fq-panel">
       <div class="fq-lvhead">
-        <h3>第六关 · 质控与报告</h3>
-        <p>{{ l6.phase === "calc" ? "按 GB/T 16157 式(21)(20) 完成折算计算" : "报告评审：找出三处不合规表述" }}</p>
+        <h3>第六关 · 紫外法气态污染物</h3>
+        <p>{{ l6.phase === "order" ? "把 HJ 1131/1132 便携式紫外吸收法测定流程按顺序排出来" : "答对四道校准与审核判断题" }}</p>
+      </div>
+      <FlueSceneArt scene="port" class="fq-lv-art">SO2/NO 对紫外特征波长选择性吸收——除尘、伴热、校准，一样不能少</FlueSceneArt>
+
+      <template v-if="l6.phase === 'order'">
+        <div class="fq-orderlane">
+          <div class="fq-orderlane-title">你的测定流程</div>
+          <div class="fq-orderqueue">
+            <span v-if="!l6.queue.length" class="fq-orderhint">点击下方卡片加入…</span>
+            <button v-for="(id, i) in l6.queue" :key="id" class="fq-ordercard" :class="{ bad: l6.checked && l6.queue[i] !== LEVEL6_GAS.order[i] }" @click="l6.checked || l6.queue.splice(i, 1)">
+              <b>{{ i + 1 }}</b> {{ stepLabel(LEVEL6_GAS.steps, id) }}
+            </button>
+          </div>
+        </div>
+        <div class="fq-orderpool">
+          <div class="fq-orderlane-title">待排列步骤</div>
+          <button v-for="id in l6pool" :key="id" class="fq-ordercard ghost" @click="!l6.checked && l6.queue.push(id)">
+            {{ stepLabel(LEVEL6_GAS.steps, id) }}
+          </button>
+        </div>
+        <button class="fq-next" :disabled="l6.queue.length !== LEVEL6_GAS.order.length || l6.checked" @click="checkL6Order">
+          提交流程 ▸
+        </button>
+        <div v-if="l6.checked" class="fq-orderwhy">
+          <div v-for="st in LEVEL6_GAS.steps" :key="st.id" class="fq-whyrow">
+            <b>{{ LEVEL6_GAS.order.indexOf(st.id) + 1 }}. {{ st.label }}</b><span>{{ st.why }}</span>
+          </div>
+        </div>
+        <button v-if="l6.checked" class="fq-next" @click="l6.phase = 'judge'">进入校准审核判断 ▸</button>
+      </template>
+
+      <template v-else>
+        <div class="fq-quizbox" v-for="(j, ji) in LEVEL6_GAS.judge" :key="ji">
+          <div class="fq-quiztitle">{{ j.q }}</div>
+          <div class="fq-colopts">
+            <button v-for="o in j.options" :key="o.label" class="fq-choice"
+                    :class="{ right: l6.judgeRevealed[ji] && o.correct, wrong: l6.judgeRevealed[ji] && l6.judgePick[ji] === o.label && !o.correct }"
+                    :disabled="l6.judgeRevealed[ji]" @click="pickL6Judge(ji, o)">
+              {{ o.label }}
+            </button>
+          </div>
+          <div v-if="l6.judgeRevealed[ji]" class="fq-feedback" :class="{ good: l6.judgeRight[ji] }">
+            {{ j.options.find(o => o.label === l6.judgePick[ji])?.feedback }}
+          </div>
+        </div>
+        <button v-if="l6.judgeAllDone" class="fq-next" @click="finishLevel6">气态污染物测定完毕 ▸</button>
+      </template>
+    </div>
+
+    <!-- ===== 第七关 · 质控报告 ===== -->
+    <div v-else-if="stage === 'level7' && mode === 'play'" class="fq-panel">
+      <div class="fq-lvhead">
+        <h3>第七关 · 质控与报告</h3>
+        <p>{{ l7.phase === "calc" ? "按 GB/T 16157 式(21)(20) 完成折算计算" : "报告评审：找出三处不合规表述" }}</p>
       </div>
       <FlueSceneArt scene="office" class="fq-lv-art">回到办公室——数据变成报告前的最后一道关</FlueSceneArt>
 
-      <template v-if="l6.phase === 'calc'">
+      <template v-if="l7.phase === 'calc'">
         <div class="fq-params">
-          <div class="fq-param" v-for="g in LEVEL6_CALC.given" :key="g.label">
+          <div class="fq-param" v-for="g in LEVEL7_CALC.given" :key="g.label">
             <span>{{ g.label }}</span><b>{{ g.value }}</b>
           </div>
         </div>
-        <div class="fq-blankrow" v-for="b in LEVEL6_CALC.blanks" :key="b.id">
+        <div class="fq-blankrow" v-for="b in LEVEL7_CALC.blanks" :key="b.id">
           <label>{{ b.label }}</label>
           <div class="fq-blankinput">
-            <input type="number" step="0.1" v-model.number="l6.answers[b.id]" :disabled="l6.calcChecked" />
+            <input type="number" step="0.1" v-model.number="l7.answers[b.id]" :disabled="l7.calcChecked" />
             <span>{{ b.unit }}</span>
           </div>
-          <span v-if="l6.calcChecked" class="fq-blankverdict" :class="blankOk(b) ? 'ok' : 'no'">
+          <span v-if="l7.calcChecked" class="fq-blankverdict" :class="blankOk(b) ? 'ok' : 'no'">
             {{ blankOk(b) ? "✓" : "✗ " + b.hint }}
           </span>
         </div>
-        <button class="fq-next" :disabled="!bothFilled || l6.calcChecked" @click="checkL6Calc">提交计算 ▸</button>
-        <button v-if="l6.calcChecked" class="fq-next" @click="l6.phase = 'report'">进入报告评审 ▸</button>
+        <button class="fq-next" :disabled="!bothFilled || l7.calcChecked" @click="checkL7Calc">提交计算 ▸</button>
+        <button v-if="l7.calcChecked" class="fq-next" @click="l7.phase = 'report'">进入报告评审 ▸</button>
       </template>
 
       <template v-else>
         <div class="fq-quiztitle">点击报告中<b style="color:#f87171">不合规</b>的表述（共 3 处）</div>
         <div class="fq-report">
-          <button v-for="line in l6.lines" :key="line.id" class="fq-reportline"
+          <button v-for="line in l7.lines" :key="line.id" class="fq-reportline"
                   :class="{
-                    err: l6.reportRevealed && line.why,
-                    okline: l6.reportRevealed && !line.why,
-                    marked: l6.marked.includes(line.id) && !l6.reportRevealed
+                    err: l7.reportRevealed && line.why,
+                    okline: l7.reportRevealed && !line.why,
+                    marked: l7.marked.includes(line.id) && !l7.reportRevealed
                   }"
-                  :disabled="l6.reportRevealed"
+                  :disabled="l7.reportRevealed"
                   @click="toggleMark(line.id)">
             {{ line.text }}
           </button>
         </div>
-        <button class="fq-next" :disabled="l6.marked.length !== 3 || l6.reportRevealed" @click="revealReport">
+        <button class="fq-next" :disabled="l7.marked.length !== 3 || l7.reportRevealed" @click="revealReport">
           确认三处问题 ▸
         </button>
-        <div v-if="l6.reportRevealed" class="fq-orderwhy">
-          <div v-for="line in l6.lines" :key="line.id" class="fq-whyrow" v-show="line.why">
+        <div v-if="l7.reportRevealed" class="fq-orderwhy">
+          <div v-for="line in l7.lines" :key="line.id" class="fq-whyrow" v-show="line.why">
             <b>「{{ line.text }}」</b><span>{{ line.why }}</span>
           </div>
         </div>
-        <button v-if="l6.reportRevealed" class="fq-next" @click="finishLevel6">提交报告 ▸</button>
+        <button v-if="l7.reportRevealed" class="fq-next" @click="finishLevel7">提交报告 ▸</button>
       </template>
     </div>
 
@@ -352,14 +405,15 @@ import FlueSceneArt from "./FlueSceneArt.vue";
 import heroAvatar from "@/assets/game/hero-avatar.webp";
 import {
   CIRC_COEFFS, STORY_SCENE_META, PROLOGUE, LEVEL1_PREP, LEVEL2_PARAMS,
-  LEVEL4_WEIGH, LEVEL6_CALC, STAGE_META, TOTAL_MAX, LEVEL_ISO,
+  LEVEL4_WEIGH, LEVEL6_GAS, LEVEL7_CALC, STAGE_META, TOTAL_MAX, LEVEL_ISO,
+  LEVEL6_OPENING_STORY, LEVEL7_OPENING_STORY,
   planCircular, flowAt,
   type StoryStep,
 } from "./flue-quest-data";
 
 const emit = defineEmits<{ (e: "exit"): void }>();
 
-type Stage = "map" | "prologue" | "level1" | "level2" | "level3" | "level4" | "level5" | "level6" | "result";
+type Stage = "map" | "prologue" | "level1" | "level2" | "level3" | "level4" | "level5" | "level6" | "level7" | "result";
 type Mode = "story" | "play";
 const stages = [
   { key: "prologue", label: "序章" },
@@ -368,7 +422,8 @@ const stages = [
   { key: "level3", label: "布点" },
   { key: "level4", label: "等速" },
   { key: "level5", label: "称量" },
-  { key: "level6", label: "报告" },
+  { key: "level6", label: "紫外" },
+  { key: "level7", label: "报告" },
 ] as const;
 function stageIdxOf(s: Stage): number {
   const i = stages.findIndex((x) => x.key === s);
@@ -399,7 +454,7 @@ loadProgress();
 
 /* ---------------- 分数账本 ---------------- */
 const scores = reactive<Record<string, number>>({
-  prologue: 0, level1: 0, level2: 0, level3: 0, level4: 0, level5: 0, level6: 0,
+  prologue: 0, level1: 0, level2: 0, level3: 0, level4: 0, level5: 0, level6: 0, level7: 0,
 });
 const breakdown = computed(() => ({ ...scores }));
 const totalScore = computed(() => Object.values(scores).reduce((a, b) => a + b, 0));
@@ -432,6 +487,7 @@ function enterStage(s: Stage) {
   if (s === "level4") resetL4();
   if (s === "level5") resetL5();
   if (s === "level6") resetL6();
+  if (s === "level7") resetL7();
 
   stage.value = s;
   const opening = OPENINGS[s];
@@ -460,7 +516,8 @@ const OPENINGS: Partial<Record<Stage, StoryStep[]>> = {
   prologue: PROLOGUE,
   level2: LEVEL2_OPENING,
   level5: LEVEL5_OPENING,
-  level6: LEVEL6_OPENING,
+  level6: LEVEL6_OPENING_STORY,
+  level7: LEVEL7_OPENING_STORY,
 };
 const AFTER_STORY: Partial<Record<Stage, () => void>> = {};
 function goPlay() { mode.value = "play"; }
@@ -482,16 +539,6 @@ const LEVEL5_OPENING: StoryStep[] = [
     choices: [
       { label: "在同等恒温恒湿条件下再平衡至少 24h", correct: true, feedback: "正确！HJ 836 8.2.3：采样后应烘烤（105~110℃、1h）干燥冷却后，在与采样前相同的恒温恒湿条件下平衡至少 24h 再称量。" },
       { label: "直接上秤，时间紧", feedback: "没平衡就称，水分差异能带来零点几毫克误差——比颗粒物增量还大，样品直接作废。" },
-    ],
-  },
-];
-const LEVEL6_OPENING: StoryStep[] = [
-  {
-    art: "office",
-    text: "三天期限，明天交报告。所有原始记录摊在桌上——先折算，再评审。燃煤锅炉排放标准规定 α=1.7，实测 O2 10.5%。第一件事：",
-    choices: [
-      { label: "算实测过量空气系数 α′，把实测浓度折算到 α=1.7", correct: true, feedback: "正确！GB/T 16157 / HJ/T 397 第12章：燃煤锅炉实测浓度必须折算到规定过量空气系数下再与限值比较。" },
-      { label: "实测浓度直接和限值比", feedback: "不折算直接比，等于跟标准玩文字游戏——评审第一枪就毙。" },
     ],
   },
 ];
@@ -911,8 +958,49 @@ function finishLevel5() {
   enterStage("level6");
 }
 
-/* ---------------- 第六关 · 质控报告 ---------------- */
+/* ---------------- 第六关 · 紫外法气态污染物 ---------------- */
 const l6 = reactive({
+  phase: "order" as "order" | "judge",
+  queue: [] as string[],
+  checked: false,
+  orderWrong: 0,
+  judgePick: {} as Record<number, string>,
+  judgeRevealed: {} as Record<number, boolean>,
+  judgeRight: {} as Record<number, boolean>,
+});
+const l6pool = computed(() => LEVEL6_GAS.steps.map((s) => s.id).filter((id) => !l6.queue.includes(id)));
+const l6judgeAllDone = computed(() => LEVEL6_GAS.judge.every((_, i) => l6.judgeRevealed[i]));
+
+function resetL6() {
+  l6.phase = "order"; l6.queue = []; l6.checked = false; l6.orderWrong = 0;
+  l6.judgePick = {}; l6.judgeRevealed = {}; l6.judgeRight = {};
+  scores.level6 = 0;
+}
+
+function checkL6Order() {
+  l6.checked = true;
+  let right = 0;
+  LEVEL6_GAS.order.forEach((id, i) => { if (l6.queue[i] === id) right++; });
+  l6.orderWrong = LEVEL6_GAS.order.length - right;
+}
+
+function pickL6Judge(ji: number, o: { label: string; correct?: boolean }) {
+  if (l6.judgeRevealed[ji]) return;
+  l6.judgePick[ji] = o.label;
+  l6.judgeRevealed[ji] = true;
+  l6.judgeRight[ji] = !!o.correct;
+  if (o.correct) scores.level6 += 30;
+}
+
+function finishLevel6() {
+  const orderScore = Math.max(0, 80 - l6.orderWrong * 12);
+  scores.level6 += orderScore;
+  ratioStars("level6", scores.level6 / (STAGE_META.level6?.max ?? 200));
+  enterStage("level7");
+}
+
+/* ---------------- 第七关 · 质控报告 ---------------- */
+const l7 = reactive({
   phase: "calc" as "calc" | "report",
   answers: { alpha: undefined as number | undefined, cconv: undefined as number | undefined },
   calcChecked: false,
@@ -923,55 +1011,54 @@ const l6 = reactive({
 });
 
 const bothFilled = computed(() =>
-  l6.answers.alpha !== undefined && !Number.isNaN(l6.answers.alpha) &&
-  l6.answers.cconv !== undefined && !Number.isNaN(l6.answers.cconv)
+  l7.answers.alpha !== undefined && !Number.isNaN(l7.answers.alpha) &&
+  l7.answers.cconv !== undefined && !Number.isNaN(l7.answers.cconv)
 );
 
-function blankOk(b: (typeof LEVEL6_CALC.blanks)[number]): boolean {
-  const v = l6.answers[b.id as "alpha" | "cconv"];
+function blankOk(b: (typeof LEVEL7_CALC.blanks)[number]): boolean {
+  const v = l7.answers[b.id as "alpha" | "cconv"];
   return v !== undefined && Math.abs(v - b.answer) <= b.tol;
 }
 
-function resetL6() {
-  l6.phase = "calc";
-  l6.answers = { alpha: undefined, cconv: undefined };
-  l6.calcChecked = false;
-  l6.marked = []; l6.reportRevealed = false; l6.markedRight = 0;
-  scores.level6 = 0;
-  // 组装报告行：错行+对行，随机洗牌（确定性洗牌即可）
-  const errs = LEVEL6_CALC.reportErrors.map((e) => ({ id: e.id, text: e.text, why: e.why }));
-  const oks = LEVEL6_CALC.reportOk.map((t, i) => ({ id: "ok" + i, text: t, why: "" }));
-  l6.lines = [...errs, ...oks];
-  // 固定交错排列，避免每次变化太突兀
-  l6.lines = [l6.lines[3], l6.lines[0], l6.lines[4], l6.lines[1], l6.lines[5], l6.lines[2]].filter(Boolean);
+function resetL7() {
+  l7.phase = "calc";
+  l7.answers = { alpha: undefined, cconv: undefined };
+  l7.calcChecked = false;
+  l7.marked = []; l7.reportRevealed = false; l7.markedRight = 0;
+  scores.level7 = 0;
+  // 组装报告行：错行+对行，交错排列
+  const errs = LEVEL7_CALC.reportErrors.map((e) => ({ id: e.id, text: e.text, why: e.why }));
+  const oks = LEVEL7_CALC.reportOk.map((t, i) => ({ id: "ok" + i, text: t, why: "" }));
+  const all = [...errs, ...oks];
+  l7.lines = [all[3], all[0], all[4], all[1], all[5], all[2]].filter(Boolean);
 }
 
-function checkL6Calc() {
-  l6.calcChecked = true;
-  LEVEL6_CALC.blanks.forEach((b) => {
-    if (blankOk(b)) scores.level6 += 30;
+function checkL7Calc() {
+  l7.calcChecked = true;
+  LEVEL7_CALC.blanks.forEach((b) => {
+    if (blankOk(b)) scores.level7 += 30;
   });
 }
 
 function toggleMark(id: string) {
-  if (l6.reportRevealed) return;
-  const i = l6.marked.indexOf(id);
-  if (i >= 0) l6.marked.splice(i, 1);
-  else if (l6.marked.length < 3) l6.marked.push(id);
+  if (l7.reportRevealed) return;
+  const i = l7.marked.indexOf(id);
+  if (i >= 0) l7.marked.splice(i, 1);
+  else if (l7.marked.length < 3) l7.marked.push(id);
 }
 
 function revealReport() {
-  l6.reportRevealed = true;
+  l7.reportRevealed = true;
   let right = 0;
-  for (const id of l6.marked) {
-    if (LEVEL6_CALC.reportErrors.some((e) => e.id === id)) right++;
+  for (const id of l7.marked) {
+    if (LEVEL7_CALC.reportErrors.some((e) => e.id === id)) right++;
   }
-  l6.markedRight = right;
-  scores.level6 += right * 13; // 最多 39 分
-  ratioStars("level6", scores.level6 / (STAGE_META.level6?.max ?? 100));
+  l7.markedRight = right;
+  scores.level7 += right * 13; // 最多 39 分
+  ratioStars("level7", scores.level7 / (STAGE_META.level7?.max ?? 100));
 }
 
-function finishLevel6() {
+function finishLevel7() {
   progress.value.cleared = true;
   if (totalScore.value > progress.value.best) progress.value.best = totalScore.value;
   saveProgress();
@@ -995,8 +1082,9 @@ const knowledgeRecap = computed(() => {
   if (scores.level3 < 170) arr.push("布点：D=1.2m 圆形烟道 → 3 等面积环 × 2 垂直采样孔 × 6 点/孔；测点在等面积中心线与直径交点（GB/T 16157 表3）");
   if (scores.level4 < 170) arr.push("等速采样：进入采样嘴气流速度与测点烟气流速相对误差 ≤10%；采样嘴背向插入、正对气流采样，防止倒吸");
   if (scores.level5 < 80) arr.push("HJ 836：称量前后恒温恒湿平衡≥24h、两次称量偏差≤0.20mg；低于全程序空白增重的样品无效；同步双样相对偏差按浓度线性放宽（25−5(C−1)%）");
-  if (scores.level6 < 80) arr.push("质控报告：α′=21/(21−XO2)，C=C′·α′/α；标气须在有效期内；≤20mg/m³ 用 HJ 836；紫外法测后示值/系统误差/漂移任一超限→结果无效");
-  if (!arr.length) arr.push("全对！六关规范要点都拿捏了，去现场也稳了。");
+  if (scores.level6 < 160) arr.push("紫外法（HJ 1131/1132）：气密性→预热→零点→量程校准（气袋充排3次，SO2标气6h/NO 3h内用）→连续5~15min均值→测后示值/系统误差/漂移审核，任一超限结果无效；结果须在C.S. 20%~100%；负压过大换抗负压仪器或引压平衡");
+  if (scores.level7 < 80) arr.push("质控报告：α′=21/(21−XO2)，C=C′·α′/α；标气须在有效期内；≤20mg/m³ 用 HJ 836；验收监测工况≥75%");
+  if (!arr.length) arr.push("全对！七关规范要点都拿捏了，去现场也稳了。");
   return arr;
 });
 

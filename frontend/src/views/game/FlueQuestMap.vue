@@ -6,7 +6,7 @@
         <span class="fqmap-badge">任务地图</span>
         <h3>城东热电厂 · 烟气监测全流程</h3>
       </div>
-      <p class="fqmap-sub">接单备勤 → 测前准备 → 排气参数 → 布点 → 等速采样 → 颗粒物称量 → 质控报告 · 进度自动保存</p>
+      <p class="fqmap-sub">接单备勤 → 测前准备 → 排气参数 → 布点 → 等速采样 → 颗粒物称量 → 紫外法气态 → 质控报告 · 进度自动保存</p>
     </div>
 
     <!-- ===== 地图主体：电厂场景路径 ===== -->
@@ -22,7 +22,7 @@
 
       <!-- 关卡节点连线 -->
       <svg class="map-path" viewBox="0 0 100 46" preserveAspectRatio="none">
-        <path d="M 8 34 C 16 24, 22 38, 30 28 S 44 14, 52 24 S 62 36, 70 26 S 78 14, 84 24 S 90 34, 93 26"
+        <path d="M 6 34 C 12 22, 17 40, 22 28 S 28 46, 33 32 S 39 14, 44 26 S 50 44, 55 30 S 61 12, 66 24 S 72 42, 77 28 S 83 14, 88 26"
               fill="none" stroke="rgba(96,165,250,.4)" stroke-width="0.7"
               stroke-dasharray="2.2 1.8" class="path-line" />
       </svg>
@@ -45,7 +45,7 @@
 
       <!-- 终点：结算 -->
       <button v-if="allDone" class="node done finish"
-              :style="{ left: '95.5%', top: '20%' }"
+              :style="{ left: '96%', top: '20%' }"
               @click="$emit('select', 'result')">
         <span class="node-core"><Icon name="star" :size="14" /></span>
         <span class="node-label">结算</span>
@@ -73,7 +73,7 @@ import { computed } from "vue";
 import Icon from "@/components/Icon.vue";
 
 export type MapNodeKey =
-  | "prologue" | "level1" | "level2" | "level3" | "level4" | "level5" | "level6" | "result";
+  | "prologue" | "level1" | "level2" | "level3" | "level4" | "level5" | "level6" | "level7" | "result";
 
 const props = defineProps<{
   /** 各关完成星级（0=未完成） */
@@ -85,22 +85,23 @@ defineEmits<{ (e: "select", key: MapNodeKey): void; (e: "reset"): void }>();
 
 /** 节点定义：x/y 为地图百分比坐标（沿波浪路径），no 为显示序号（序章=0） */
 const NODE_DEFS: { key: MapNodeKey; label: string; x: number; y: number; no: number }[] = [
-  { key: "prologue", label: "接单备勤", x: 8,  y: 62, no: 0 },
-  { key: "level1",   label: "测前准备", x: 20, y: 38, no: 1 },
-  { key: "level2",   label: "排气参数", x: 32, y: 60, no: 2 },
-  { key: "level3",   label: "布点采样", x: 44, y: 34, no: 3 },
-  { key: "level4",   label: "等速跟踪", x: 56, y: 58, no: 4 },
-  { key: "level5",   label: "称量判定", x: 68, y: 32, no: 5 },
-  { key: "level6",   label: "质控报告", x: 80, y: 56, no: 6 },
+  { key: "prologue", label: "接单备勤", x: 6,  y: 62, no: 0 },
+  { key: "level1",   label: "测前准备", x: 17, y: 36, no: 1 },
+  { key: "level2",   label: "排气参数", x: 28, y: 62, no: 2 },
+  { key: "level3",   label: "布点采样", x: 39, y: 32, no: 3 },
+  { key: "level4",   label: "等速跟踪", x: 50, y: 60, no: 4 },
+  { key: "level5",   label: "称量判定", x: 61, y: 30, no: 5 },
+  { key: "level6",   label: "紫外法气态", x: 72, y: 58, no: 6 },
+  { key: "level7",   label: "质控报告", x: 83, y: 32, no: 7 },
 ];
 
 /** 未开放的未来场景（装饰节点） */
 const LOCKED_DEFS = [
-  { label: "LDAR猎手", x: 90, y: 30 },
-  { label: "水质追踪", x: 95, y: 58 },
+  { label: "LDAR猎手", x: 92, y: 58 },
+  { label: "水质追踪", x: 96, y: 30 },
 ];
 
-const UNLOCK_ORDER: MapNodeKey[] = ["prologue", "level1", "level2", "level3", "level4", "level5", "level6"];
+const UNLOCK_ORDER: MapNodeKey[] = ["prologue", "level1", "level2", "level3", "level4", "level5", "level6", "level7"];
 
 const nodes = computed(() => {
   // 解锁逻辑：第 1 关永远解锁；第 n 关需前 n-1 关拿到 ≥1 星
