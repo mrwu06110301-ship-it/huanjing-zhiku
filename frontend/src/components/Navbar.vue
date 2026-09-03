@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
+import { ref, computed, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
 import { getMe } from "@/api/user";
@@ -14,18 +14,23 @@ const searchExpanded = ref(false);
 const searchInputRef = ref<HTMLInputElement>();
 const scrolled = ref(false);
 
-// 导航项
-const navItems = [
-  { path: "/", label: "首页", icon: "home" },
-  { path: "/forum", label: "论坛", icon: "forum" },
-  { path: "/videos", label: "视频", icon: "video" },
-  { path: "/standards", label: "法规", icon: "standard" },
-  { path: "/tools", label: "工具", icon: "tool" },
-  { path: "/game", label: "奇兵", icon: "game" },
-  { path: "/faq", label: "维保", icon: "faq" },
-  { path: "/messages", label: "留言", icon: "message" },
-  { path: "/about", label: "关于", icon: "about" },
-];
+// 导航项（奇兵=管理员内测入口，正式上线后全员开放）
+const navItems = computed(() => {
+  const items: { path: string; label: string; icon: string }[] = [
+    { path: "/", label: "首页", icon: "home" },
+    { path: "/forum", label: "论坛", icon: "forum" },
+    { path: "/videos", label: "视频", icon: "video" },
+    { path: "/standards", label: "法规", icon: "standard" },
+    { path: "/tools", label: "工具", icon: "tool" },
+  ];
+  if (auth.isAdmin()) items.push({ path: "/game", label: "奇兵", icon: "game" });
+  items.push(
+    { path: "/faq", label: "维保", icon: "faq" },
+    { path: "/messages", label: "留言", icon: "message" },
+    { path: "/about", label: "关于", icon: "about" },
+  );
+  return items;
+});
 
 onMounted(async () => {
   if (auth.token && !auth.user) {

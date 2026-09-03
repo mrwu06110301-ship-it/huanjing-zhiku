@@ -13,5 +13,6 @@ from app.models.message import Message
 from app.models.video_comment import VideoComment
 from app.models.faq_comment import FAQComment
 from app.models.carousel import CarouselSlide
+from app.models.game_score import GameScore
 
-__all__ = ["User", "Category", "Article", "Comment", "Video", "Standard", "FAQ", "Tool", "AboutContent", "Message", "VideoComment", "FAQComment", "CarouselSlide"]
+__all__ = ["User", "Category", "Article", "Comment", "Video", "Standard", "FAQ", "Tool", "AboutContent", "Message", "VideoComment", "FAQComment", "CarouselSlide", "GameScore"]

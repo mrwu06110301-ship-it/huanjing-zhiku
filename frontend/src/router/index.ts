@@ -144,6 +144,7 @@ const router = createRouter({
       path: "/game",
       name: "Game",
       component: () => import("@/views/Game.vue"),
+      meta: { requiresAdmin: true }, // 内测期仅管理员，正式上线后移除
     },
     {
       path: "/search",
@@ -159,8 +160,8 @@ const router = createRouter({
 // 导航守卫
 router.beforeEach(async (to, _from, next) => {
   const auth = useAuthStore();
-  // 有 token 但未加载用户信息时，自动拉取
-  if (auth.token && !auth.user) {
+  // 有 token 就拉取最新用户信息（进管理员页时刷新 role，避免改权限后前端缓存滞后）
+  if (auth.token) {
     try {
       const res = await getMe();
       auth.setLogin(auth.token, res.data);

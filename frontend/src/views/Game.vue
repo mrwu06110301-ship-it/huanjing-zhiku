@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from "vue";
+import { ref, computed, defineAsyncComponent } from "vue";
 import { ElMessage } from "element-plus";
 import Icon from "@/components/Icon.vue";
 import bgFlueGas from "@/assets/game/bg-flue-gas.webp";
@@ -9,6 +9,11 @@ import bgWater from "@/assets/game/bg-water.webp";
 import bgLdar from "@/assets/game/bg-ldar.webp";
 import bgNoise from "@/assets/game/bg-noise.webp";
 import bgHomeImg from "@/assets/game/bg-home.webp";
+
+/** 场景游戏组件（懒加载）：新增场景在此注册 */
+const GAME_COMPONENTS: Record<string, ReturnType<typeof defineAsyncComponent>> = {
+  "flue-gas": defineAsyncComponent(() => import("./game/FlueQuest.vue")),
+};
 
 /** 场景卡数据 — 与现场监测业务挂钩，open 字段预留后续开放 */
 interface Scene {
@@ -33,7 +38,7 @@ const scenes = ref<Scene[]>([
     color: "#f97316",
     icon: "chimney",
     bg: bgFlueGas,
-    open: false,
+    open: true,
   },
   {
     id: "dust",
@@ -103,6 +108,15 @@ const flashPos = ref({ x: 50, y: 40 });
 const flashKey = ref(0);
 
 const selectedScene = computed(() => scenes.value.find((s) => s.id === selectedId.value));
+/** 当前进入游戏的场景（open=true 才可进入） */
+const playingId = ref<string | null>(null);
+const playingScene = computed(() => scenes.value.find((s) => s.id === playingId.value));
+const gameComp = computed(() => (playingId.value ? GAME_COMPONENTS[playingId.value] : null));
+
+function exitGame() {
+  playingId.value = null;
+  resetScene();
+}
 
 function pickScene(e: MouseEvent, s: Scene) {
   selectedId.value = s.id;
@@ -122,6 +136,12 @@ function pickScene(e: MouseEvent, s: Scene) {
     else bgUrlA.value = s.bg;
     bgLayerA.value = !bgLayerA.value;
     activeBg.value = s.bg;
+  }
+
+  // 已开放场景：直接进入游戏
+  if (s.open) {
+    playingId.value = s.id;
+    return;
   }
 
   ElMessage({
@@ -187,8 +207,8 @@ function difficultyLabel(n: number) {
       ></div>
     </div>
 
-    <!-- 页头 -->
-    <div class="page-header page-header-row">
+    <!-- 页头（游戏中隐藏，由游戏组件接管） -->
+    <div v-if="!playingScene" class="page-header page-header-row">
       <div class="header-left">
         <div class="page-header-main">
           <div class="page-title-icon game-icon">
@@ -205,6 +225,12 @@ function difficultyLabel(n: number) {
       </div>
     </div>
 
+    <!-- 游戏进行中：整页替换为游戏组件 -->
+    <template v-if="playingScene && gameComp">
+      <component :is="gameComp" @exit="exitGame" />
+    </template>
+
+    <template v-else>
     <!-- 场景选卡 -->
     <div class="scene-grid">
       <button
@@ -216,7 +242,7 @@ function difficultyLabel(n: number) {
         @click="pickScene($event, s)"
       >
         <!-- 未开放角标 -->
-        <span class="soon-badge"><Icon name="close" :size="10" /> 敬请期待</span>
+        <span v-if="!s.open" class="soon-badge"><Icon name="close" :size="10" /> 敬请期待</span>
 
         <!-- 卡头：图标区 -->
         <div class="scene-hero">
@@ -233,9 +259,12 @@ function difficultyLabel(n: number) {
           <p class="scene-desc">{{ s.description }}</p>
         </div>
 
-        <!-- 底部：进入提示（悬停浮现 / 选中常显） -->
+        <!-- 底部：进入提示 -->
         <div class="scene-footer">
-          <span v-if="s.id === selectedId" class="enter-hint staying">
+          <span v-if="s.open" class="enter-hint staying" :style="{ '--sc': s.color }">
+            点击进入 <Icon name="arrowRight" :size="13" />
+          </span>
+          <span v-else-if="s.id === selectedId" class="enter-hint staying">
             <Icon name="eye" :size="13" /> 正在欣赏此场景
           </span>
           <span v-else class="enter-hint">即将开放 <Icon name="arrowRight" :size="13" /></span>
@@ -248,6 +277,7 @@ function difficultyLabel(n: number) {
       <Icon name="info" :size="14" />
       「环监奇兵」将现场监测规范要点融入闯关玩法：布点选位、仪器操作、数据研判一网打尽。场景开发中，开放后可从本页进入。
     </div>
+    </template>
   </div>
 </template>
 
