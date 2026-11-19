@@ -134,7 +134,7 @@ const showFormula = ref(false);
       <div class="gas-picker">
         <div v-if="commonForm.gasMode === 'preset'" class="field grow">
           <label>常用气体</label>
-          <el-select v-model="commonForm.gasIdx" style="width: 100%">
+          <el-select v-model="commonForm.gasIdx" style="width: 100%" popper-class="dark-tool-popper">
             <el-option v-for="(g, i) in COMMON_GASES" :key="g.name + i" :value="i" :label="`${g.name}（${g.formula}）`">
               <span>{{ g.name }}</span>
               <span class="opt-hint">{{ g.formula }} · M={{ g.molarMass }}</span>
@@ -165,7 +165,7 @@ const showFormula = ref(false);
           </div>
           <div class="field">
             <label>单位</label>
-            <el-select v-model="commonForm.from" style="width:100%">
+            <el-select v-model="commonForm.from" style="width:100%" popper-class="dark-tool-popper">
               <el-option v-for="u in Object.keys(COMMON_UNIT_LABEL)" :key="u" :value="u" :label="COMMON_UNIT_LABEL[u as CommonUnit]" />
             </el-select>
           </div>
@@ -222,9 +222,9 @@ const showFormula = ref(false);
         </div>
       </div>
 
-      <el-alert v-if="currentVocGas.name === '总烃'" type="warning" :closable="false" show-icon class="thc-tip">
+      <div class="thc-tip" v-if="currentVocGas.name === '总烃'">
         总烃为混合物，无确定分子式——不支持 ppm / mg/m³，仅支持以碳计与以甲烷计单位互转（比值 16.043 / 12.011）
-      </el-alert>
+      </div>
 
       <!-- 左：输入区 / 右：换算结果区 -->
       <div class="split-layout">
@@ -236,7 +236,7 @@ const showFormula = ref(false);
           </div>
           <div class="field">
             <label>单位</label>
-            <el-select v-model="vocForm.from" style="width:100%">
+            <el-select v-model="vocForm.from" style="width:100%" popper-class="dark-tool-popper">
               <el-option v-for="u in Object.keys(VOC_UNIT_LABEL)" :key="u" :value="u" :label="VOC_UNIT_LABEL[u as VocUnit]" :disabled="!vocUnitAvailable(currentVocGas, u as VocUnit)" />
             </el-select>
             <div v-if="vocFromInvalid" class="field-err">总烃不支持该单位，请选碳计/甲烷计</div>
@@ -289,149 +289,176 @@ const showFormula = ref(false);
 </template>
 
 <style scoped>
-.uc-tool { display: flex; flex-direction: column; gap: 18px; }
+/* ================= 暗色仪表盘主题（与烟尘采样模型统一） ================= */
+.uc-tool {
+  --d-bg: #0f1419;
+  --d-panel: #161d26;
+  --d-panel2: #1c2530;
+  --d-line: #2a3644;
+  --d-txt: #e8edf2;
+  --d-muted: #8b9bab;
+  --d-dim: #54626f;
+  --d-accent: #4fc3f7;
+  --d-accent2: #66d9a8;
+  --d-warn: #ffb454;
+  --d-err: #ff6b6b;
+  display: flex; flex-direction: column; gap: 16px;
+  font-family: "Segoe UI", Roboto, Helvetica, Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+}
 
-.tab-bar { display: flex; gap: 10px; }
+/* Tab 切换 */
+.tab-bar { display: flex; gap: 8px; }
 .tab-btn {
   flex: 1; display: flex; align-items: center; justify-content: center; gap: 7px;
-  padding: 12px 16px; border-radius: 14px; border: 1px solid var(--border-light);
-  background: var(--white); color: var(--text-light); font-size: 14.5px; font-weight: 600;
-  cursor: pointer; transition: all 0.25s var(--ease); box-shadow: var(--shadow);
+  padding: 12px 16px; border-radius: 12px; border: 1px solid var(--d-line);
+  background: var(--d-panel); color: var(--d-muted); font-size: 14px; font-weight: 600;
+  cursor: pointer; transition: all 0.15s; font-family: inherit;
 }
-.tab-btn:hover { color: var(--primary); border-color: var(--primary); }
+.tab-btn:hover { color: var(--d-accent); border-color: var(--d-accent); }
 .tab-btn.active {
-  background: var(--gradient-primary, linear-gradient(135deg, #2563eb, #06b6d4));
-  color: #fff; border-color: transparent;
+  background: rgba(79, 195, 247, 0.1);
+  color: var(--d-accent); border-color: var(--d-accent);
 }
 
 .card {
-  background: var(--white); border-radius: var(--radius-lg); padding: 24px 28px;
-  box-shadow: var(--shadow); border: 1px solid var(--border-light);
+  background: var(--d-bg);
+  border: 1px solid var(--d-line);
+  border-radius: 16px;
+  padding: 20px 24px;
+  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.28);
+  color: var(--d-txt);
 }
 
-.mode-row { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; justify-content: space-between; margin-bottom: 14px; }
 .gas-picker { display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-start; margin-bottom: 4px; }
 .field { display: flex; flex-direction: column; gap: 6px; }
 .field.grow { flex: 1; min-width: 220px; }
-.field label { font-size: 13px; color: var(--text-light); font-weight: 500; }
-.field-err { font-size: 11.5px; color: #ef4444; }
-.au-sub { font-size: 12px; font-weight: 400; color: var(--text-light); }
-.opt-hint { float: right; font-size: 11px; color: var(--text-light); margin-left: 10px; font-family: Consolas, monospace; }
+.field label { font-size: 12.5px; color: var(--d-muted); font-weight: 500; }
+.field-err { font-size: 11px; color: var(--d-err); }
+.au-sub { font-size: 11.5px; font-weight: 400; color: var(--d-dim); }
+.opt-hint { float: right; font-size: 11px; color: var(--d-muted); margin-left: 10px; font-family: Consolas, monospace; }
 
-/* ===== 点选面板（气体来源 / 气体 / 换算基准） ===== */
+/* 点选面板 */
 .seg-panel { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; }
 .seg-cell { display: flex; flex-direction: column; gap: 6px; }
-.seg-label { font-size: 12.5px; color: var(--text-light); font-weight: 600; }
+.seg-label { font-size: 11px; color: var(--d-dim); font-weight: 600; letter-spacing: 0.6px; text-transform: uppercase; }
 .seg-group { display: flex; flex-wrap: wrap; gap: 8px; }
 .seg-btn {
-  padding: 7px 14px; border-radius: 10px; border: 1.5px solid var(--border-light);
-  background: var(--bg-soft, #f6f8fa); color: var(--text-light);
-  font-size: 13px; font-weight: 600; cursor: pointer;
-  transition: all 0.2s var(--ease); line-height: 1.4;
+  padding: 7px 14px; border-radius: 9px; border: 1px solid var(--d-line);
+  background: var(--d-panel2); color: var(--d-muted);
+  font-size: 12.5px; font-weight: 600; cursor: pointer;
+  transition: all 0.15s; line-height: 1.4; font-family: inherit;
 }
-.seg-btn:hover { border-color: var(--primary); color: var(--primary); }
+.seg-btn:hover { border-color: var(--d-accent); color: var(--d-accent); }
 .seg-btn.active {
-  background: var(--gradient-primary, linear-gradient(135deg, #2563eb, #06b6d4));
-  color: #fff; border-color: transparent;
-  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.25);
+  background: rgba(79, 195, 247, 0.12);
+  color: var(--d-accent); border-color: var(--d-accent);
 }
 
 .m-bar {
   display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
-  background: rgba(37, 99, 235, 0.06); border-radius: 12px;
-  padding: 9px 14px; font-size: 13px; color: var(--text-light); margin-bottom: 16px;
+  background: rgba(79, 195, 247, 0.06); border: 1px dashed rgba(79, 195, 247, 0.28);
+  border-radius: 9px;
+  padding: 9px 14px; font-size: 12.5px; color: var(--d-muted); margin-bottom: 16px;
 }
-.m-bar b { color: var(--primary); font-size: 14.5px; margin: 0 2px; }
+.m-bar b { color: var(--d-accent); font-size: 14px; margin: 0 2px; }
 
-/* ===== 左右分区布局 ===== */
+/* 左右分区 */
 .split-layout {
   display: grid; grid-template-columns: minmax(260px, 340px) 1px 1fr;
   gap: 0 22px; align-items: stretch; margin-top: 6px;
 }
 .split-left { display: flex; flex-direction: column; gap: 12px; }
 .split-right { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
-.split-divider {
-  background: linear-gradient(to bottom, transparent, var(--border-light) 12%, var(--border-light) 88%, transparent);
-}
+.split-divider { background: var(--d-line); }
 .pane-title {
   display: flex; align-items: center; gap: 6px;
-  font-size: 13px; font-weight: 700; color: var(--primary);
-  padding: 6px 10px; background: rgba(37, 99, 235, 0.06);
+  font-size: 11.5px; font-weight: 600; color: var(--d-accent);
+  letter-spacing: 0.6px; text-transform: uppercase;
+  padding: 6px 10px; background: rgba(79, 195, 247, 0.06);
   border-radius: 8px; margin-bottom: 4px; flex-wrap: wrap;
 }
 .pane-title .au-sub { margin-left: auto; }
 .left-hint {
-  margin-top: 4px; padding: 12px; border-radius: 12px;
-  border: 1.5px dashed var(--border-light); color: var(--text-light); font-size: 12.5px;
+  margin-top: 4px; padding: 12px; border-radius: 10px;
+  border: 1px dashed var(--d-line); color: var(--d-dim); font-size: 12px;
   display: flex; align-items: center; gap: 8px;
 }
 
-/* 结果行：单位名左、数值右，凸显单位 */
+/* 结果行 */
 .result-row {
   display: flex; justify-content: space-between; align-items: baseline; gap: 14px;
-  background: var(--bg-soft, #f6f8fa); border: 1px solid var(--border-light);
-  border-radius: 12px; padding: 10px 16px; transition: all 0.2s var(--ease);
+  background: var(--d-panel); border: 1px solid var(--d-line);
+  border-left: 2px solid transparent;
+  border-radius: 10px; padding: 10px 16px; transition: all 0.15s;
 }
-.result-row:hover { border-color: rgba(37, 99, 235, 0.35); }
-.result-row.src { background: rgba(6, 182, 212, 0.07); border-color: rgba(6, 182, 212, 0.45); }
+.result-row:hover { border-color: rgba(79, 195, 247, 0.45); }
+.result-row.src { background: rgba(79, 195, 247, 0.08); border-color: rgba(79, 195, 247, 0.4); }
 .rr-unit {
-  font-size: 13px; font-weight: 700; color: var(--text);
+  font-size: 12.5px; font-weight: 600; color: var(--d-txt);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 0;
 }
-.result-row.src .rr-unit { color: #0e7490; }
+.result-row.src .rr-unit { color: var(--d-accent); }
 .rr-val {
-  font-size: 17px; font-weight: 800; color: var(--text);
+  font-size: 16.5px; font-weight: 700; color: var(--d-txt);
   font-family: Consolas, Monaco, monospace; word-break: break-all; text-align: right;
+  font-variant-numeric: tabular-nums;
 }
-.result-row.src .rr-val { color: var(--primary); }
+.result-row.src .rr-val { color: var(--d-accent); }
 
-.empty-hint {
-  margin-top: 14px; padding: 14px; border-radius: 12px;
-  border: 1.5px dashed var(--border-light); color: var(--text-light); font-size: 13px;
-  display: flex; align-items: center; gap: 8px;
+.thc-tip {
+  background: rgba(255, 180, 84, 0.07); border: 1px dashed rgba(255, 180, 84, 0.35);
+  border-radius: 9px; padding: 9px 13px; font-size: 12.5px;
+  color: var(--d-warn); line-height: 1.7; margin-bottom: 14px;
 }
 
-.thc-tip { margin-bottom: 14px; }
-
-.formula-card { padding: 18px 24px; }
+.formula-card { padding: 16px 22px; }
 .fc-title {
-  font-size: 14.5px; font-weight: 700; color: var(--text); display: flex; align-items: center; gap: 7px;
+  font-size: 14px; font-weight: 600; color: var(--d-txt); display: flex; align-items: center; gap: 7px;
   cursor: pointer; user-select: none;
 }
-.fc-title:hover { color: var(--primary); }
-.fc-toggle { font-size: 12px; color: var(--text-light); font-weight: 400; margin-left: auto; }
+.fc-title:hover { color: var(--d-accent); }
+.fc-toggle { font-size: 11.5px; color: var(--d-dim); font-weight: 400; margin-left: auto; }
 .fc-body { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
 .f-line {
-  font-family: Consolas, Monaco, monospace; font-size: 13px; color: var(--text-light);
-  background: var(--bg-soft, #f6f8fa); border-radius: 8px; padding: 7px 12px;
+  font-family: Consolas, Monaco, monospace; font-size: 12.5px; color: var(--d-muted);
+  background: var(--d-panel2); border-left: 2px solid var(--d-accent);
+  border-radius: 8px; padding: 8px 12px;
 }
-.f-line.note { color: #92400e; background: rgba(217, 119, 6, 0.07); }
+.f-line.note { color: var(--d-warn); background: rgba(255, 180, 84, 0.06); border-left-color: var(--d-warn); }
 
-/* 丝滑输入 */
+/* ===== Element Plus 控件暗色覆盖 ===== */
 .uc-tool :deep(.el-input__wrapper),
 .uc-tool :deep(.el-select__wrapper) {
-  border-radius: 12px;
-  transition: box-shadow 0.25s var(--ease), border-color 0.25s var(--ease);
+  background: var(--d-bg);
+  box-shadow: 0 0 0 1px var(--d-line) inset;
+  border-radius: 9px;
 }
 .uc-tool :deep(.el-input__wrapper.is-focus),
 .uc-tool :deep(.el-select__wrapper.is-focused) {
-  box-shadow: 0 0 0 1px var(--primary) inset, 0 4px 14px rgba(37, 99, 235, 0.12);
+  box-shadow: 0 0 0 1px var(--d-accent) inset, 0 0 0 3px rgba(79, 195, 247, 0.12);
 }
-.uc-tool :deep(.el-button) { border-radius: 12px; }
-.uc-tool :deep(.el-radio-button:first-child .el-radio-button__inner) { border-radius: 12px 0 0 12px; }
-.uc-tool :deep(.el-radio-button:last-child .el-radio-button__inner) { border-radius: 0 12px 12px 0; }
+.uc-tool :deep(.el-input__inner),
+.uc-tool :deep(.el-select__placeholder),
+.uc-tool :deep(.el-select__selected-item) {
+  color: var(--d-txt);
+}
+.uc-tool :deep(.el-input__inner) {
+  font-size: 19px; font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.uc-tool :deep(.el-input__inner::placeholder),
+.uc-tool :deep(.el-select__placeholder.is-transparent) {
+  color: #3f4b59; font-weight: 400; font-size: 13px;
+}
+.uc-tool :deep(.el-button) { border-radius: 9px; }
 
 @media (max-width: 640px) {
-  .card { padding: 16px 14px; }
+  .card { padding: 16px 13px; }
   .split-layout { grid-template-columns: 1fr; gap: 14px; }
-  .split-divider {
-    height: 1px; width: 100%;
-    background: linear-gradient(to right, transparent, var(--border-light) 12%, var(--border-light) 88%, transparent);
-  }
+  .split-divider { height: 1px; width: 100%; }
   .rr-val { font-size: 15px; }
-  /* 点选面板：基准两项各占一半，气体选项自动换行 */
   .seg-cell:has(.seg-group .seg-btn:nth-child(3)) .seg-group { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
   .seg-cell:not(:has(.seg-group .seg-btn:nth-child(3))) .seg-group { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-  .seg-btn { padding: 8px 6px; text-align: center; font-size: 12.5px; }
+  .seg-btn { padding: 8px 6px; text-align: center; font-size: 12px; }
 }
 </style>

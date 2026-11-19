@@ -1,0 +1,90 @@
+/* ============================================================
+ * dark-tool-popper.css — 暗色工具页的 Element Plus 弹层暗色皮肤
+ * 用于：单位换算 / 大气稳定度 / 紫外烟气 / 阻容含湿量 / 烟尘采样
+ * 这些页面容器为暗色仪表盘风格，但下拉/日期/对话框弹层
+ * teleport 到 body，scoped 样式作用不到，需全局覆盖。
+ * 仅在 .dark-tool-scope 已挂载时由 popper-class 精确命中。
+ * ============================================================ */
+
+/* ---- 下拉（el-select / el-date-picker 面板）---- */
+.dark-tool-popper.el-select__popper,
+.dark-tool-popper.el-picker__popper {
+  background: #1c2530 !important;
+  border: 1px solid #2a3644 !important;
+}
+.dark-tool-popper .el-popper__arrow::before {
+  background: #1c2530 !important;
+  border-color: #2a3644 !important;
+}
+.dark-tool-popper .el-select-dropdown__item {
+  color: #e8edf2 !important;
+}
+.dark-tool-popper .el-select-dropdown__item.is-hovering {
+  background: rgba(79, 195, 247, 0.08) !important;
+}
+.dark-tool-popper .el-select-dropdown__item.is-selected {
+  color: #4fc3f7 !important;
+  font-weight: 600;
+}
+.dark-tool-popper .el-select-dropdown__empty {
+  color: #54626f !important;
+}
+
+/* ---- 日期时间面板 ---- */
+.dark-tool-popper .el-date-picker {
+  --el-bg-color-overlay: #1c2530;
+  --el-text-color-regular: #e8edf2;
+  --el-border-color-light: #2a3644;
+  --el-fill-color-light: rgba(79, 195, 247, 0.08);
+  --el-text-color-primary: #e8edf2;
+}
+.dark-tool-popper .el-date-picker .el-input__wrapper {
+  background: #0f1419;
+  box-shadow: 0 0 0 1px #2a3644 inset !important;
+}
+.dark-tool-popper .el-date-picker .el-input__inner {
+  color: #e8edf2;
+}
+.dark-tool-popper .el-date-table th {
+  color: #8b9bab;
+}
+.dark-tool-popper .el-date-table td .el-date-table-cell__text {
+  color: #e8edf2;
+}
+.dark-tool-popper .el-date-table td.disabled .el-date-table-cell {
+  background: transparent;
+}
+.dark-tool-popper .el-date-table td.disabled .el-date-table-cell__text {
+  color: #3f4b59;
+}
+.dark-tool-popper .el-time-panel {
+  background: #1c2530;
+  border-color: #2a3644;
+}
+.dark-tool-popper .el-time-panel__item {
+  color: #e8edf2;
+}
+.dark-tool-popper .el-time-panel__item.is-active {
+  color: #4fc3f7;
+}
+.dark-tool-popper .el-time-spinner__arrow {
+  color: #8b9bab;
+}
+
+/* ---- 对话框（标准查表弹窗等）---- */
+.dark-tool-dialog {
+  --el-bg-color: #161d26;
+  --el-border-color-light: #2a3644;
+  --el-text-color-primary: #e8edf2;
+  --el-text-color-regular: #8b9bab;
+  background: #161d26 !important;
+  border: 1px solid #2a3644;
+}
+.dark-tool-dialog .el-dialog__title {
+  color: #e8edf2 !important;
+}
+.dark-tool-dialog .el-dialog__headerbtn .el-dialog__close {
+  color: #8b9bab;
+}
+
+/* ---- 消息提示样式微调（ElMessage 在暗色页面上仍可读，无需覆盖）---- */

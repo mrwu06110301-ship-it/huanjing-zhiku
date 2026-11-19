@@ -63,6 +63,7 @@ function onNumInput(v: number | null) {
       :model-value="selected"
       placeholder="行业基准"
       class="o2s-sel"
+      popper-class="dark-tool-popper"
       @update:model-value="onSelect"
     >
       <el-option v-for="o in options" :key="o.value" :value="o.value" :label="`${o.label} ${o.value}%`" />
@@ -74,11 +75,32 @@ function onNumInput(v: number | null) {
 <style scoped>
 .o2s-picker { display: flex; gap: 8px; width: 100%; }
 .o2s-num { flex: 1; }
-.o2s-num :deep(.el-input__inner) { font-weight: 600; color: var(--text); }
+.o2s-num :deep(.el-input__inner) { font-weight: 600; color: var(--d-txt, var(--text)); }
+
+/* 暗色工具页内：输入框与下拉深色化（跟随父容器 --d-* 变量） */
+.o2s-picker :deep(.el-input__wrapper),
+.o2s-picker :deep(.el-select__wrapper) {
+  background: var(--d-bg, #fff);
+  box-shadow: 0 0 0 1px var(--d-line, #dcdfe6) inset;
+  border-radius: 9px;
+}
+.o2s-picker :deep(.el-select__wrapper.is-focused),
+.o2s-picker :deep(.el-input__wrapper.is-focus) {
+  box-shadow: 0 0 0 1px var(--d-accent, #2563eb) inset, 0 0 0 3px rgba(79, 195, 247, 0.12);
+}
+.o2s-picker :deep(.el-input__inner),
+.o2s-picker :deep(.el-select__placeholder),
+.o2s-picker :deep(.el-select__selected-item) {
+  color: var(--d-txt, var(--text));
+}
+.o2s-picker :deep(.el-input__inner::placeholder),
+.o2s-picker :deep(.el-select__placeholder.is-transparent) {
+  color: #3f4b59; font-size: 13px;
+}
 .o2s-num.is-disabled :deep(.el-input__inner) {
-  background: rgba(37, 99, 235, 0.04);
-  color: var(--primary);
-  -webkit-text-fill-color: var(--primary);
+  background: transparent;
+  color: var(--d-accent, var(--primary));
+  -webkit-text-fill-color: var(--d-accent, var(--primary));
 }
 .o2s-sel { flex: 1; }
 </style>
