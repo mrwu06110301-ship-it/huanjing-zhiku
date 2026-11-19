@@ -2,11 +2,12 @@
 /**
  * DustSamplingCalculator.vue — 烟尘采样模型（颗粒物）· 流程式
  *
- * 设计目标（11-19 第五轮重构）：
+ * 设计目标（11-19 第五轮重构 / 第七轮行对齐）：
  *  - 流程化：静压 → 流速 → 等速流量 → 采样体积 → 排放，五步自上而下串行
  *  - 参数复用：一份输入全局共用，上游产物自动带入，不重复录入
+ *  - 行对齐：每步一行，左输入右结果同屏对齐，输入即见对应结果
  *  - 缺参提示：只在需要补参数的那一步显示灰色提示文字
- *  - 结果竖列报表：右侧按「项目 | 数值 | 单位」三列竖排，按步骤分组
+ *  - 结果竖列报表：每步右侧「项目 | 数值 | 单位」三列竖排
  *  - 通用工具：标题下不挂标准特指提示，页头副标题在工具详情页隐藏
  *  - 工具化：暗色仪表盘风格、大号输入 + 单位后缀、实时联动、清空/示例
  *  - 移动端 H5 适配：单列大字号、44px 触控高度、报表横向可读
@@ -273,146 +274,138 @@ function gotoStep(id: string) {
     </section>
 
     <section class="panel">
+      <!-- ===== 每步一行：上输入 下结果，同屏对齐 ===== -->
       <div class="body">
-        <!-- ===== 左：输入区（按步骤从上到下） ===== -->
-        <div class="in">
-          <div
-            v-for="vm in stepVMs"
-            :id="'dust-step-' + vm.step.id"
-            :key="vm.step.id"
-            :class="['sg', { done: vm.state.done }]"
-          >
-            <div class="sg-h">
-              <span class="sg-no">{{ vm.step.no }}</span>
-              <div class="sg-t">
-                <b>{{ vm.step.title }}</b>
+        <div
+          v-for="vm in stepVMs"
+          :id="'dust-step-' + vm.step.id"
+          :key="vm.step.id"
+          :class="['srow', { done: vm.state.done }]"
+        >
+          <!-- 行头：序号 + 标题 + 完成标记 -->
+          <div class="sg-h">
+            <span class="sg-no">{{ vm.step.no }}</span>
+            <div class="sg-t">
+              <b>{{ vm.step.title }}</b>
+            </div>
+            <span v-if="vm.state.done" class="sg-ok">已完成</span>
+          </div>
+
+          <div class="srow-main">
+            <!-- 左：本步输入 -->
+            <div class="in-p">
+              <!-- 上游产物复用 -->
+              <div v-if="vm.upstream.length" class="sg-up">
+                <div v-for="u in vm.upstream" :key="u.key" class="up-row">
+                  <span class="up-l">{{ u.label }}</span>
+                  <span class="up-v" :class="{ miss: u.value === null }">
+                    {{ u.value === null ? "待前序步骤计算" : fmt(u.value, 4) }}
+                  </span>
+                  <span class="up-u">{{ u.unit }}</span>
+                  <span class="up-f">{{ u.from }}带入</span>
+                </div>
               </div>
-              <span v-if="vm.state.done" class="sg-ok">已完成</span>
+
+              <!-- 本步输入字段 -->
+              <div class="flds">
+                <template v-for="fv in vm.fields">
+                  <!-- 本步拥有该字段：可编辑输入框 -->
+                  <div
+                    v-if="fv.editable"
+                    :key="fv.field.key"
+                    :class="['fld', { filled: filledFields.has(fv.field.key) }]"
+                  >
+                    <label>
+                      <span class="lbl">{{ fv.field.label }}</span>
+                      <span class="sym">{{ fv.field.sym }}</span>
+                      <span v-if="filledFields.has(fv.field.key)" class="calc-tag">计算值</span>
+                    </label>
+                    <!-- 基准含氧量：下拉 + 自定义 -->
+                    <div v-if="fv.field.type === 'o2base'" class="wrap">
+                      <select
+                        class="sel"
+                        :value="o2BaseCustom ? 'custom' : (form[fv.field.key] === null ? '' : String(form[fv.field.key]))"
+                        @change="onO2BaseSelect"
+                      >
+                        <option value="">选择行业基准…</option>
+                        <option v-for="o in o2BaseOptions" :key="o.value" :value="String(o.value)">
+                          {{ o.label }}
+                        </option>
+                        <option value="custom">自定义输入</option>
+                      </select>
+                      <span class="unit">%</span>
+                    </div>
+                    <div v-else-if="fv.field.type === 'select'" class="wrap">
+                      <select
+                        class="sel"
+                        :value="form[fv.field.key] === null ? '' : String(form[fv.field.key])"
+                        @change="onSelect(fv.field.key, $event)"
+                      >
+                        <option value="">请选择…</option>
+                        <option v-for="o in fv.field.options" :key="String(o.value)" :value="String(o.value)">
+                          {{ o.label }}
+                        </option>
+                      </select>
+                    </div>
+                    <div v-else class="wrap">
+                      <input
+                        class="inp"
+                        type="text"
+                        inputmode="decimal"
+                        autocomplete="off"
+                        :value="form[fv.field.key] === null ? '' : String(form[fv.field.key])"
+                        :placeholder="fv.field.ph || ''"
+                        @input="onInput(fv.field.key, $event)"
+                      />
+                      <span class="unit">{{ fv.field.unit }}</span>
+                    </div>
+                    <div v-if="fv.field.tip" class="fld-tip">{{ fv.field.tip }}</div>
+                  </div>
+                  <!-- 上游步骤已填：本步只读复用 -->
+                  <div v-else :key="fv.field.key" class="fld reused">
+                    <label>
+                      <span class="lbl">{{ fv.field.label }}</span>
+                      <span class="sym">{{ fv.field.sym }}</span>
+                      <span class="reuse-tag">复用</span>
+                    </label>
+                    <div class="wrap ro">
+                      <span class="ro-v">{{ form[fv.field.key] === null ? "—" : String(form[fv.field.key]) }}</span>
+                      <span class="unit">{{ fv.field.unit }}</span>
+                    </div>
+                  </div>
+                </template>
+              </div>
             </div>
 
-            <!-- 上游产物复用 -->
-            <div v-if="vm.upstream.length" class="sg-up">
-              <div v-for="u in vm.upstream" :key="u.key" class="up-row">
-                <span class="up-l">{{ u.label }}</span>
-                <span class="up-v" :class="{ miss: u.value === null }">
-                  {{ u.value === null ? "待前序步骤计算" : fmt(u.value, 4) }}
-                </span>
-                <span class="up-u">{{ u.unit }}</span>
-                <span class="up-f">{{ u.from }}带入</span>
-              </div>
-            </div>
-
-            <!-- 本步输入字段 -->
-            <div class="flds">
-              <template v-for="fv in vm.fields">
-                <!-- 本步拥有该字段：可编辑输入框 -->
+            <!-- 右：本步结果报表 -->
+            <div class="out-p">
+              <div class="rep">
                 <div
-                  v-if="fv.editable"
-                  :key="fv.field.key"
-                  :class="['fld', { filled: filledFields.has(fv.field.key) }]"
+                  v-for="row in reportRows(vm.step, vm.state)"
+                  :key="row.key"
+                  :class="['rp', { primary: row.primary, empty: row.value === null }]"
+                  :title="row.formula"
                 >
-                  <label>
-                    <span class="lbl">{{ fv.field.label }}</span>
-                    <span class="sym">{{ fv.field.sym }}</span>
-                    <span v-if="filledFields.has(fv.field.key)" class="calc-tag">计算值</span>
-                  </label>
-                  <!-- 基准含氧量：下拉 + 自定义 -->
-                  <div v-if="fv.field.type === 'o2base'" class="wrap">
-                    <select
-                      class="sel"
-                      :value="o2BaseCustom ? 'custom' : (form[fv.field.key] === null ? '' : String(form[fv.field.key]))"
-                      @change="onO2BaseSelect"
-                    >
-                      <option value="">选择行业基准…</option>
-                      <option v-for="o in o2BaseOptions" :key="o.value" :value="String(o.value)">
-                        {{ o.label }}
-                      </option>
-                      <option value="custom">自定义输入</option>
-                    </select>
-                    <span class="unit">%</span>
-                  </div>
-                  <div v-else-if="fv.field.type === 'select'" class="wrap">
-                    <select
-                      class="sel"
-                      :value="form[fv.field.key] === null ? '' : String(form[fv.field.key])"
-                      @change="onSelect(fv.field.key, $event)"
-                    >
-                      <option value="">请选择…</option>
-                      <option v-for="o in fv.field.options" :key="String(o.value)" :value="String(o.value)">
-                        {{ o.label }}
-                      </option>
-                    </select>
-                  </div>
-                  <div v-else class="wrap">
-                    <input
-                      class="inp"
-                      type="text"
-                      inputmode="decimal"
-                      autocomplete="off"
-                      :value="form[fv.field.key] === null ? '' : String(form[fv.field.key])"
-                      :placeholder="fv.field.ph || ''"
-                      @input="onInput(fv.field.key, $event)"
-                    />
-                    <span class="unit">{{ fv.field.unit }}</span>
-                  </div>
-                  <div v-if="fv.field.tip" class="fld-tip">{{ fv.field.tip }}</div>
+                  <span class="rp-l">{{ row.label }}</span>
+                  <span class="rp-v">{{ fmt(row.value, row.digits) }}</span>
+                  <span class="rp-u">{{ row.unit }}</span>
+                  <span v-if="row.note" class="rp-n">{{ row.note }}</span>
                 </div>
-                <!-- 上游步骤已填：本步只读复用 -->
-                <div v-else :key="fv.field.key" class="fld reused">
-                  <label>
-                    <span class="lbl">{{ fv.field.label }}</span>
-                    <span class="sym">{{ fv.field.sym }}</span>
-                    <span class="reuse-tag">复用</span>
-                  </label>
-                  <div class="wrap ro">
-                    <span class="ro-v">{{ form[fv.field.key] === null ? "—" : String(form[fv.field.key]) }}</span>
-                    <span class="unit">{{ fv.field.unit }}</span>
-                  </div>
-                </div>
-              </template>
-            </div>
-          </div>
-        </div>
-
-        <!-- ===== 右：结果竖列报表 ===== -->
-        <div class="out">
-          <div class="rep-head">
-            <span class="rh-t">计算结果报表</span>
-            <span class="rh-p">项目 · 数值 · 单位</span>
-          </div>
-
-          <div v-for="vm in stepVMs" :key="vm.step.id" class="rep-grp">
-            <div class="rg-h">
-              <span class="rg-no">{{ vm.step.no }}</span>
-              <span class="rg-t">{{ vm.step.title }}</span>
-              <span v-if="vm.state.done" class="rg-ok">✓</span>
-            </div>
-            <div class="rep">
-              <div
-                v-for="row in reportRows(vm.step, vm.state)"
-                :key="row.key"
-                :class="['rp', { primary: row.primary, empty: row.value === null }]"
-                :title="row.formula"
-              >
-                <span class="rp-l">{{ row.label }}</span>
-                <span class="rp-v">{{ fmt(row.value, row.digits) }}</span>
-                <span class="rp-u">{{ row.unit }}</span>
-                <span v-if="row.note" class="rp-n">{{ row.note }}</span>
               </div>
             </div>
           </div>
-
-          <!-- 计算过程 -->
-          <div class="steps" v-if="isAdmin && flowResult.steps_log.length">
-            <div class="steps-t" @click="showAllSteps = !showAllSteps">
-              计算过程
-              <span class="toggle">{{ showAllSteps ? "收起 ▲" : "展开 ▼" }}</span>
-            </div>
-            <div v-show="showAllSteps" class="step-list">
-              <div v-for="(s, i) in flowResult.steps_log" :key="i" class="step">{{ s }}</div>
-            </div>
-          </div>
         </div>
+      </div>
+    </section>
+
+    <!-- ===== 计算过程（管理员） ===== -->
+    <section class="panel" v-if="isAdmin && flowResult.steps_log.length">
+      <div class="steps-t" @click="showAllSteps = !showAllSteps">
+        计算过程
+        <span class="toggle">{{ showAllSteps ? "收起 ▲" : "展开 ▼" }}</span>
+      </div>
+      <div v-show="showAllSteps" class="step-list">
+        <div v-for="(s, i) in flowResult.steps_log" :key="i" class="step">{{ s }}</div>
       </div>
     </section>
 
@@ -539,34 +532,36 @@ function gotoStep(id: string) {
 .ghost:hover { border-color: var(--d-accent); color: var(--d-txt); }
 .ghost.danger:hover { border-color: var(--d-err); color: var(--d-err); }
 
-/* ---- 主体两栏 ---- */
+/* ---- 主体：每步一行 ---- */
 .body {
-  display: grid;
-  grid-template-columns: minmax(320px, 460px) 1fr;
+  padding: 16px 20px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
-.in {
-  padding: 16px 20px 22px;
-  border-right: 1px solid var(--d-line);
-  background: var(--d-panel);
-}
-.out {
-  padding: 16px 20px 22px;
-  background: var(--d-bg);
-  min-width: 0;
-}
-
-/* ---- 步骤分组 ---- */
-.sg {
+.srow {
   border: 1px solid var(--d-line);
   border-radius: 12px;
   background: var(--d-panel2);
   padding: 13px 14px 15px;
-  margin-bottom: 14px;
   scroll-margin-top: 12px;
 }
-.sg:last-child { margin-bottom: 0; }
-.sg.done { border-color: rgba(102, 217, 168, 0.35); }
-.sg-h { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.srow.done { border-color: rgba(102, 217, 168, 0.35); }
+.srow-main {
+  display: grid;
+  grid-template-columns: minmax(300px, 430px) 1fr;
+  gap: 14px;
+  align-items: start;
+}
+.in-p {
+  min-width: 0;
+  padding-right: 14px;
+  border-right: 1px solid var(--d-line);
+}
+.out-p { min-width: 0; padding-top: 2px; }
+
+/* ---- 步骤分组头 ---- */
+.sg-h { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
 .sg-no {
   width: 22px; height: 22px; border-radius: 7px;
   background: var(--d-accent); color: #0b1117;
@@ -574,7 +569,7 @@ function gotoStep(id: string) {
   display: flex; align-items: center; justify-content: center;
   flex: none;
 }
-.sg.done .sg-no { background: var(--d-accent2); }
+.srow.done .sg-no { background: var(--d-accent2); }
 .sg-t { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .sg-t b { font-size: 14.5px; font-weight: 600; }
 .sg-ok {
@@ -684,28 +679,7 @@ function gotoStep(id: string) {
   font-variant-numeric: tabular-nums;
 }
 
-/* ---- 右侧报表 ---- */
-.rep-head {
-  display: flex; align-items: baseline; justify-content: space-between;
-  gap: 10px; margin-bottom: 12px;
-}
-.rh-t { font-size: 12px; color: var(--d-accent); letter-spacing: 0.6px; font-weight: 600; }
-.rh-p { font-size: 11px; color: var(--d-dim); }
-.rep-grp { margin-bottom: 16px; }
-.rg-h {
-  display: flex; align-items: center; gap: 8px;
-  padding-bottom: 6px; margin-bottom: 7px;
-  border-bottom: 1px solid var(--d-line);
-}
-.rg-no {
-  width: 18px; height: 18px; border-radius: 5px;
-  background: var(--d-panel2); color: var(--d-muted);
-  font-size: 10.5px; font-weight: 700;
-  display: flex; align-items: center; justify-content: center;
-  flex: none;
-}
-.rg-t { font-size: 12.5px; color: var(--d-muted); font-weight: 600; }
-.rg-ok { margin-left: auto; color: var(--d-accent2); font-size: 12px; }
+/* ---- 步骤内结果报表 ---- */
 .rep { display: flex; flex-direction: column; gap: 1px; }
 .rp {
   display: grid;
@@ -734,19 +708,19 @@ function gotoStep(id: string) {
 }
 
 /* ---- 计算过程 ---- */
-.steps {
-  margin-top: 14px;
+.steps-t {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 12px; color: var(--d-muted); cursor: pointer; user-select: none;
+  padding: 14px 20px;
+}
+.toggle { font-size: 11.5px; color: var(--d-dim); }
+.step-list {
+  margin: 0 20px 14px; max-height: 260px; overflow-y: auto;
   background: var(--d-panel);
   border: 1px solid var(--d-line);
   border-radius: 11px;
   padding: 11px 14px;
 }
-.steps-t {
-  display: flex; justify-content: space-between; align-items: center;
-  font-size: 12px; color: var(--d-muted); cursor: pointer; user-select: none;
-}
-.toggle { font-size: 11.5px; color: var(--d-dim); }
-.step-list { margin-top: 8px; max-height: 260px; overflow-y: auto; }
 .step {
   font-size: 12px; color: var(--d-muted);
   font-family: Consolas, "Courier New", monospace;
@@ -791,8 +765,9 @@ function gotoStep(id: string) {
 
 /* ================= 移动端 H5 ================= */
 @media (max-width: 1020px) {
-  .body { grid-template-columns: 1fr; }
-  .in { border-right: none; border-bottom: 1px solid var(--d-line); }
+  .srow-main { grid-template-columns: 1fr; }
+  .in-p { border-right: none; border-bottom: 1px solid var(--d-line); padding-right: 0; padding-bottom: 12px; }
+  .out-p { padding-top: 12px; }
 }
 
 @media (max-width: 640px) {
@@ -804,8 +779,9 @@ function gotoStep(id: string) {
   .fb-nm { font-size: 11.5px; }
   .bar-r { width: 100%; }
   .bar-r .ghost { flex: 1; }
-  .in, .out { padding: 13px; }
-  .sg { padding: 12px 11px 13px; }
+  .body { padding: 12px 13px 14px; gap: 11px; }
+  .srow { padding: 12px 11px 13px; }
+  .srow-main { gap: 11px; }
   .flds { grid-template-columns: 1fr 1fr; gap: 9px; }
   .inp { font-size: 17px; padding: 11px 4px 11px 11px; }
   .sel { font-size: 12.5px; }

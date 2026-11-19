@@ -4,11 +4,11 @@
  * 验证要点（流程式）：
  *   1) 工具详情页无「标题下标准特指提示」副标题
  *   2) 流程条 5 步，顺序正确，无「采样嘴直径选取」独立工具
- *   3) 左侧输入区按步骤从上到下分组，缺参步骤显示灰色提示
- *   4) 无预填：所有输入框为空；报表标「缺 xxx」
+ *   3) 每步一行：左输入右结果同屏对齐（行内含输入框与报表行）
+ *   4) 无预填：所有输入框为空；报表缺失行只显「—」
  *   5) 填入示例 → 五步全通，数值与引擎一致
  *   6) 全压/静压双向换算（输入框即显示，标「计算值」）
- *   7) 右侧为竖列报表（项目|数值|单位）
+ *   7) 结果竖列报表（项目|数值|单位）按步骤行分组
  *   8) 统一标态干基：C × Qn × 10⁻⁶ ≡ G
  *   9) 公式说明按 5 步组织
  *  10) 无「标杆」「湿基」「3260」字样
@@ -62,12 +62,41 @@ ok(!bodyText.includes("标杆"), "页面无「标杆」字样");
 ok(!bodyText.includes("湿基"), "页面无「湿基」字样");
 ok(!bodyText.includes("3260"), "页面无 3260 字样");
 
-/* ---------- 4. 左侧步骤分组 ---------- */
-const groupTitles = await page.$$eval(".sg .sg-t b", (els) => els.map((e) => e.textContent.trim()));
+/* ---------- 4. 每步一行：行分组 ---------- */
+const groupTitles = await page.$$eval(".srow .sg-t b", (els) => els.map((e) => e.textContent.trim()));
 ok(
   JSON.stringify(groupTitles) === JSON.stringify(expectSteps),
-  "左侧按步骤从上到下分组：" + groupTitles.join(" → ")
+  "每步一行按步骤从上到下：" + groupTitles.join(" → ")
 );
+const srowCount = await page.$$eval(".srow", (els) => els.length);
+ok(srowCount === 5, `步骤行数 = 5（实际 ${srowCount}）`);
+
+/* ---------- 4b. 行对齐：每行内输入与结果同屏 ---------- */
+const alignInfo = await page.$$eval(".srow", (els) =>
+  els.map((e) => ({
+    title: e.querySelector(".sg-t b")?.textContent.trim(),
+    hasIn: !!e.querySelector(".in-p"),
+    hasOut: !!e.querySelector(".out-p .rp"),
+  }))
+);
+ok(alignInfo.every((x) => x.hasIn && x.hasOut), "每步行内同时含输入区与结果报表（输入结果同屏）");
+const domCheck = await page.evaluate(() => {
+  const rows = [...document.querySelectorAll(".srow")];
+  return rows.map((r) => {
+    const inp = r.querySelector(".in-p");
+    const out = r.querySelector(".out-p");
+    if (!inp || !out) return null;
+    const a = inp.getBoundingClientRect();
+    const b = out.getBoundingClientRect();
+    // 垂直区间应重叠（同一行内），水平紧邻
+    return {
+      overlapV: Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 0,
+      adjH: b.left >= a.right - 2,
+    };
+  });
+});
+ok(domCheck.every((x) => x && x.overlapV), "每步输入区与结果区垂直重叠（同一行，同屏可见）");
+ok(domCheck.every((x) => x && x.adjH), "结果区紧跟输入区右侧（水平相邻）");
 
 /* ---------- 5. 无预填 + 无冗长提示文字 ---------- */
 const preFilled = await page.$$eval(".inp", (els) => els.filter((e) => e.value.trim() !== "").map((e) => e.value));
@@ -97,13 +126,8 @@ await sleep(1800);
 const flowDone = await page.$$eval(".fb-item.done", (els) => els.length);
 ok(flowDone === 5, `示例数据后 5 步全部完成（实际 ${flowDone}）`);
 
-/* ---------- 7. 右侧竖列报表 ---------- */
-const repGroups = await page.$$eval(".rep-grp .rg-t", (els) => els.map((e) => e.textContent.trim()));
-ok(
-  JSON.stringify(repGroups) === JSON.stringify(expectSteps),
-  "报表按 5 步分组：" + repGroups.join(" → ")
-);
-const repRows = await page.$$eval(".rep .rp", (els) =>
+/* ---------- 7. 步骤行内结果报表 ---------- */
+const repRows = await page.$$eval(".srow .out-p .rep .rp", (els) =>
   els.map((e) => ({
     label: e.querySelector(".rp-l")?.textContent.trim(),
     value: e.querySelector(".rp-v")?.textContent.trim(),
@@ -162,17 +186,17 @@ ok(!fxLines.some((t) => t.includes("湿基") || t.includes("标杆")), "公式�
 /* ---------- 11. 全压 ↔ 静压 双向互算 ---------- */
 // 找到①步的全压输入框与静压输入框
 const idxOfPs = await page.evaluate(() => {
-  const labels = [...document.querySelectorAll(".sg .fld")];
+  const labels = [...document.querySelectorAll(".srow .fld")];
   const ps = labels.find((e) => e.querySelector(".sym")?.textContent.trim() === "Ps");
   const pt = labels.find((e) => e.querySelector(".sym")?.textContent.trim() === "Pt");
-  const all = [...document.querySelectorAll(".sg .fld")];
+  const all = [...document.querySelectorAll(".srow .fld")];
   return { ps: all.indexOf(ps), pt: all.indexOf(pt) };
 });
 ok(idxOfPs.ps >= 0 && idxOfPs.pt >= 0, `找到 Ps/Pt 输入框（ps=${idxOfPs.ps} pt=${idxOfPs.pt}）`);
 
 // 清空全压 → 填静压 0.01 → 全压应回填 0.02764
 await page.evaluate((ix) => {
-  const inputs = [...document.querySelectorAll(".sg .fld .inp")];
+  const inputs = [...document.querySelectorAll(".srow .fld .inp")];
   const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
   setter.call(inputs[ix.pt], "");
   inputs[ix.pt].dispatchEvent(new Event("input", { bubbles: true }));
@@ -181,7 +205,7 @@ await page.evaluate((ix) => {
 }, idxOfPs);
 await sleep(1200);
 const ptFilled = await page.evaluate((ix) => {
-  const inputs = [...document.querySelectorAll(".sg .fld .inp")];
+  const inputs = [...document.querySelectorAll(".srow .fld .inp")];
   return inputs[ix.pt]?.value;
 }, idxOfPs);
 const expectPt = 0.01 + (25 / 1000) * 0.84 * 0.84;
@@ -192,7 +216,7 @@ ok(calcTags.length > 0, `派生输入框标「计算值」（${calcTags.length} 
 
 // 反向：清空静压 → 填全压 0.06 → 静压应回填 0.04236
 await page.evaluate((ix) => {
-  const inputs = [...document.querySelectorAll(".sg .fld .inp")];
+  const inputs = [...document.querySelectorAll(".srow .fld .inp")];
   const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
   setter.call(inputs[ix.ps], "");
   inputs[ix.ps].dispatchEvent(new Event("input", { bubbles: true }));
@@ -201,7 +225,7 @@ await page.evaluate((ix) => {
 }, idxOfPs);
 await sleep(1200);
 const psFilled = await page.evaluate((ix) => {
-  const inputs = [...document.querySelectorAll(".sg .fld .inp")];
+  const inputs = [...document.querySelectorAll(".srow .fld .inp")];
   return inputs[ix.ps]?.value;
 }, idxOfPs);
 const expectPs = 0.06 - (25 / 1000) * 0.84 * 0.84;
@@ -210,15 +234,15 @@ ok(Math.abs(parseFloat(psFilled) - expectPs) < 1e-3, `填全压 → 静压回填
 /* ---------- 12. 方法下拉切换（烟温静压法 / 计温计压法） ---------- */
 await clickBtn("示例");
 await sleep(1400);
-const selCount = await page.$$eval(".sg select.sel", (els) => els.length);
+const selCount = await page.$$eval(".srow select.sel", (els) => els.length);
 ok(selCount >= 2, `④步有方法下拉、⑤步有基准含氧量下拉（${selCount} 个）`);
-const methodLabels = await page.$$eval(".sg select.sel option", (els) => els.map((e) => e.textContent.trim()));
+const methodLabels = await page.$$eval(".srow select.sel option", (els) => els.map((e) => e.textContent.trim()));
 ok(methodLabels.some((t) => t.includes("烟温静压法")) && methodLabels.some((t) => t.includes("计温计压法")),
   "方法下拉含两法：" + methodLabels.join(" / "));
 
 // 切到计温计压法
 await page.evaluate(() => {
-  const sel = [...document.querySelectorAll(".sg select.sel")].find((s) =>
+  const sel = [...document.querySelectorAll(".srow select.sel")].find((s) =>
     [...s.options].some((o) => o.textContent.includes("计温计压法"))
   );
   if (!sel) return;
@@ -227,7 +251,7 @@ await page.evaluate(() => {
   sel.dispatchEvent(new Event("change", { bubbles: true }));
 });
 await sleep(1400);
-const repAfter = await page.$$eval(".rep .rp", (els) =>
+const repAfter = await page.$$eval(".srow .out-p .rep .rp", (els) =>
   els.map((e) => ({
     label: e.querySelector(".rp-l")?.textContent.trim(),
     value: e.querySelector(".rp-v")?.textContent.trim(),
@@ -238,7 +262,7 @@ ok(vndAfter && vndAfter.value !== "—", `计温计压法下标况体积仍可�
 const condRow = repAfter.find((r) => r.label === "工况体积 V′");
 ok(!!condRow, "切换后显示「工况体积 V′」");
 const vndFlow = await page.evaluate(() => {
-  const rows = [...document.querySelectorAll(".rep .rp")];
+  const rows = [...document.querySelectorAll(".srow .out-p .rep .rp")];
   const r = rows.find((e) => e.querySelector(".rp-l")?.textContent.trim() === "标况体积 Vnd");
   return r?.querySelector(".rp-v")?.textContent.trim();
 });
@@ -253,14 +277,14 @@ ok(hintsAfterClear === 0, `清空后仍无「待补」提示（实际 ${hintsAft
 
 /* ---------- 14. 负数输入支持 ---------- */
 await page.evaluate((ix) => {
-  const inputs = [...document.querySelectorAll(".sg .fld .inp")];
+  const inputs = [...document.querySelectorAll(".srow .fld .inp")];
   const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
   setter.call(inputs[ix.ps], "-0.04");
   inputs[ix.ps].dispatchEvent(new Event("input", { bubbles: true }));
 }, idxOfPs);
 await sleep(900);
 const psVal = await page.evaluate((ix) => {
-  const inputs = [...document.querySelectorAll(".sg .fld .inp")];
+  const inputs = [...document.querySelectorAll(".srow .fld .inp")];
   return inputs[ix.ps]?.value;
 }, idxOfPs);
 ok(psVal === "-0.04", `负压输入保留负号（${psVal}）`);
