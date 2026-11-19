@@ -69,18 +69,19 @@ ok(
   "左侧按步骤从上到下分组：" + groupTitles.join(" → ")
 );
 
-/* ---------- 5. 无预填 + 空态缺参提示 ---------- */
+/* ---------- 5. 无预填 + 无冗长提示文字 ---------- */
 const preFilled = await page.$$eval(".inp", (els) => els.filter((e) => e.value.trim() !== "").map((e) => e.value));
 ok(preFilled.length === 0, `输入框无预填值（实际预填：${JSON.stringify(preFilled)}）`);
 
-const hints = await page.$$eval(".sg-hint", (els) => els.map((e) => e.textContent.trim()));
-ok(hints.length === 5, `空态下 5 步都有缺参提示（实际 ${hints.length}）`);
-ok(hints[0] && hints[0].includes("待补"), "①步提示含「待补」：" + hints[0]);
-ok(hints[1] && hints[1].includes("①步"), "②步提示指向上游①步：" + hints[1]);
-ok(hints[4] && hints[4].includes("④步"), "⑤步提示指向上游④步：" + hints[4]);
-
+// 步骤分组不再显示「待补：xxx」长提示
+const hints = await page.$$eval(".sg-hint", (els) => els.length);
+ok(hints === 0, `步骤分组无「待补」提示（实际 ${hints} 处）`);
+// 报表不再显示「缺 xxx」长说明
 const missCount = await page.$$eval(".rp-m", (els) => els.length);
-ok(missCount > 0, `空态下报表标注缺失项（${missCount} 处）`);
+ok(missCount === 0, `报表无「缺 xxx」说明（实际 ${missCount} 处）`);
+// 步骤分组不显示二级副标题
+const subTitles = await page.$$eval(".sg-d", (els) => els.length);
+ok(subTitles === 0, `步骤分组无二级副标题（实际 ${subTitles} 处）`);
 
 /* ---------- 6. 填入示例 → 五步全通 ---------- */
 const clickBtn = (text) =>
@@ -96,9 +97,6 @@ await sleep(1800);
 const flowDone = await page.$$eval(".fb-item.done", (els) => els.length);
 ok(flowDone === 5, `示例数据后 5 步全部完成（实际 ${flowDone}）`);
 
-const hintAfter = await page.$$eval(".sg-hint", (els) => els.length);
-ok(hintAfter === 0, `示例数据后无缺参提示（残留 ${hintAfter}）`);
-
 /* ---------- 7. 右侧竖列报表 ---------- */
 const repGroups = await page.$$eval(".rep-grp .rg-t", (els) => els.map((e) => e.textContent.trim()));
 ok(
@@ -110,7 +108,6 @@ const repRows = await page.$$eval(".rep .rp", (els) =>
     label: e.querySelector(".rp-l")?.textContent.trim(),
     value: e.querySelector(".rp-v")?.textContent.trim(),
     unit: e.querySelector(".rp-u")?.textContent.trim() || "",
-    miss: e.querySelector(".rp-m")?.textContent.trim() || "",
   }))
 );
 ok(repRows.length >= 15, `报表行数充足（${repRows.length} 行）`);
@@ -252,7 +249,7 @@ await sleep(1000);
 const afterClear = await page.$$eval(".inp", (els) => els.filter((e) => e.value.trim() !== "").length);
 ok(afterClear === 0, `清空后无残留值（残留 ${afterClear}）`);
 const hintsAfterClear = await page.$$eval(".sg-hint", (els) => els.length);
-ok(hintsAfterClear === 5, `清空后 5 步恢复缺参提示（${hintsAfterClear}）`);
+ok(hintsAfterClear === 0, `清空后仍无「待补」提示（实际 ${hintsAfterClear}）`);
 
 /* ---------- 14. 负数输入支持 ---------- */
 await page.evaluate((ix) => {

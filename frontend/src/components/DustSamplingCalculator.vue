@@ -286,13 +286,9 @@ function gotoStep(id: string) {
               <span class="sg-no">{{ vm.step.no }}</span>
               <div class="sg-t">
                 <b>{{ vm.step.title }}</b>
-                <span class="sg-d">{{ vm.step.desc }}</span>
               </div>
               <span v-if="vm.state.done" class="sg-ok">已完成</span>
             </div>
-
-            <!-- 缺参提示（灰色） -->
-            <div v-if="vm.state.hint" class="sg-hint">{{ vm.state.hint }}</div>
 
             <!-- 上游产物复用 -->
             <div v-if="vm.upstream.length" class="sg-up">
@@ -401,8 +397,7 @@ function gotoStep(id: string) {
                 <span class="rp-l">{{ row.label }}</span>
                 <span class="rp-v">{{ fmt(row.value, row.digits) }}</span>
                 <span class="rp-u">{{ row.unit }}</span>
-                <span v-if="row.value === null && row.missing" class="rp-m">{{ row.missing }}</span>
-                <span v-else-if="row.note" class="rp-n">{{ row.note }}</span>
+                <span v-if="row.note" class="rp-n">{{ row.note }}</span>
               </div>
             </div>
           </div>
@@ -442,7 +437,6 @@ function gotoStep(id: string) {
           </ul>
         </div>
         <ul class="notes">
-          <li><b>全压与静压可互相换算</b>：Pt = Ps + Δp·Kp²/1000。填任一即可，另一项自动推算（标「计算值」）；两者都填时以最后编辑的实测值为准。</li>
           <li><b>统一标态干基口径</b>：标况采样体积、颗粒物浓度、标干烟气流量、排放速率四项均按标态干基计算，始终保持 C × Qn × 10⁻⁶ ≡ G，与排放标准限值直接可比。</li>
           <li><b>含湿量口径</b>：Xsw 统一按百分数数值填入（如 7.89 表示 7.89%），干基折算因子统一为 (1 − Xsw/100)。含湿量已在等速采样流量中扣除，体积折算不重复修正。</li>
           <li><b>标态温度</b>：统一取 273.15 K（0℃）、101.325 kPa。</li>
@@ -583,20 +577,11 @@ function gotoStep(id: string) {
 .sg.done .sg-no { background: var(--d-accent2); }
 .sg-t { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .sg-t b { font-size: 14.5px; font-weight: 600; }
-.sg-d { font-size: 11.5px; color: var(--d-dim); }
 .sg-ok {
   margin-left: auto; flex: none;
   font-size: 10.5px; color: var(--d-accent2);
   border: 1px solid rgba(102, 217, 168, 0.4);
   border-radius: 5px; padding: 2px 7px;
-}
-.sg-hint {
-  font-size: 11.5px; color: var(--d-dim);
-  line-height: 1.5;
-  padding: 6px 9px; margin-bottom: 9px;
-  background: rgba(255, 255, 255, 0.02);
-  border-left: 2px solid var(--d-line);
-  border-radius: 4px;
 }
 
 /* ---- 上游产物复用 ---- */
@@ -743,11 +728,10 @@ function gotoStep(id: string) {
 .rp.primary .rp-v { color: var(--d-accent); font-size: 18px; }
 .rp.empty .rp-v { color: var(--d-dim); font-size: 14px; }
 .rp-u { font-size: 11px; color: var(--d-dim); }
-.rp-m, .rp-n {
+.rp-n {
   grid-column: 1 / -1;
-  font-size: 10.5px; color: var(--d-warn); line-height: 1.45;
+  font-size: 10.5px; color: var(--d-dim); line-height: 1.45;
 }
-.rp-n { color: var(--d-dim); }
 
 /* ---- 计算过程 ---- */
 .steps {
