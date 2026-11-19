@@ -1,420 +1,420 @@
 <script setup lang="ts">
 /**
- * DustSamplingCalculator.vue — 烟尘采样模型（颗粒物）
+ * DustSamplingCalculator.vue — 烟尘采样模型（颗粒物）· 流程式
  *
- * 设计目标：
+ * 设计目标（11-19 第五轮重构）：
+ *  - 流程化：静压 → 流速 → 等速流量 → 采样体积 → 排放，五步自上而下串行
+ *  - 参数复用：一份输入全局共用，上游产物自动带入，不重复录入
+ *  - 缺参提示：只在需要补参数的那一步显示灰色提示文字
+ *  - 结果竖列报表：右侧按「项目 | 数值 | 单位」三列竖排，按步骤分组
  *  - 通用工具：标题下不挂标准特指提示，页头副标题在工具详情页隐藏
- *  - 全字段可选：不做内置预填，输入即算；算不出的结果标「缺 xxx」
- *  - 多计算模式：按《烟尘相关计算公式(1).xlsx》各区块拆分为独立工具，选择模式进入对应工具
  *  - 工具化：暗色仪表盘风格、大号输入 + 单位后缀、实时联动、清空/示例
- *  - 移动端 H5 适配：单列大字号、44px 触控高度、结果两列
+ *  - 移动端 H5 适配：单列大字号、44px 触控高度、报表横向可读
  *
- * 公式来源：GB/T 16157 + 《烟尘相关计算公式(1).xlsx》（9 个公式已逐格校对复核）
+ * 公式来源：GB/T 16157 + 《烟尘相关计算公式(1).xlsx》（逐格校对复核）
  */
-import { ref, reactive, computed, watch } from "vue";
+import { ref, reactive, computed } from "vue";
 import { ElMessage } from "element-plus";
 import Icon from "@/components/Icon.vue";
 import { useAuthStore } from "@/stores/auth";
 import { O2_BASELINES } from "@/utils/o2-baseline";
 import {
-  DUST_MODES, DUST_MODE_MAP, DUST_MODE_DEMO, missingOfResult, type DustMode,
-} from "@/utils/flue-dust-modes";
+  DUST_FLOW, DUST_FLOW_DEMO, computeFlow,
+  type DustField, type DustStep,
+} from "@/utils/flue-dust-flow";
 
 const auth = useAuthStore();
 const isAdmin = computed(() => auth.isAdmin());
 
-/* ============ 模式 ============ */
-const modeId = ref<string>("full");
-const mode = computed<DustMode>(() => DUST_MODE_MAP[modeId.value] ?? DUST_MODES[DUST_MODES.length - 1]);
-
-/** 每个模式一套独立输入，互不干扰 */
-const forms = reactive<Record<string, Record<string, number | null>>>({});
-for (const m of DUST_MODES) {
-  const f: Record<string, number | null> = {};
-  for (const fd of m.fields) f[fd.key] = null;
-  forms[m.id] = f;
+/* ============ 全局输入表（参数复用，一份值全流程共用） ============ */
+const form = reactive<Record<string, number | null>>({});
+/** 字段 key → 归属步骤（第一次声明该字段的步骤拥有输入框） */
+const fieldOwner = new Map<string, string>();
+/** 全部输入字段 key（去重） */
+const allFieldKeys: string[] = [];
+for (const st of DUST_FLOW) {
+  for (const f of st.fields) {
+    if (!fieldOwner.has(f.key)) {
+      fieldOwner.set(f.key, st.id);
+      allFieldKeys.push(f.key);
+      form[f.key] = null;
+    }
+  }
 }
+/** 折算方法默认「烟温静压法」 */
+form.method = 1;
 
-const curForm = computed(() => forms[modeId.value]);
+/** 用户手动输入过的字段（不参与回填覆盖） */
+const touched = reactive(new Set<string>());
+/** 由计算派生出来的字段 */
+const derived = reactive(new Set<string>());
+/** 实测基准（'ps' 或 'pt'） */
+const measured = ref<string | null>(null);
 
 /* ============ 基准含氧量 ============ */
 const o2BaseOptions = O2_BASELINES.map((b) => ({
   value: b.o2s,
   label: `${b.label} ${b.o2s}%`,
 }));
-const o2BaseCustom = reactive<Record<string, boolean>>({});
-for (const m of DUST_MODES) o2BaseCustom[m.id] = false;
+const o2BaseCustom = ref(false);
 
-function onO2BaseSelect(mId: string, e: Event) {
+function onO2BaseSelect(e: Event) {
   const v = (e.target as HTMLSelectElement).value;
   if (v === "custom") {
-    o2BaseCustom[mId] = true;
+    o2BaseCustom.value = true;
     return;
   }
-  o2BaseCustom[mId] = false;
-  forms[mId].o2base = v === "" ? null : Number(v);
+  o2BaseCustom.value = false;
+  form.o2base = v === "" ? null : Number(v);
+  computeAndFill();
 }
 
-/* ============ 通用 select 字段（体积计算的折算方法） ============ */
-function onSelect(mId: string, key: string, e: Event) {
+/* ============ 通用 select 字段（折算方法） ============ */
+function onSelect(key: string, e: Event) {
   const el = e.target as HTMLSelectElement;
-  const v = el.value;
-  forms[mId][key] = v === "" ? null : Number(v);
+  form[key] = el.value === "" ? null : Number(el.value);
   computeAndFill();
 }
 
 /* ============ 输入处理：允许负号，非法字符过滤 ============ */
-function onInput(mId: string, key: string, e: Event) {
+function onInput(key: string, e: Event) {
   const el = e.target as HTMLInputElement;
   const clean = el.value.replace(/[^0-9.\-]/g, "");
   el.value = clean;
-  touched[mId]?.add(key);
-  derived[mId]?.delete(key);
-  markMeasured(mId, key);
+  touched.add(key);
+  derived.delete(key);
+  if (key === "ps" || key === "pt") markMeasured(key);
   if (clean === "" || clean === "-" || clean === ".") {
-    forms[mId][key] = null;
+    form[key] = null;
     computeAndFill();
     return;
   }
   const n = parseFloat(clean);
-  forms[mId][key] = Number.isFinite(n) ? n : null;
+  form[key] = Number.isFinite(n) ? n : null;
   computeAndFill();
 }
 
-/* ============ 计算 ============ */
-interface ModeResult {
-  values: Record<string, number | null>;
-  notes: Record<string, string | undefined>;
-  steps: string[];
-  /** 结果回填映射：{ 结果key: 输入框key } */
-  fills?: Record<string, string>;
+/** 记录实测基准（用户手动编辑全压/静压时调用） */
+function markMeasured(key: string) {
+  measured.value = key;
+  const other = key === "ps" ? "pt" : "ps";
+  touched.delete(other);
+  derived.add(other);
 }
 
-const results = computed<Record<string, ModeResult>>(() => {
-  const out: Record<string, ModeResult> = {};
-  for (const m of DUST_MODES) {
-    try {
-      out[m.id] = m.compute(forms[m.id] ?? {}, { measured: measuredOf(m.id), derived: derivedList(m.id) });
-    } catch {
-      out[m.id] = { values: {}, notes: {}, steps: [] };
+/* ============ 计算 ============ */
+const flowResult = computed(() => {
+  try {
+    return computeFlow(form, { measured: measured.value, derived: Array.from(derived) });
+  } catch {
+    return computeFlow({}, {});
+  }
+});
+
+/** 全压↔静压互转回填：把派生的一侧写回输入框 */
+function computeAndFill() {
+  const r = flowResult.value;
+  const v = r.values;
+  const push = (key: string, val: number | null, digits: number) => {
+    if (val === null || val === undefined || !Number.isFinite(val)) return;
+    if (touched.has(key)) return;
+    const next = digits === 0 ? Math.round(val) : Number(val.toFixed(digits));
+    if (form[key] !== next) {
+      form[key] = next;
+      derived.add(key);
     }
+  };
+  if (measured.value === "pt") push("ps", v.ps ?? null, 4);
+  else if (measured.value === "ps") push("pt", v.pt ?? null, 4);
+}
+
+/** 被计算值填充的输入框（标「计算值」） */
+const filledFields = computed<Set<string>>(() => {
+  const set = new Set<string>();
+  for (const key of derived) {
+    if (!touched.has(key) && form[key] !== null) set.add(key);
+  }
+  return set;
+});
+
+/** 是否为派生值（模板直接判断用） */
+function isFilled(key: string): boolean {
+  return derived.has(key) && !touched.has(key) && form[key] !== null;
+}
+
+/* ============ 步骤视图模型 ============ */
+interface StepFieldVM {
+  field: DustField;
+  /** 本步是否拥有该输入框 */
+  editable: boolean;
+}
+interface StepVM {
+  step: DustStep;
+  state: any;
+  fields: StepFieldVM[];
+  /** 复用的上游产物 */
+  upstream: { key: string; label: string; unit: string; value: number | null; from: string }[];
+}
+
+/** 上游产物 key → 显示名 */
+const UPSTREAM_LABEL: Record<string, { label: string; unit: string }> = {
+  ps: { label: "烟气静压 Ps", unit: "kPa" },
+  vs: { label: "烟气流速 Vs", unit: "m/s" },
+  qrs: { label: "等速采样流量 Qrs", unit: "L/min" },
+  vnd: { label: "标况体积 Vnd", unit: "L" },
+};
+
+const stepVMs = computed<StepVM[]>(() => {
+  const r = flowResult.value;
+  const out: StepVM[] = [];
+  for (const st of DUST_FLOW) {
+    const state = r.steps[st.id];
+    const fields: StepFieldVM[] = st.fields.map((f) => ({
+      field: f,
+      editable: fieldOwner.get(f.key) === st.id,
+    }));
+    const upstream = (st.upstream ?? []).map((k) => {
+      const meta = UPSTREAM_LABEL[k] ?? { label: k, unit: "" };
+      const ownerStep = DUST_FLOW.find((s) => s.results.some((rr) => rr.key === k));
+      return {
+        key: k,
+        label: meta.label,
+        unit: meta.unit,
+        value: r.values[k] ?? null,
+        from: ownerStep ? `${ownerStep.no}步` : "",
+      };
+    });
+    out.push({ step: st, state, fields, upstream });
   }
   return out;
 });
 
-const curResult = computed(() => results.value[modeId.value]);
+/** 结果报表行（过滤重复项） */
+function reportRows(st: DustStep, state: any): any[] {
+  const method = form.method;
+  let rows = state.rows;
+  if (st.id === "pressure") {
+    // Ps / Pt 本身就是输入框，结果区不重复展示
+    rows = rows.filter((x: any) => x.key !== "ps" && x.key !== "pt");
+  }
+  if (st.id === "isokinetic") {
+    // Qrs 的 m³/h 换算值与 L/min 重复，去掉
+    rows = rows.filter((x: any) => x.key !== "qh");
+  }
+  if (st.id === "volume") {
+    // 工况体积两法只显示所选方法的那一个
+    if (method === 2) rows = rows.filter((x: any) => x.key !== "volumeCondition");
+    else rows = rows.filter((x: any) => x.key !== "volumeMeter");
+  }
+  return rows;
+}
 
-function fmt(def: { digits: number }, v: number | null): string {
+function fmt(v: number | null, digits: number): string {
   if (v === null || v === undefined || !Number.isFinite(v)) return "—";
-  if (def.digits === 0) return Math.round(v).toLocaleString("zh-CN");
-  return v.toFixed(def.digits);
+  if (digits === 0) return Math.round(v).toLocaleString("zh-CN");
+  return v.toFixed(digits);
 }
-
-/* ============ 结果回填到输入框（输入框即显示） ============
- * 某些模式（如烟气静压计算）的输出本身就是另一个输入项，
- * 此时把结果直接回填到对应输入框，输入框本身即显示结果。
- *
- * 实现：输入变化 → 计算 → 回填 → 再计算（最多迭代 3 轮，收敛即停）。
- * 不使用 watch，避免自触发形成死循环。
- *
- * 规则：
- *   - 只有当目标输入框在本模式确实存在时才回填（否则结果无处显示，保留在右侧）
- *   - 用户手动填过的字段不被回填覆盖（实测优先）
- */
-const FILL_DIGITS: Record<string, number> = {
-  ps: 4, pt: 4, dpPressure: 4,
-  nozzle: 2, vs: 3, qrs: 2, vnd: 2, qn: 0, qs: 0,
-  volumeCondition: 2, volumeMeter: 2,
-};
-
-const MAX_FILL_ROUNDS = 3;
-
-/** 用户手动输入过的字段（不参与回填覆盖） */
-const touched: Record<string, Set<string>> = {};
-for (const m of DUST_MODES) touched[m.id] = new Set();
-
-/** 由计算派生出来的字段（不是用户实测值） */
-const derived: Record<string, Set<string>> = {};
-for (const m of DUST_MODES) derived[m.id] = new Set();
-
-function derivedList(mId: string): string[] {
-  return derived[mId] ? Array.from(derived[mId]) : [];
-}
-
-/**
- * 每个模式的「实测基准」标记（'ps' 或 'pt'）
- *
- * 全压↔静压双向互转的关键：用户最后手动编辑的是哪一个，
- * 另一个就由它派生并回填。若无标记，默认以静压为实测。
- */
-const measured: Record<string, string | null> = {};
-for (const m of DUST_MODES) measured[m.id] = null;
-
-function measuredOf(mId: string): string | null {
-  return measured[mId] ?? null;
-}
-
-/** 记录实测基准（用户手动编辑全压/静压时调用） */
-function markMeasured(mId: string, key: string) {
-  if (key !== "ps" && key !== "pt") return;
-  measured[mId] = key;
-  // 全压↔静压互转：用户改了这一个，另一个就变成派生值
-  // （解除它的「实测」身份，允许被重新推算覆盖）
-  const other = key === "ps" ? "pt" : "ps";
-  touched[mId]?.delete(other);
-  derived[mId]?.add(other);
-}
-
-/** 计算当前模式并把结果回填到输入框（迭代至收敛） */
-function computeAndFill() {
-  for (let round = 0; round < MAX_FILL_ROUNDS; round++) {
-    const r = results.value[modeId.value];
-    if (!r?.fills) return;
-    const f = forms[modeId.value];
-    if (!f) return;
-    const t = touched[modeId.value];
-    const d = derived[modeId.value];
-    let changed = false;
-    for (const [resKey, fieldKey] of Object.entries(r.fills)) {
-      const val = r.values[resKey];
-      if (val === null || val === undefined || !Number.isFinite(val)) continue;
-      if (!(fieldKey in f)) continue;
-      if (t?.has(fieldKey)) continue;
-      const digits = FILL_DIGITS[resKey] ?? 4;
-      const next = digits === 0 ? Math.round(val) : Number(val.toFixed(digits));
-      if (f[fieldKey] !== next) {
-        f[fieldKey] = next;
-        d?.add(fieldKey);
-        changed = true;
-      }
-    }
-    if (!changed) return;
-  }
-}
-
-/* ============ 已在输入框显示的结果（右侧不再重复列出） ============
- * 判定：结果对应的输入框在本模式存在，且该输入框当前确实有值。
- * 这样：
- *   - 已算出并回填 → 右侧不重复（输入框即显示）
- *   - 算不出（输入框仍空）→ 保留右侧，显示「缺 xxx」提示
- */
-const shownResults = computed<Set<string>>(() => {
-  const set = new Set<string>();
-  const f = forms[modeId.value] ?? {};
-  const r = curResult.value;
-  const fills = r?.fills ?? {};
-  for (const d of mode.value.results) {
-    const target = fills[d.key] ?? (d.key in f ? d.key : null);
-    if (!target) continue;
-    const val = f[target];
-    if (val === null || val === undefined) continue;
-    set.add(d.key);
-  }
-  return set;
-});
-
-/* ============ 被计算值填充的输入框（标「计算值」） ============ */
-const filledFields = computed<Set<string>>(() => {
-  const set = new Set<string>();
-  const r = curResult.value;
-  if (!r?.fills) return set;
-  const fieldKeys = new Set(mode.value.fields.map((f) => f.key));
-  const t = touched[modeId.value];
-  for (const [resKey, fieldKey] of Object.entries(r.fills)) {
-    if (!fieldKeys.has(fieldKey)) continue;
-    if (t?.has(fieldKey)) continue;
-    const val = r.values[resKey];
-    if (val === null || val === undefined || !Number.isFinite(val)) continue;
-    set.add(fieldKey);
-  }
-  return set;
-});
-
-/** 结果区显示项：排除已在输入框显示的结果 */
-const visibleResults = computed(() =>
-  mode.value.results.filter((d) => !shownResults.value.has(d.key))
-);
-
-/* ============ 缺失依赖说明 ============
- * 统一走 flue-dust-modes.ts 的中央依赖表，平台与小程序口径一致 */
-function missingOf(m: DustMode, key: string): string {
-  return missingOfResult(key, forms[m.id] ?? {}, curResult.value?.values ?? {}, m.depRules);
-}
-
-/* ============ 公式说明（随模式 + 所选方法同步） ============ */
-const curFormulas = computed(() => {
-  const m = mode.value;
-  const byMethod = m.formulasByMethod;
-  if (!byMethod) return m.formulas;
-  const sel = curForm.value?.method;
-  const hit = sel === null || sel === undefined
-    ? null
-    : byMethod[String(sel)];
-  return hit ?? m.formulas;
-});
 
 /* ============ 操作 ============ */
 function loadDemo() {
-  const demo = DUST_MODE_DEMO[modeId.value] ?? {};
-  const f = forms[modeId.value];
-  for (const key of Object.keys(f)) f[key] = demo[key] ?? null;
-  o2BaseCustom[modeId.value] = false;
-  touched[modeId.value]?.clear();
-  derived[modeId.value]?.clear();
-  // 示例数据的实测基准：给了全压就以全压为准，否则以静压为准
-  measured[modeId.value] = demo.pt !== null && demo.pt !== undefined ? "pt"
-    : (demo.ps !== null && demo.ps !== undefined ? "ps" : null);
+  for (const key of allFieldKeys) form[key] = DUST_FLOW_DEMO[key] ?? null;
+  o2BaseCustom.value = false;
+  touched.clear();
+  derived.clear();
+  measured.value = "ps";
   computeAndFill();
   ElMessage.success("已填入示例数据");
 }
 
 function clearAll() {
-  const f = forms[modeId.value];
-  for (const key of Object.keys(f)) f[key] = null;
-  o2BaseCustom[modeId.value] = false;
-  touched[modeId.value]?.clear();
-  derived[modeId.value]?.clear();
-  measured[modeId.value] = null;
-  computeAndFill();
+  for (const key of allFieldKeys) form[key] = null;
+  o2BaseCustom.value = false;
+  touched.clear();
+  derived.clear();
+  measured.value = null;
   ElMessage.info("已清空");
-}
-
-function switchMode(id: string) {
-  modeId.value = id;
-  computeAndFill();
 }
 
 const showExplain = ref(false);
 const showAllSteps = ref(false);
+const activeStep = ref<string>(DUST_FLOW[0].id);
 
-watch(modeId, () => { showAllSteps.value = false; });
+function gotoStep(id: string) {
+  activeStep.value = id;
+  const el = document.getElementById("dust-step-" + id);
+  if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+}
 </script>
 
 <template>
   <div class="ds">
-    <!-- ===== 模式选择器 ===== -->
-    <section class="panel modes">
-      <div class="modes-h">
-        <span class="modes-t">选择计算工具</span>
+    <!-- ===== 流程条 ===== -->
+    <section class="panel flowbar">
+      <div class="fb-h">
+        <span class="fb-t">计算流程</span>
+        <span class="fb-p">{{ flowResult.doneCount }} / {{ flowResult.totalCount }} 步已完成</span>
       </div>
-      <div class="mode-grid">
+      <div class="fb-list">
         <button
-          v-for="m in DUST_MODES"
-          :key="m.id"
-          :class="['mode', { active: modeId === m.id }]"
-          @click="switchMode(m.id)"
+          v-for="st in DUST_FLOW"
+          :key="st.id"
+          :class="['fb-item', { done: flowResult.steps[st.id].done, active: activeStep === st.id }]"
+          @click="gotoStep(st.id)"
         >
-          <span class="mode-ico"><Icon :name="m.icon" :size="16" /></span>
-          <span class="mode-n">{{ m.name }}</span>
+          <span class="fb-no">{{ st.no }}</span>
+          <span class="fb-nm">{{ st.title }}</span>
+          <span v-if="flowResult.steps[st.id].done" class="fb-ok">✓</span>
         </button>
+      </div>
+      <div class="bar-r">
+        <button class="ghost" @click="loadDemo">填入示例</button>
+        <button class="ghost danger" @click="clearAll">清空</button>
       </div>
     </section>
 
-    <!-- ===== 计算面板 ===== -->
     <section class="panel">
-      <header class="bar">
-        <div class="bar-l">
-          <span class="dot" />
-          <div class="bar-t">
-            <b>{{ mode.name }}</b>
-          </div>
-        </div>
-        <div class="bar-r">
-          <button class="ghost" @click="loadDemo">填入示例</button>
-          <button class="ghost danger" @click="clearAll">清空</button>
-        </div>
-      </header>
-
       <div class="body">
-        <!-- ===== 左：输入区 ===== -->
+        <!-- ===== 左：输入区（按步骤从上到下） ===== -->
         <div class="in">
-          <div class="flds">
-            <div
-              v-for="f in mode.fields"
-              :key="f.key"
-              :class="['fld', { filled: filledFields.has(f.key) }]"
-            >
-              <label>
-                <span class="lbl">{{ f.label }}</span>
-                <span class="sym">{{ f.sym }}</span>
-                <span v-if="filledFields.has(f.key)" class="calc-tag">计算值</span>
-              </label>
-              <!-- 基准含氧量：下拉 + 自定义 -->
-              <div v-if="f.type === 'o2base'" class="wrap">
-                <select
-                  class="sel"
-                  :value="o2BaseCustom[modeId] ? 'custom' : (curForm[f.key] === null ? '' : String(curForm[f.key]))"
-                  @change="onO2BaseSelect(modeId, $event)"
+          <div
+            v-for="vm in stepVMs"
+            :id="'dust-step-' + vm.step.id"
+            :key="vm.step.id"
+            :class="['sg', { done: vm.state.done }]"
+          >
+            <div class="sg-h">
+              <span class="sg-no">{{ vm.step.no }}</span>
+              <div class="sg-t">
+                <b>{{ vm.step.title }}</b>
+                <span class="sg-d">{{ vm.step.desc }}</span>
+              </div>
+              <span v-if="vm.state.done" class="sg-ok">已完成</span>
+            </div>
+
+            <!-- 缺参提示（灰色） -->
+            <div v-if="vm.state.hint" class="sg-hint">{{ vm.state.hint }}</div>
+
+            <!-- 上游产物复用 -->
+            <div v-if="vm.upstream.length" class="sg-up">
+              <div v-for="u in vm.upstream" :key="u.key" class="up-row">
+                <span class="up-l">{{ u.label }}</span>
+                <span class="up-v" :class="{ miss: u.value === null }">
+                  {{ u.value === null ? "待前序步骤计算" : fmt(u.value, 4) }}
+                </span>
+                <span class="up-u">{{ u.unit }}</span>
+                <span class="up-f">{{ u.from }}带入</span>
+              </div>
+            </div>
+
+            <!-- 本步输入字段 -->
+            <div class="flds">
+              <template v-for="fv in vm.fields">
+                <!-- 本步拥有该字段：可编辑输入框 -->
+                <div
+                  v-if="fv.editable"
+                  :key="fv.field.key"
+                  :class="['fld', { filled: filledFields.has(fv.field.key) }]"
                 >
-                  <option value="">选择行业基准…</option>
-                  <option v-for="o in o2BaseOptions" :key="o.value" :value="String(o.value)">
-                    {{ o.label }}
-                  </option>
-                  <option value="custom">自定义输入</option>
-                </select>
-                <span class="unit">%</span>
-              </div>
-              <div v-else-if="f.type === 'select'" class="wrap">
-                <select
-                  class="sel"
-                  :value="curForm[f.key] === null ? '' : String(curForm[f.key])"
-                  @change="onSelect(modeId, f.key, $event)"
-                >
-                  <option value="">请选择…</option>
-                  <option v-for="o in f.options" :key="String(o.value)" :value="String(o.value)">
-                    {{ o.label }}
-                  </option>
-                </select>
-              </div>
-              <div v-else class="wrap">
-                <input
-                  class="inp"
-                  type="text"
-                  inputmode="decimal"
-                  autocomplete="off"
-                  :value="curForm[f.key] === null ? '' : String(curForm[f.key])"
-                  :placeholder="f.ph || ''"
-                  @input="onInput(modeId, f.key, $event)"
-                />
-                <span class="unit">{{ f.unit }}</span>
-              </div>
-              <div v-if="f.tip" class="fld-tip">{{ f.tip }}</div>
+                  <label>
+                    <span class="lbl">{{ fv.field.label }}</span>
+                    <span class="sym">{{ fv.field.sym }}</span>
+                    <span v-if="filledFields.has(fv.field.key)" class="calc-tag">计算值</span>
+                  </label>
+                  <!-- 基准含氧量：下拉 + 自定义 -->
+                  <div v-if="fv.field.type === 'o2base'" class="wrap">
+                    <select
+                      class="sel"
+                      :value="o2BaseCustom ? 'custom' : (form[fv.field.key] === null ? '' : String(form[fv.field.key]))"
+                      @change="onO2BaseSelect"
+                    >
+                      <option value="">选择行业基准…</option>
+                      <option v-for="o in o2BaseOptions" :key="o.value" :value="String(o.value)">
+                        {{ o.label }}
+                      </option>
+                      <option value="custom">自定义输入</option>
+                    </select>
+                    <span class="unit">%</span>
+                  </div>
+                  <div v-else-if="fv.field.type === 'select'" class="wrap">
+                    <select
+                      class="sel"
+                      :value="form[fv.field.key] === null ? '' : String(form[fv.field.key])"
+                      @change="onSelect(fv.field.key, $event)"
+                    >
+                      <option value="">请选择…</option>
+                      <option v-for="o in fv.field.options" :key="String(o.value)" :value="String(o.value)">
+                        {{ o.label }}
+                      </option>
+                    </select>
+                  </div>
+                  <div v-else class="wrap">
+                    <input
+                      class="inp"
+                      type="text"
+                      inputmode="decimal"
+                      autocomplete="off"
+                      :value="form[fv.field.key] === null ? '' : String(form[fv.field.key])"
+                      :placeholder="fv.field.ph || ''"
+                      @input="onInput(fv.field.key, $event)"
+                    />
+                    <span class="unit">{{ fv.field.unit }}</span>
+                  </div>
+                  <div v-if="fv.field.tip" class="fld-tip">{{ fv.field.tip }}</div>
+                </div>
+                <!-- 上游步骤已填：本步只读复用 -->
+                <div v-else :key="fv.field.key" class="fld reused">
+                  <label>
+                    <span class="lbl">{{ fv.field.label }}</span>
+                    <span class="sym">{{ fv.field.sym }}</span>
+                    <span class="reuse-tag">复用</span>
+                  </label>
+                  <div class="wrap ro">
+                    <span class="ro-v">{{ form[fv.field.key] === null ? "—" : String(form[fv.field.key]) }}</span>
+                    <span class="unit">{{ fv.field.unit }}</span>
+                  </div>
+                </div>
+              </template>
             </div>
           </div>
         </div>
 
-        <!-- ===== 右：结果区 ===== -->
+        <!-- ===== 右：结果竖列报表 ===== -->
         <div class="out">
-          <div class="res-grid">
-            <div
-              v-for="d in visibleResults"
-              :key="d.key"
-              :class="['res', { primary: d.primary, empty: (curResult?.values[d.key] ?? null) === null }]"
-              :title="d.formula"
-            >
-              <span class="r-l">{{ d.label }}</span>
-              <div class="r-v">
-                <b :class="{ sm: (curResult?.values[d.key] ?? null) !== null && fmt(d, curResult!.values[d.key]).length > 5 }">
-                  {{ fmt(d, curResult?.values[d.key] ?? null) }}
-                </b>
-                <span v-if="d.unit" class="r-u">{{ d.unit }}</span>
+          <div class="rep-head">
+            <span class="rh-t">计算结果报表</span>
+            <span class="rh-p">项目 · 数值 · 单位</span>
+          </div>
+
+          <div v-for="vm in stepVMs" :key="vm.step.id" class="rep-grp">
+            <div class="rg-h">
+              <span class="rg-no">{{ vm.step.no }}</span>
+              <span class="rg-t">{{ vm.step.title }}</span>
+              <span v-if="vm.state.done" class="rg-ok">✓</span>
+            </div>
+            <div class="rep">
+              <div
+                v-for="row in reportRows(vm.step, vm.state)"
+                :key="row.key"
+                :class="['rp', { primary: row.primary, empty: row.value === null }]"
+                :title="row.formula"
+              >
+                <span class="rp-l">{{ row.label }}</span>
+                <span class="rp-v">{{ fmt(row.value, row.digits) }}</span>
+                <span class="rp-u">{{ row.unit }}</span>
+                <span v-if="row.value === null && row.missing" class="rp-m">{{ row.missing }}</span>
+                <span v-else-if="row.note" class="rp-n">{{ row.note }}</span>
               </div>
-              <div v-if="(curResult?.values[d.key] ?? null) === null" class="r-miss">
-                缺 {{ missingOf(mode, d.key) }}
-              </div>
-              <div v-else-if="curResult?.notes?.[d.key]" class="r-note">{{ curResult?.notes?.[d.key] }}</div>
-              <div v-else-if="d.note" class="r-note">{{ d.note }}</div>
             </div>
           </div>
 
           <!-- 计算过程 -->
-          <div class="steps" v-if="isAdmin && curResult && curResult.steps.length">
+          <div class="steps" v-if="isAdmin && flowResult.steps_log.length">
             <div class="steps-t" @click="showAllSteps = !showAllSteps">
               计算过程
               <span class="toggle">{{ showAllSteps ? "收起 ▲" : "展开 ▼" }}</span>
             </div>
             <div v-show="showAllSteps" class="step-list">
-              <div v-for="(s, i) in curResult.steps" :key="i" class="step">{{ s }}</div>
+              <div v-for="(s, i) in flowResult.steps_log" :key="i" class="step">{{ s }}</div>
             </div>
           </div>
         </div>
@@ -431,18 +431,20 @@ watch(modeId, () => { showAllSteps.value = false; });
         <span class="toggle">{{ showExplain ? "收起 ▲" : "展开 ▼" }}</span>
       </div>
       <div v-show="showExplain" class="doc-b">
-        <div class="fx">
-          <div class="fx-t">{{ mode.name }}</div>
-          <div class="fx-l fx-desc">{{ mode.desc }}</div>
-        </div>
-        <div class="fx" v-for="(f, i) in curFormulas" :key="i">
-          <div class="fx-t">{{ f.title }}</div>
-          <div class="fx-l" v-for="(line, j) in f.lines" :key="j"><code>{{ line }}</code></div>
+        <div v-for="vm in stepVMs" :key="vm.step.id" class="fx">
+          <div class="fx-t">{{ vm.step.no }}. {{ vm.step.title }}</div>
+          <div v-for="(f, i) in vm.step.formulas" :key="i" class="fx-sub">
+            <div class="fx-st">{{ f.title }}</div>
+            <div class="fx-l" v-for="(line, j) in f.lines" :key="j"><code>{{ line }}</code></div>
+          </div>
+          <ul v-if="vm.step.notes && vm.step.notes.length" class="fx-notes">
+            <li v-for="(n, i) in vm.step.notes" :key="i">{{ n }}</li>
+          </ul>
         </div>
         <ul class="notes">
-          <li><b>全压与静压可互相换算</b>：Pt = Ps + Δp·Kp²/1000。填任一即可，另一项自动推算（标「计算值」）；两者都填时以实测静压为准并给出推算全压。</li>
+          <li><b>全压与静压可互相换算</b>：Pt = Ps + Δp·Kp²/1000。填任一即可，另一项自动推算（标「计算值」）；两者都填时以最后编辑的实测值为准。</li>
           <li><b>统一标态干基口径</b>：标况采样体积、颗粒物浓度、标干烟气流量、排放速率四项均按标态干基计算，始终保持 C × Qn × 10⁻⁶ ≡ G，与排放标准限值直接可比。</li>
-          <li><b>含湿量口径</b>：Xsw 统一按百分数数值填入（如 7.89 表示 7.89%），干基折算因子统一为 (1 − Xsw/100)。</li>
+          <li><b>含湿量口径</b>：Xsw 统一按百分数数值填入（如 7.89 表示 7.89%），干基折算因子统一为 (1 − Xsw/100)。含湿量已在等速采样流量中扣除，体积折算不重复修正。</li>
           <li><b>标态温度</b>：统一取 273.15 K（0℃）、101.325 kPa。</li>
           <li><b>含氧量折算</b>：基准含氧量按行业标准选择（火电燃煤 6%、锅炉燃煤 9%、燃油/燃气 3/3.5%、水泥窑 10%、垃圾焚烧 11%、烧结 16% 等），也支持自定义。</li>
           <li><b>负荷系数</b>（出力系数）：锅炉按运行年限查表，一般验收监测取 1。</li>
@@ -482,64 +484,51 @@ watch(modeId, () => { showAllSteps.value = false; });
   color: var(--d-txt);
 }
 
-/* ---- 模式选择器 ---- */
-.modes { padding: 16px 20px 18px; }
-.modes-h {
-  display: flex; align-items: baseline; gap: 12px;
-  margin-bottom: 13px; flex-wrap: wrap;
+/* ---- 流程条 ---- */
+.flowbar { padding: 14px 18px 16px; }
+.fb-h {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 12px; margin-bottom: 12px; flex-wrap: wrap;
 }
-.modes-t {
+.fb-t {
   font-size: 11.5px; letter-spacing: 1px; text-transform: uppercase;
   color: var(--d-accent); font-weight: 600;
 }
-.modes-s { font-size: 12.5px; color: var(--d-muted); }
-.mode-grid {
+.fb-p { font-size: 12px; color: var(--d-muted); }
+.fb-list {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
-  gap: 9px;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
 }
-.mode {
-  display: flex; flex-direction: column; align-items: flex-start; gap: 5px;
+.fb-item {
+  display: flex; align-items: center; gap: 7px;
   background: var(--d-panel);
   border: 1px solid var(--d-line);
-  border-radius: 11px;
-  padding: 12px 13px;
+  border-radius: 10px;
+  padding: 9px 11px;
   cursor: pointer;
-  text-align: left;
-  transition: all 0.16s;
   font-family: inherit;
+  transition: all 0.15s;
+  min-width: 0;
 }
-.mode:hover { border-color: rgba(79, 195, 247, 0.5); }
-.mode.active {
-  border-color: var(--d-accent);
-  background: rgba(79, 195, 247, 0.1);
-  box-shadow: 0 0 0 1px rgba(79, 195, 247, 0.25);
-}
-.mode-ico { color: var(--d-accent2); display: flex; }
-.mode.active .mode-ico { color: var(--d-accent); }
-.mode-n { font-size: 13.5px; font-weight: 600; color: var(--d-txt); line-height: 1.35; }
-.mode.active .mode-n { color: var(--d-accent); }
-.mode-r { font-size: 10.5px; color: var(--d-dim); }
-
-/* ---- 顶部状态条 ---- */
-.bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 16px 20px 12px;
-  flex-wrap: wrap;
-}
-.bar-l { display: flex; align-items: center; gap: 11px; min-width: 0; }
-.dot {
-  width: 10px; height: 10px; border-radius: 50%;
-  background: var(--d-accent2);
-  box-shadow: 0 0 10px var(--d-accent2);
+.fb-item:hover { border-color: rgba(79, 195, 247, 0.5); }
+.fb-item.active { border-color: var(--d-accent); background: rgba(79, 195, 247, 0.08); }
+.fb-item.done { border-color: rgba(102, 217, 168, 0.45); }
+.fb-no {
+  width: 18px; height: 18px; border-radius: 50%;
+  background: var(--d-panel2); color: var(--d-muted);
+  font-size: 11px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
   flex: none;
 }
-.bar-t { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-.bar-t b { font-size: 16.5px; font-weight: 600; letter-spacing: 0.2px; }
-.bar-s { font-size: 12px; color: var(--d-muted); }
+.fb-item.done .fb-no { background: rgba(102, 217, 168, 0.18); color: var(--d-accent2); }
+.fb-nm {
+  font-size: 12.5px; color: var(--d-txt); font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.fb-ok { color: var(--d-accent2); font-size: 12px; margin-left: auto; flex: none; }
+
 .bar-r { display: flex; gap: 8px; }
 .ghost {
   background: var(--d-panel2);
@@ -559,34 +548,72 @@ watch(modeId, () => { showAllSteps.value = false; });
 /* ---- 主体两栏 ---- */
 .body {
   display: grid;
-  grid-template-columns: minmax(300px, 420px) 1fr;
+  grid-template-columns: minmax(320px, 460px) 1fr;
 }
 .in {
-  padding: 18px 20px 20px;
+  padding: 16px 20px 22px;
   border-right: 1px solid var(--d-line);
   background: var(--d-panel);
 }
 .out {
-  padding: 18px 20px 20px;
+  padding: 16px 20px 22px;
   background: var(--d-bg);
   min-width: 0;
 }
 
-/* ---- 计算值标记（结果已回填到输入框） ---- */
-.fld.filled .wrap {
-  border-color: rgba(102, 217, 168, 0.45);
-  background: rgba(102, 217, 168, 0.06);
+/* ---- 步骤分组 ---- */
+.sg {
+  border: 1px solid var(--d-line);
+  border-radius: 12px;
+  background: var(--d-panel2);
+  padding: 13px 14px 15px;
+  margin-bottom: 14px;
+  scroll-margin-top: 12px;
 }
-.fld.filled .inp { color: var(--d-accent2); }
-.calc-tag {
-  font-size: 10px;
-  color: var(--d-accent2);
-  border: 1px solid rgba(102, 217, 168, 0.4);
-  border-radius: 4px;
-  padding: 1px 5px;
+.sg:last-child { margin-bottom: 0; }
+.sg.done { border-color: rgba(102, 217, 168, 0.35); }
+.sg-h { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.sg-no {
+  width: 22px; height: 22px; border-radius: 7px;
+  background: var(--d-accent); color: #0b1117;
+  font-size: 12px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
   flex: none;
-  align-self: center;
 }
+.sg.done .sg-no { background: var(--d-accent2); }
+.sg-t { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.sg-t b { font-size: 14.5px; font-weight: 600; }
+.sg-d { font-size: 11.5px; color: var(--d-dim); }
+.sg-ok {
+  margin-left: auto; flex: none;
+  font-size: 10.5px; color: var(--d-accent2);
+  border: 1px solid rgba(102, 217, 168, 0.4);
+  border-radius: 5px; padding: 2px 7px;
+}
+.sg-hint {
+  font-size: 11.5px; color: var(--d-dim);
+  line-height: 1.5;
+  padding: 6px 9px; margin-bottom: 9px;
+  background: rgba(255, 255, 255, 0.02);
+  border-left: 2px solid var(--d-line);
+  border-radius: 4px;
+}
+
+/* ---- 上游产物复用 ---- */
+.sg-up { margin-bottom: 10px; display: flex; flex-direction: column; gap: 5px; }
+.up-row {
+  display: flex; align-items: baseline; gap: 8px;
+  font-size: 11.5px;
+  padding: 5px 9px;
+  background: rgba(79, 195, 247, 0.06);
+  border: 1px dashed rgba(79, 195, 247, 0.28);
+  border-radius: 7px;
+}
+.up-l { color: var(--d-muted); }
+.up-v { color: var(--d-accent); font-weight: 600; font-variant-numeric: tabular-nums; }
+.up-v.miss { color: var(--d-dim); font-weight: 400; }
+.up-u { color: var(--d-dim); }
+.up-f { margin-left: auto; color: var(--d-dim); font-size: 10.5px; }
 
 /* ---- 输入 ---- */
 .flds { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
@@ -603,7 +630,7 @@ watch(modeId, () => { showAllSteps.value = false; });
 .fld-tip { font-size: 10.5px; color: var(--d-dim); margin-top: 4px; line-height: 1.4; }
 .wrap {
   display: flex; align-items: center;
-  background: var(--d-panel2);
+  background: var(--d-bg);
   border: 1px solid var(--d-line);
   border-radius: 9px;
   transition: border-color 0.15s, box-shadow 0.15s;
@@ -617,14 +644,14 @@ watch(modeId, () => { showAllSteps.value = false; });
   flex: 1; min-width: 0;
   background: transparent; border: none; outline: none;
   color: var(--d-txt);
-  font-size: 20px; font-weight: 600;
+  font-size: 19px; font-weight: 600;
   padding: 10px 6px 10px 13px;
   font-variant-numeric: tabular-nums;
   width: 100%;
   appearance: none;
 }
 .sel {
-  font-size: 14px; font-weight: 500;
+  font-size: 13.5px; font-weight: 500;
   padding: 11px 26px 11px 13px;
   background-image: linear-gradient(45deg, transparent 50%, var(--d-muted) 50%),
     linear-gradient(135deg, var(--d-muted) 50%, transparent 50%);
@@ -633,54 +660,93 @@ watch(modeId, () => { showAllSteps.value = false; });
   background-repeat: no-repeat;
 }
 .sel option { background: var(--d-panel2); color: var(--d-txt); }
-.inp::placeholder { color: #3f4b59; font-weight: 400; font-size: 14px; }
+.inp::placeholder { color: #3f4b59; font-weight: 400; font-size: 13.5px; }
 .unit {
-  color: var(--d-muted); font-size: 13px;
+  color: var(--d-muted); font-size: 12.5px;
   padding-right: 12px; white-space: nowrap; flex: none;
 }
 
-/* ---- 结果区 ---- */
-.res-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(178px, 1fr));
-  gap: 9px;
+/* ---- 计算值标记 ---- */
+.fld.filled .wrap {
+  border-color: rgba(102, 217, 168, 0.45);
+  background: rgba(102, 217, 168, 0.06);
 }
-.res {
-  background: var(--d-panel);
+.fld.filled .inp { color: var(--d-accent2); }
+.calc-tag {
+  font-size: 10px;
+  color: var(--d-accent2);
+  border: 1px solid rgba(102, 217, 168, 0.4);
+  border-radius: 4px;
+  padding: 1px 5px;
+  flex: none;
+  align-self: center;
+}
+.reuse-tag {
+  font-size: 10px; color: var(--d-dim);
   border: 1px solid var(--d-line);
-  border-radius: 11px;
-  padding: 11px 13px;
-  display: flex; flex-direction: column; gap: 3px;
-  min-width: 0;
+  border-radius: 4px; padding: 1px 5px;
+  flex: none; align-self: center;
 }
-.r-l {
-  font-size: 11.5px; color: var(--d-muted);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+.fld.reused .wrap.ro {
+  background: rgba(255, 255, 255, 0.02);
+  border-style: dashed;
 }
-.r-v {
-  display: flex; align-items: baseline; gap: 4px;
-  min-width: 0; flex-wrap: nowrap;
-}
-.r-v b {
-  font-size: 20px; font-weight: 700; color: var(--d-txt);
+.ro-v {
+  flex: 1; min-width: 0;
+  color: var(--d-muted); font-size: 15px; font-weight: 600;
+  padding: 9px 6px 9px 13px;
   font-variant-numeric: tabular-nums;
-  line-height: 1.25;
+}
+
+/* ---- 右侧报表 ---- */
+.rep-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 10px; margin-bottom: 12px;
+}
+.rh-t { font-size: 12px; color: var(--d-accent); letter-spacing: 0.6px; font-weight: 600; }
+.rh-p { font-size: 11px; color: var(--d-dim); }
+.rep-grp { margin-bottom: 16px; }
+.rg-h {
+  display: flex; align-items: center; gap: 8px;
+  padding-bottom: 6px; margin-bottom: 7px;
+  border-bottom: 1px solid var(--d-line);
+}
+.rg-no {
+  width: 18px; height: 18px; border-radius: 5px;
+  background: var(--d-panel2); color: var(--d-muted);
+  font-size: 10.5px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  flex: none;
+}
+.rg-t { font-size: 12.5px; color: var(--d-muted); font-weight: 600; }
+.rg-ok { margin-left: auto; color: var(--d-accent2); font-size: 12px; }
+.rep { display: flex; flex-direction: column; gap: 1px; }
+.rp {
+  display: grid;
+  grid-template-columns: minmax(120px, 1.6fr) minmax(78px, 1fr) minmax(40px, auto);
+  align-items: baseline;
+  gap: 8px;
+  padding: 7px 11px;
+  background: var(--d-panel);
+  border-left: 2px solid transparent;
+}
+.rp:nth-child(even) { background: rgba(255, 255, 255, 0.015); }
+.rp.primary { background: rgba(79, 195, 247, 0.08); border-left-color: var(--d-accent); }
+.rp-l { font-size: 12px; color: var(--d-muted); min-width: 0; }
+.rp.primary .rp-l { color: var(--d-accent2); }
+.rp-v {
+  font-size: 16px; font-weight: 700; color: var(--d-txt);
+  font-variant-numeric: tabular-nums; text-align: right;
   white-space: nowrap;
-  overflow: hidden; text-overflow: ellipsis;
-  min-width: 0;
 }
-.r-v b.sm { font-size: 16px; }
-.r-u { font-size: 11.5px; color: var(--d-muted); flex: none; white-space: nowrap; }
-.r-miss { font-size: 11px; color: var(--d-warn); line-height: 1.45; }
-.r-note { font-size: 10.5px; color: var(--d-dim); }
-.res.primary {
-  background: rgba(79, 195, 247, 0.08);
-  border-color: rgba(79, 195, 247, 0.32);
+.rp.primary .rp-v { color: var(--d-accent); font-size: 18px; }
+.rp.empty .rp-v { color: var(--d-dim); font-size: 14px; }
+.rp-u { font-size: 11px; color: var(--d-dim); }
+.rp-m, .rp-n {
+  grid-column: 1 / -1;
+  font-size: 10.5px; color: var(--d-warn); line-height: 1.45;
 }
-.res.primary .r-v b { color: var(--d-accent); font-size: 24px; }
-.res.primary .r-l { color: var(--d-accent2); }
-.res.empty { opacity: 0.72; }
-.res.empty .r-v b { color: var(--d-dim); font-size: 17px; }
+.rp-n { color: var(--d-dim); }
 
 /* ---- 计算过程 ---- */
 .steps {
@@ -713,9 +779,11 @@ watch(modeId, () => { showAllSteps.value = false; });
 .doc-b { padding: 0 20px 18px; }
 .fx { margin-bottom: 14px; }
 .fx-t {
-  font-size: 11.5px; color: var(--d-accent);
-  letter-spacing: 0.6px; margin-bottom: 7px;
+  font-size: 12px; color: var(--d-accent);
+  letter-spacing: 0.4px; margin-bottom: 7px; font-weight: 600;
 }
+.fx-sub { margin-bottom: 6px; }
+.fx-st { font-size: 11px; color: var(--d-accent2); margin-bottom: 5px; }
 .fx-l {
   font-family: Consolas, "Courier New", monospace;
   font-size: 12.5px; color: var(--d-muted);
@@ -727,14 +795,9 @@ watch(modeId, () => { showAllSteps.value = false; });
   overflow-x: auto;
 }
 .fx-l code { color: var(--d-txt); }
-.fx-l.fx-desc {
-  font-family: inherit;
-  font-size: 12px;
-  color: var(--d-muted);
-  border-left-color: var(--d-accent2);
-  line-height: 1.6;
-}
-.notes { margin: 6px 0 0; padding-left: 18px; }
+.fx-notes { margin: 6px 0 0; padding-left: 18px; }
+.fx-notes li { font-size: 12px; color: var(--d-dim); line-height: 1.8; }
+.notes { margin: 8px 0 0; padding-left: 18px; }
 .notes li {
   font-size: 12.5px; color: var(--d-muted);
   line-height: 1.9; margin-bottom: 2px;
@@ -742,7 +805,7 @@ watch(modeId, () => { showAllSteps.value = false; });
 .notes b { color: var(--d-txt); }
 
 /* ================= 移动端 H5 ================= */
-@media (max-width: 960px) {
+@media (max-width: 1020px) {
   .body { grid-template-columns: 1fr; }
   .in { border-right: none; border-bottom: 1px solid var(--d-line); }
 }
@@ -750,25 +813,22 @@ watch(modeId, () => { showAllSteps.value = false; });
 @media (max-width: 640px) {
   .ds { gap: 12px; }
   .panel { border-radius: 13px; }
-  .modes { padding: 13px 14px 15px; }
-  .mode-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
-  .mode { padding: 10px 11px; }
-  .mode-n { font-size: 12.5px; }
-  .bar { padding: 13px 14px 10px; }
-  .bar-t b { font-size: 15px; }
-  .bar-s { font-size: 11.5px; }
+  .flowbar { padding: 12px 13px 14px; }
+  .fb-list { grid-template-columns: repeat(2, 1fr); gap: 7px; }
+  .fb-item { padding: 9px 10px; }
+  .fb-nm { font-size: 11.5px; }
   .bar-r { width: 100%; }
   .bar-r .ghost { flex: 1; }
-  .in, .out { padding: 14px; }
+  .in, .out { padding: 13px; }
+  .sg { padding: 12px 11px 13px; }
   .flds { grid-template-columns: 1fr 1fr; gap: 9px; }
-  .inp { font-size: 18px; padding: 11px 4px 11px 11px; }
-  .sel { font-size: 13px; }
-  .unit { font-size: 11.5px; padding-right: 9px; }
-  .res-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
-  .res { padding: 9px 11px; border-radius: 10px; }
-  .r-v b { font-size: 17px; }
-  .res.primary .r-v b { font-size: 20px; }
-  .r-miss { font-size: 10.5px; }
+  .inp { font-size: 17px; padding: 11px 4px 11px 11px; }
+  .sel { font-size: 12.5px; }
+  .unit { font-size: 11px; padding-right: 9px; }
+  .rp { grid-template-columns: minmax(96px, 1.4fr) minmax(70px, 1fr) auto; gap: 6px; padding: 7px 9px; }
+  .rp-l { font-size: 11.5px; }
+  .rp-v { font-size: 15px; }
+  .rp.primary .rp-v { font-size: 17px; }
   .doc-h { padding: 12px 14px; }
   .doc-b { padding: 0 14px 14px; }
   .fx-l { font-size: 11.5px; padding: 6px 9px; }
@@ -777,7 +837,8 @@ watch(modeId, () => { showAllSteps.value = false; });
 
 @media (max-width: 380px) {
   .flds { grid-template-columns: 1fr; }
-  .res-grid { grid-template-columns: 1fr; }
-  .mode-grid { grid-template-columns: 1fr; }
+  .fb-list { grid-template-columns: 1fr; }
+  .rp { grid-template-columns: 1fr auto; }
+  .rp-u { display: none; }
 }
 </style>

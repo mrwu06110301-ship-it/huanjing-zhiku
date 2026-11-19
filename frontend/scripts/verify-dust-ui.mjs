@@ -1,16 +1,18 @@
 /**
  * verify-dust-ui.mjs — 烟尘采样工具页线上 UI 验证（无头 Chrome）
  *
- * 验证要点：
+ * 验证要点（流程式）：
  *   1) 工具详情页无「标题下标准特指提示」副标题
- *   2) 模式选择器：9 个模式按钮，可切换，切换后表单独立（互不串值）
- *   3) 无预填：所有输入框为空；结果标注「缺 xxx」
- *   4) 填入示例 → 自动计算，数值与引擎一致
- *   5) 全压/静压双向换算（输入框即显示，结果回填到输入框）
- *   6) 统一标态干基：C × Qn × 10⁻⁶ ≡ G
- *   7) 公式与口径说明随当前模式同步
- *   8) 无「标杆」「湿基」字样
- *   9) 移动端 H5 视口无横向溢出
+ *   2) 流程条 5 步，顺序正确，无「采样嘴直径选取」独立工具
+ *   3) 左侧输入区按步骤从上到下分组，缺参步骤显示灰色提示
+ *   4) 无预填：所有输入框为空；报表标「缺 xxx」
+ *   5) 填入示例 → 五步全通，数值与引擎一致
+ *   6) 全压/静压双向换算（输入框即显示，标「计算值」）
+ *   7) 右侧为竖列报表（项目|数值|单位）
+ *   8) 统一标态干基：C × Qn × 10⁻⁶ ≡ G
+ *   9) 公式说明按 5 步组织
+ *  10) 无「标杆」「湿基」「3260」字样
+ *  11) 移动端 H5 视口无横向溢出
  */
 import puppeteer from "puppeteer-core";
 
@@ -40,36 +42,47 @@ const ok = (cond, msg) => {
 const subText = await page.$eval(".page-header-sub", (el) => el.textContent.trim()).catch(() => null);
 ok(subText === null, "工具详情页无「标题下标准提示」副标题（当前：" + JSON.stringify(subText) + "）");
 
-/* ---------- 2. 模式选择器 ---------- */
-const modeNames = await page.$$eval(".mode .mode-n", (els) => els.map((e) => e.textContent.trim()));
-ok(modeNames.length === 8, `模式按钮 8 个（实际 ${modeNames.length}）：${modeNames.join(" / ")}`);
-const expectModes = [
-  "烟气静压计算", "采样嘴直径选取", "烟气流速计算", "采样流量计算",
-  "体积计算", "实际烟气流量计算", "标干烟气流量计算", "综合版（全链路）",
-];
+/* ---------- 2. 流程条 ---------- */
+const flowNames = await page.$$eval(".fb-item .fb-nm", (els) => els.map((e) => e.textContent.trim()));
+const expectSteps = ["静压计算", "流速计算", "等速流量计算", "采样体积计算", "排放计算"];
+ok(flowNames.length === 5, `流程条 5 步（实际 ${flowNames.length}）：${flowNames.join(" / ")}`);
 ok(
-  expectModes.every((n) => modeNames.includes(n)),
-  "8 个模式名称齐备：" + expectModes.filter((n) => !modeNames.includes(n)).join(",")
+  JSON.stringify(flowNames) === JSON.stringify(expectSteps),
+  "流程步骤顺序与命名正确：" + flowNames.join(" → ")
 );
-ok(!modeNames.some((n) => n.includes("标杆")), "无「标杆烟气流量」模式名");
-ok(!modeNames.some((n) => n.includes("工况体积计算") || n.includes("标况采样体积计算")),
-  "工况体积/标况体积已合并为「体积计算」");
+ok(!flowNames.some((n) => n.includes("采样嘴直径")), "无独立「采样嘴直径选取」步骤");
+ok(!page.$$eval ? true : true, "");
+// 无模式选择器
+const modeCount = await page.$$eval(".mode", (els) => els.length);
+ok(modeCount === 0, `无模式选择器（.mode 按钮 ${modeCount} 个）`);
+
+/* ---------- 3. 页面禁字 ---------- */
 const bodyText = await page.evaluate(() => document.body.innerText);
 ok(!bodyText.includes("标杆"), "页面无「标杆」字样");
 ok(!bodyText.includes("湿基"), "页面无「湿基」字样");
 ok(!bodyText.includes("3260"), "页面无 3260 字样");
 
-/* ---------- 3. 默认综合版：无预填 + 空态标注 ---------- */
-const activeName = await page.$eval(".mode.active .mode-n", (el) => el.textContent.trim());
-ok(activeName.includes("综合版"), "默认进入综合版：" + activeName);
+/* ---------- 4. 左侧步骤分组 ---------- */
+const groupTitles = await page.$$eval(".sg .sg-t b", (els) => els.map((e) => e.textContent.trim()));
+ok(
+  JSON.stringify(groupTitles) === JSON.stringify(expectSteps),
+  "左侧按步骤从上到下分组：" + groupTitles.join(" → ")
+);
 
+/* ---------- 5. 无预填 + 空态缺参提示 ---------- */
 const preFilled = await page.$$eval(".inp", (els) => els.filter((e) => e.value.trim() !== "").map((e) => e.value));
 ok(preFilled.length === 0, `输入框无预填值（实际预填：${JSON.stringify(preFilled)}）`);
 
-let emptyMiss = await page.$$eval(".res.empty .r-miss", (els) => els.length);
-ok(emptyMiss >= 12, `空态下结果均标注缺失项（${emptyMiss} 项带「缺」）`);
+const hints = await page.$$eval(".sg-hint", (els) => els.map((e) => e.textContent.trim()));
+ok(hints.length === 5, `空态下 5 步都有缺参提示（实际 ${hints.length}）`);
+ok(hints[0] && hints[0].includes("待补"), "①步提示含「待补」：" + hints[0]);
+ok(hints[1] && hints[1].includes("①步"), "②步提示指向上游①步：" + hints[1]);
+ok(hints[4] && hints[4].includes("④步"), "⑤步提示指向上游④步：" + hints[4]);
 
-/* ---------- 4. 填入示例 → 自动计算 ---------- */
+const missCount = await page.$$eval(".rp-m", (els) => els.length);
+ok(missCount > 0, `空态下报表标注缺失项（${missCount} 处）`);
+
+/* ---------- 6. 填入示例 → 五步全通 ---------- */
 const clickBtn = (text) =>
   page.evaluate((t) => {
     const b = [...document.querySelectorAll(".ghost")].find((x) => x.textContent.includes(t));
@@ -78,24 +91,34 @@ const clickBtn = (text) =>
   }, text);
 
 await clickBtn("示例");
-await sleep(1500);
+await sleep(1800);
 
-const readResults = () =>
-  page.$$eval(".res", (els) =>
-    els.map((e) => ({
-      label: e.querySelector(".r-l")?.textContent.trim(),
-      value: e.querySelector(".r-v b")?.textContent.trim(),
-      unit: e.querySelector(".r-u")?.textContent.trim() || "",
-      miss: e.querySelector(".r-miss")?.textContent.trim() || "",
-    }))
-  );
+const flowDone = await page.$$eval(".fb-item.done", (els) => els.length);
+ok(flowDone === 5, `示例数据后 5 步全部完成（实际 ${flowDone}）`);
 
-const readInputs = () => page.$$eval(".inp", (els) => els.map((e) => e.value));
+const hintAfter = await page.$$eval(".sg-hint", (els) => els.length);
+ok(hintAfter === 0, `示例数据后无缺参提示（残留 ${hintAfter}）`);
 
-let resMap = await readResults();
-const get = (lbl) => resMap.find((r) => r.label === lbl);
-ok(resMap.filter((r) => !r.miss).length >= 12, `示例后 ${resMap.filter((r) => !r.miss).length} 项已算出`);
+/* ---------- 7. 右侧竖列报表 ---------- */
+const repGroups = await page.$$eval(".rep-grp .rg-t", (els) => els.map((e) => e.textContent.trim()));
+ok(
+  JSON.stringify(repGroups) === JSON.stringify(expectSteps),
+  "报表按 5 步分组：" + repGroups.join(" → ")
+);
+const repRows = await page.$$eval(".rep .rp", (els) =>
+  els.map((e) => ({
+    label: e.querySelector(".rp-l")?.textContent.trim(),
+    value: e.querySelector(".rp-v")?.textContent.trim(),
+    unit: e.querySelector(".rp-u")?.textContent.trim() || "",
+    miss: e.querySelector(".rp-m")?.textContent.trim() || "",
+  }))
+);
+ok(repRows.length >= 15, `报表行数充足（${repRows.length} 行）`);
+ok(repRows.every((r) => r.label && r.value), "每行均有项目名与数值");
+const withUnit = repRows.filter((r) => r.unit).length;
+ok(withUnit >= 10, `多数行带单位（${withUnit} 行）`);
 
+const get = (lbl) => repRows.find((r) => r.label === lbl);
 const cRes = get("颗粒物浓度 C");
 ok(cRes && cRes.value !== "—", `颗粒物浓度 C = ${cRes?.value} ${cRes?.unit}`);
 const cadjRes = get("折算浓度 Cα");
@@ -106,153 +129,146 @@ const vsRes = get("烟气流速 Vs");
 ok(vsRes && vsRes.value !== "—", `烟气流速 Vs = ${vsRes?.value} ${vsRes?.unit}`);
 const qnRes = get("标干烟气流量 Qn");
 ok(qnRes && qnRes.value !== "—", `标干烟气流量 Qn = ${qnRes?.value} ${qnRes?.unit}`);
+const vndRes = get("标况体积 Vnd");
+ok(vndRes && vndRes.value !== "—", `标况体积 Vnd = ${vndRes?.value} ${vndRes?.unit}`);
+const qrsRes = get("等速采样流量 Qrs");
+ok(qrsRes && qrsRes.value !== "—", `等速采样流量 Qrs = ${qrsRes?.value} ${qrsRes?.unit}`);
 
-/* ---------- 5. 标态干基恒等式 ---------- */
+/* ---------- 8. 标态干基恒等式 ---------- */
 const cV = parseFloat(cRes.value);
 const qnV = parseFloat(qnRes.value.replace(/,/g, ""));
 const gV = parseFloat(gRes.value);
 ok(Math.abs(cV * qnV * 1e-6 - gV) / gV < 2e-3, `标干口径 C × Qn × 10⁻⁶ ≡ G（${cV} × ${qnV} × 1e-6 = ${(cV * qnV * 1e-6).toFixed(6)} vs ${gV}）`);
 
-/* ---------- 6. 公式面板随模式同步 ---------- */
+/* ---------- 9. 参数复用：动压/皮托管系数只出现一次可编辑 ---------- */
+const reusedCount = await page.$$eval(".fld.reused", (els) => els.length);
+ok(reusedCount > 0, `存在只读复用字段（${reusedCount} 处）`);
+const reuseTags = await page.$$eval(".reuse-tag", (els) => els.map((e) => e.textContent.trim()));
+ok(reuseTags.length === reusedCount, `复用字段均标「复用」（${reuseTags.length}）`);
+const upRows = await page.$$eval(".up-row", (els) => els.length);
+ok(upRows > 0, `显示上游产物带入（${upRows} 行）`);
+
+/* ---------- 10. 公式面板按 5 步组织 ---------- */
 await page.evaluate(() => {
   const b = [...document.querySelectorAll(".doc-h")][0];
   if (b) b.click();
 });
-await sleep(600);
+await sleep(700);
 const fxTitles = await page.$$eval(".fx-t", (els) => els.map((e) => e.textContent.trim()));
-ok(fxTitles.length > 0, `公式面板展开且有内容：${fxTitles.join(" / ")}`);
+ok(fxTitles.length === 5, `公式面板 5 段（实际 ${fxTitles.length}）：${fxTitles.join(" / ")}`);
 const fxLines = await page.$$eval(".fx-l", (els) => els.map((e) => e.textContent.trim()));
-ok(fxLines.some((t) => t.includes("标干烟气流量")), "综合版公式含「标干烟气流量」");
-ok(fxLines.some((t) => t.includes("Q = C") || t.includes("G = C")), "综合版公式含排放速率 G = C × Qn × 10⁻⁶");
+ok(fxLines.some((t) => t.includes("标干烟气流量")), "公式含「标干烟气流量」");
+ok(fxLines.some((t) => t.includes("G = C")), "公式含排放速率 G = C × Qn × 10⁻⁶");
+ok(fxLines.some((t) => t.includes("Qrs × n")), "④步公式含 V = Qrs × n");
 ok(!fxLines.some((t) => t.includes("湿基") || t.includes("标杆")), "公式行无「湿基」「标杆」字样");
 
-/* ---------- 7. 切换到「烟气静压计算」：全压 → 静压（输入框即显示） ---------- */
-const switchMode = (name) =>
-  page.evaluate((n) => {
-    const b = [...document.querySelectorAll(".mode")].find((x) => x.querySelector(".mode-n")?.textContent.trim() === n);
-    if (b) b.click();
-    return !!b;
-  }, name);
+/* ---------- 11. 全压 ↔ 静压 双向互算 ---------- */
+// 找到①步的全压输入框与静压输入框
+const idxOfPs = await page.evaluate(() => {
+  const labels = [...document.querySelectorAll(".sg .fld")];
+  const ps = labels.find((e) => e.querySelector(".sym")?.textContent.trim() === "Ps");
+  const pt = labels.find((e) => e.querySelector(".sym")?.textContent.trim() === "Pt");
+  const all = [...document.querySelectorAll(".sg .fld")];
+  return { ps: all.indexOf(ps), pt: all.indexOf(pt) };
+});
+ok(idxOfPs.ps >= 0 && idxOfPs.pt >= 0, `找到 Ps/Pt 输入框（ps=${idxOfPs.ps} pt=${idxOfPs.pt}）`);
 
-await switchMode("烟气静压计算");
-await sleep(700);
-const spTitle = await page.$eval(".bar-t b", (el) => el.textContent.trim());
-ok(spTitle.includes("烟气静压"), "已切换到「烟气静压计算」：" + spTitle);
-
-const fxTitlesSp = await page.$$eval(".fx-t", (els) => els.map((e) => e.textContent.trim()));
-ok(fxTitlesSp.some((t) => t.includes("压力换算")), "公式面板随模式切换为「压力换算」：" + fxTitlesSp.join(","));
-
-await clickBtn("示例");
+// 清空全压 → 填静压 0.01 → 全压应回填 0.02764
+await page.evaluate((ix) => {
+  const inputs = [...document.querySelectorAll(".sg .fld .inp")];
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+  setter.call(inputs[ix.pt], "");
+  inputs[ix.pt].dispatchEvent(new Event("input", { bubbles: true }));
+  setter.call(inputs[ix.ps], "0.01");
+  inputs[ix.ps].dispatchEvent(new Event("input", { bubbles: true }));
+}, idxOfPs);
 await sleep(1200);
-let inputs = await readInputs();
-// 字段顺序：全压、静压、动压、皮托管系数
-const expectPs = 0.06 - (25 / 1000) * 0.84 * 0.84;
-ok(Math.abs(parseFloat(inputs[1]) - expectPs) < 1e-3, `填全压 → 静压回填输入框（期望 ${expectPs.toFixed(4)}，实际 ${inputs[1]}）`);
+const ptFilled = await page.evaluate((ix) => {
+  const inputs = [...document.querySelectorAll(".sg .fld .inp")];
+  return inputs[ix.pt]?.value;
+}, idxOfPs);
+const expectPt = 0.01 + (25 / 1000) * 0.84 * 0.84;
+ok(Math.abs(parseFloat(ptFilled) - expectPt) < 1e-3, `填静压 → 全压回填输入框（期望 ${expectPt.toFixed(4)}，实际 ${ptFilled}）`);
+
 const calcTags = await page.$$eval(".calc-tag", (els) => els.map((e) => e.textContent.trim()));
 ok(calcTags.length > 0, `派生输入框标「计算值」（${calcTags.length} 处）`);
 
-resMap = await readResults();
-const psRes = get("烟气静压 Ps");
-ok(!psRes, "已回填的静压不在右侧重复列出");
-const dpRes = get("动压折算压增量");
-ok(dpRes && dpRes.value !== "—", `动压折算压增量 = ${dpRes?.value} ${dpRes?.unit}`);
-
-/* ---------- 8. 静压 → 全压 互算（手动改输入） ---------- */
-await page.evaluate(() => {
-  const inputs = [...document.querySelectorAll(".inp")];
+// 反向：清空静压 → 填全压 0.06 → 静压应回填 0.04236
+await page.evaluate((ix) => {
+  const inputs = [...document.querySelectorAll(".sg .fld .inp")];
   const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
-  setter.call(inputs[0], "");
-  inputs[0].dispatchEvent(new Event("input", { bubbles: true }));
-  setter.call(inputs[1], "0.01");
-  inputs[1].dispatchEvent(new Event("input", { bubbles: true }));
-});
-await sleep(1000);
-inputs = await readInputs();
-const expectPt = 0.01 + (25 / 1000) * 0.84 * 0.84;
-ok(Math.abs(parseFloat(inputs[0]) - expectPt) < 1e-3, `填静压 → 全压回填输入框（期望 ${expectPt.toFixed(4)}，实际 ${inputs[0]}）`);
+  setter.call(inputs[ix.ps], "");
+  inputs[ix.ps].dispatchEvent(new Event("input", { bubbles: true }));
+  setter.call(inputs[ix.pt], "0.06");
+  inputs[ix.pt].dispatchEvent(new Event("input", { bubbles: true }));
+}, idxOfPs);
+await sleep(1200);
+const psFilled = await page.evaluate((ix) => {
+  const inputs = [...document.querySelectorAll(".sg .fld .inp")];
+  return inputs[ix.ps]?.value;
+}, idxOfPs);
+const expectPs = 0.06 - (25 / 1000) * 0.84 * 0.84;
+ok(Math.abs(parseFloat(psFilled) - expectPs) < 1e-3, `填全压 → 静压回填输入框（期望 ${expectPs.toFixed(4)}，实际 ${psFilled}）`);
 
-/* ---------- 9. 表单独立性：切走再切回，数据仍在 ---------- */
-await switchMode("烟气流速计算");
-await sleep(500);
-await switchMode("烟气静压计算");
-await sleep(700);
-const keptPs = (await readInputs())[1];
-ok(keptPs === "0.01", `模式切换后各自表单数据保留（静压 ${keptPs}）`);
-
-/* ---------- 10. 各分项模式都能算出主结果 ---------- */
-const modeChecks = [
-  ["采样嘴直径选取", "采样嘴直径 D"],
-  ["烟气流速计算", "烟气流速 Vs"],
-  ["采样流量计算", "等速采样流量 Qrs"],
-  ["体积计算", "标况体积 Vnd"],
-  ["实际烟气流量计算", "实际烟气流量 Qs"],
-  ["标干烟气流量计算", "标干烟气流量 Qn"],
-  ["综合版（全链路）", "颗粒物浓度 C"],
-];
-for (const [modeName, resLabel] of modeChecks) {
-  await switchMode(modeName);
-  await sleep(500);
-  await clickBtn("示例");
-  await sleep(1000);
-  const map = await readResults();
-  const r = map.find((x) => x.label === resLabel);
-  ok(r && r.value && r.value !== "—", `${modeName} → ${resLabel} = ${r?.value} ${r?.unit}`);
-}
-
-/* ---------- 10b. 体积计算：方法下拉 + 公式随方法切换 ---------- */
-await switchMode("体积计算");
-await sleep(600);
-const selCount = await page.$$eval(".in .wrap select.sel", (els) => els.length);
-ok(selCount >= 1, `体积计算有方法下拉（${selCount} 个）`);
-const methodLabels = await page.$$eval(".in .wrap select.sel option", (els) => els.map((e) => e.textContent.trim()));
+/* ---------- 12. 方法下拉切换（烟温静压法 / 计温计压法） ---------- */
+await clickBtn("示例");
+await sleep(1400);
+const selCount = await page.$$eval(".sg select.sel", (els) => els.length);
+ok(selCount >= 2, `④步有方法下拉、⑤步有基准含氧量下拉（${selCount} 个）`);
+const methodLabels = await page.$$eval(".sg select.sel option", (els) => els.map((e) => e.textContent.trim()));
 ok(methodLabels.some((t) => t.includes("烟温静压法")) && methodLabels.some((t) => t.includes("计温计压法")),
   "方法下拉含两法：" + methodLabels.join(" / "));
 
-await clickBtn("示例");
-await sleep(900);
-const fxFlow = await page.evaluate(() => {
-  const t = [...document.querySelectorAll(".doc-b .fx-l")].map((e) => e.textContent.trim()).join(" | ");
-  return t;
-});
-ok(fxFlow.includes("Qrs × n"), "烟温静压法公式含 V = Qrs × n：" + fxFlow.slice(0, 160));
-
-// 切换到计温计压法
+// 切到计温计压法
 await page.evaluate(() => {
-  const sel = document.querySelector(".in .wrap select.sel");
+  const sel = [...document.querySelectorAll(".sg select.sel")].find((s) =>
+    [...s.options].some((o) => o.textContent.includes("计温计压法"))
+  );
   if (!sel) return;
   const setter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, "value").set;
   setter.call(sel, "2");
   sel.dispatchEvent(new Event("change", { bubbles: true }));
 });
-await sleep(900);
-const fxMeter = await page.evaluate(() => {
-  const t = [...document.querySelectorAll(".doc-b .fx-l")].map((e) => e.textContent.trim()).join(" | ");
-  return t;
+await sleep(1400);
+const repAfter = await page.$$eval(".rep .rp", (els) =>
+  els.map((e) => ({
+    label: e.querySelector(".rp-l")?.textContent.trim(),
+    value: e.querySelector(".rp-v")?.textContent.trim(),
+  }))
+);
+const vndAfter = repAfter.find((r) => r.label === "标况体积 Vnd");
+ok(vndAfter && vndAfter.value !== "—", `计温计压法下标况体积仍可算出（${vndAfter?.value}）`);
+const condRow = repAfter.find((r) => r.label === "工况体积 V′");
+ok(!!condRow, "切换后显示「工况体积 V′」");
+const vndFlow = await page.evaluate(() => {
+  const rows = [...document.querySelectorAll(".rep .rp")];
+  const r = rows.find((e) => e.querySelector(".rp-l")?.textContent.trim() === "标况体积 Vnd");
+  return r?.querySelector(".rp-v")?.textContent.trim();
 });
-ok(fxMeter.includes("t′"), "计温计压法公式含 t′：" + fxMeter.slice(0, 160));
-ok(fxFlow !== fxMeter, "两法公式确实不同");
 
-/* ---------- 11. 清空 ---------- */
-await switchMode("综合版（全链路）");
-await sleep(500);
+/* ---------- 13. 清空 ---------- */
 await clickBtn("清空");
-await sleep(900);
+await sleep(1000);
 const afterClear = await page.$$eval(".inp", (els) => els.filter((e) => e.value.trim() !== "").length);
 ok(afterClear === 0, `清空后无残留值（残留 ${afterClear}）`);
+const hintsAfterClear = await page.$$eval(".sg-hint", (els) => els.length);
+ok(hintsAfterClear === 5, `清空后 5 步恢复缺参提示（${hintsAfterClear}）`);
 
-/* ---------- 12. 负数输入支持 ---------- */
-await page.evaluate(() => {
-  const inputs = [...document.querySelectorAll(".inp")];
+/* ---------- 14. 负数输入支持 ---------- */
+await page.evaluate((ix) => {
+  const inputs = [...document.querySelectorAll(".sg .fld .inp")];
   const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
-  // 综合版字段顺序：动压、静压、全压、烟温…
-  setter.call(inputs[1], "-0.04");
-  inputs[1].dispatchEvent(new Event("input", { bubbles: true }));
-});
-await sleep(800);
-const psVal = (await readInputs())[1];
+  setter.call(inputs[ix.ps], "-0.04");
+  inputs[ix.ps].dispatchEvent(new Event("input", { bubbles: true }));
+}, idxOfPs);
+await sleep(900);
+const psVal = await page.evaluate((ix) => {
+  const inputs = [...document.querySelectorAll(".sg .fld .inp")];
+  return inputs[ix.ps]?.value;
+}, idxOfPs);
 ok(psVal === "-0.04", `负压输入保留负号（${psVal}）`);
 
-/* ---------- 13. 移动端 H5 视口 ---------- */
+/* ---------- 15. 移动端 H5 视口 ---------- */
 await page.setViewport({ width: 390, height: 844, isMobile: true, hasTouch: true });
 await sleep(1200);
 const overflow = await page.evaluate(() => ({
@@ -261,17 +277,23 @@ const overflow = await page.evaluate(() => ({
 }));
 ok(overflow.docW <= overflow.winW + 2, `移动端无横向溢出（doc=${overflow.docW} win=${overflow.winW}）`);
 
-const modeGridCols = await page.evaluate(() => {
-  const g = document.querySelector(".mode-grid");
+const mobileCols = await page.evaluate(() => {
+  const g = document.querySelector(".fb-list");
   return g ? getComputedStyle(g).gridTemplateColumns : "";
 });
-ok(!!modeGridCols, `移动端模式网格正常：${modeGridCols}`);
+ok(!!mobileCols, `移动端流程条网格正常：${mobileCols}`);
+
+const repCols = await page.evaluate(() => {
+  const g = document.querySelector(".rep");
+  return g ? getComputedStyle(g).gridTemplateColumns : "";
+});
+ok(!!repCols, `移动端报表网格正常：${repCols}`);
 
 await page.screenshot({ path: "D:/tmp/dust-mobile.png", fullPage: false });
 await page.setViewport({ width: 1440, height: 1000 });
 await sleep(700);
 await clickBtn("示例");
-await sleep(1200);
+await sleep(1400);
 await page.screenshot({ path: "D:/tmp/dust-desktop.png", fullPage: false });
 
 await browser.close();

@@ -50,10 +50,10 @@ const header = `/**
  * dust-engine.js — 烟尘采样计算引擎（小程序端）
  *
  * ⚠️ 本文件由 frontend/scripts/build-dust-engine.mjs 自动生成，请勿手工修改。
- *    源文件：frontend/src/utils/flue-dust-sampling.ts + flue-dust-modes.ts
+ *    源文件：frontend/src/utils/flue-dust-sampling.ts + flue-dust-flow.ts
  *    重新生成：cd frontend && node scripts/build-dust-engine.mjs
  *
- * 内容：全压↔静压双向换算、标态干基口径、9 个分项计算模式 + 综合版
+ * 内容：全压↔静压双向换算、标态干基口径、五步流程式计算
  */
 `;
 
@@ -64,7 +64,7 @@ const size = statSync(OUT).size;
 console.log(`\n已生成：${OUT}`);
 console.log(`大小：${(size / 1024).toFixed(1)} KB`);
 
-// 自检：确认关键导出存在且模式数为 9
+// 自检：确认关键导出存在
 const { createRequire } = await import("module");
 const require = createRequire(import.meta.url);
 const mod = require(OUT);
@@ -72,12 +72,12 @@ const need = [
   "computeDustSampling",
   "DUST_DEMO",
   "DUST_EXCEL_CASE",
-  "DUST_MODES",
-  "DUST_MODE_MAP",
-  "DUST_MODE_DEMO",
   "totalToStatic",
   "staticToTotal",
   "standardFlow",
+  "DUST_FLOW",
+  "DUST_FLOW_DEMO",
+  "computeFlow",
 ];
 const missing = need.filter((k) => !(k in mod));
 if (missing.length) {
@@ -85,7 +85,24 @@ if (missing.length) {
   process.exit(1);
 }
 console.log(`导出自检通过：${need.join(", ")}`);
-console.log(`模式数：${mod.DUST_MODES.length}`);
+console.log(`流程步数：${mod.DUST_FLOW.length}`);
+
+// 流程式自检：五步全通 + 两法标况体积恒等
+{
+  const r = mod.computeFlow(mod.DUST_FLOW_DEMO);
+  console.log(`  流程完成步数：${r.doneCount}/${r.totalCount}`);
+  if (r.doneCount !== r.totalCount) {
+    console.error("[ERROR] 流程式计算未全部完成");
+    process.exit(1);
+  }
+  const r2 = mod.computeFlow({ ...mod.DUST_FLOW_DEMO, method: 2 });
+  const d = Math.abs(r.values.vnd - r2.values.vnd);
+  console.log(`  两法标况体积差：${d.toExponential(3)} L`);
+  if (d > 1e-6) {
+    console.error("[ERROR] 两法标况体积不恒等");
+    process.exit(1);
+  }
+}
 
 // 口径自检：标态干基下 C×Qn×1e-6 ≡ G
 {
