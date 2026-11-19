@@ -61,7 +61,7 @@ function handleCalculate() { alert("计算功能开发中"); }
           </div>
           <h1>{{ tool.name }}</h1>
         </div>
-        <p class="page-header-sub">{{ tool.description }}</p>
+        <p v-if="!isDustSampling" class="page-header-sub">{{ tool.description }}</p>
       </div>
       <el-button plain size="small" class="share-btn" @click="share(tool.name, tool.description)">
         <Icon name="share" :size="14" style="margin-right:6px" /> 分享
