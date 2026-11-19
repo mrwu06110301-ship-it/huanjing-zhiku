@@ -688,12 +688,13 @@ function gotoStep(id: string) {
   flex: none; align-self: center;
 }
 .fld.reused .wrap.ro {
-  background: rgba(255, 255, 255, 0.02);
+  background: rgba(79, 195, 247, 0.05);
+  border-color: rgba(79, 195, 247, 0.25);
   border-style: dashed;
 }
 .ro-v {
   flex: 1; min-width: 0;
-  color: var(--d-muted); font-size: 15px; font-weight: 600;
+  color: var(--d-accent); font-size: 17px; font-weight: 600;
   padding: 9px 6px 9px 13px;
   font-variant-numeric: tabular-nums;
 }
