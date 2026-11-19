@@ -10,6 +10,7 @@ import UnitConverterCalculator from "@/components/UnitConverterCalculator.vue";
 import DustSamplingCalculator from "@/components/DustSamplingCalculator.vue";
 import UvFlueGasCalculator from "@/components/UvFlueGasCalculator.vue";
 import RcMoistureCalculator from "@/components/RcMoistureCalculator.vue";
+import AnalogSignalConverter from "@/components/AnalogSignalConverter.vue";
 import { useShare } from "@/composables/useShare";
 import Icon from "@/components/Icon.vue";
 
@@ -32,6 +33,7 @@ const isUnitConverter = computed(() => tool.value?.slug === "unit-converter");
 const isDustSampling = computed(() => tool.value?.slug === "pollution-source-model");
 const isUvFlueGas = computed(() => tool.value?.slug === "doas-model");
 const isRcMoisture = computed(() => tool.value?.slug === "rc-moisture");
+const isAnalogSignal = computed(() => tool.value?.slug === "analog-signal-converter");
 
 /** 工具图标：与工具主页 Tools.vue 的 getToolIcon 保持一致 */
 const toolIcon = computed(() => {
@@ -43,6 +45,7 @@ const toolIcon = computed(() => {
     "doas-model": "flask",
     "rc-moisture": "waterLevel",
     "flue-sampling": "filter",
+    "analog-signal-converter": "lightning",
   };
   return map[tool.value?.slug ?? ""] || "tool";
 });
@@ -75,6 +78,7 @@ function handleCalculate() { alert("计算功能开发中"); }
     <DustSamplingCalculator v-else-if="isDustSampling" />
     <UvFlueGasCalculator v-else-if="isUvFlueGas" />
     <RcMoistureCalculator v-else-if="isRcMoisture" />
+    <AnalogSignalConverter v-else-if="isAnalogSignal" />
 
     <template v-else>
       <div class="tool-body">
