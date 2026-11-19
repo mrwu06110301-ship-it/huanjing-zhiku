@@ -6,9 +6,11 @@
  *   2) 模式选择器：9 个模式按钮，可切换，切换后表单独立（互不串值）
  *   3) 无预填：所有输入框为空；结果标注「缺 xxx」
  *   4) 填入示例 → 自动计算，数值与引擎一致
- *   5) 全压/静压双向换算（线上实测）
- *   6) 干湿基切换：干基浓度 = 湿基 ÷ (1−Xsw/100)，排放速率不变
- *   7) 移动端 H5 视口无横向溢出
+ *   5) 全压/静压双向换算（输入框即显示，结果回填到输入框）
+ *   6) 统一标态干基：C × Qn × 10⁻⁶ ≡ G
+ *   7) 公式与口径说明随当前模式同步
+ *   8) 无「标杆」「湿基」字样
+ *   9) 移动端 H5 视口无横向溢出
  */
 import puppeteer from "puppeteer-core";
 
@@ -26,7 +28,7 @@ const browser = await puppeteer.launch({
 const page = await browser.newPage();
 await page.setViewport({ width: 1440, height: 1000 });
 await page.goto(URL, { waitUntil: "networkidle2", timeout: 60000 });
-await sleep(1800);
+await sleep(2000);
 
 const fail = [];
 const ok = (cond, msg) => {
@@ -43,14 +45,17 @@ const modeNames = await page.$$eval(".mode .mode-n", (els) => els.map((e) => e.t
 ok(modeNames.length === 9, `模式按钮 9 个（实际 ${modeNames.length}）：${modeNames.join(" / ")}`);
 const expectModes = [
   "烟气静压计算", "采样嘴直径选取", "烟气流速计算", "采样流量计算",
-  "工况体积计算", "标况采样体积计算", "实际烟气流量计算", "标杆烟气流量计算", "综合版（全链路）",
+  "工况体积计算", "标况采样体积计算", "实际烟气流量计算", "标干烟气流量计算", "综合版（全链路）",
 ];
 ok(
   expectModes.every((n) => modeNames.includes(n)),
   "9 个模式名称齐备：" + expectModes.filter((n) => !modeNames.includes(n)).join(",")
 );
-const refs = await page.$$eval(".mode .mode-r", (els) => els.map((e) => e.textContent.trim()));
-ok(refs.every((r) => r && !/3260/.test(r)), "模式标签无 3260 字样：" + refs.join(","));
+ok(!modeNames.some((n) => n.includes("标杆")), "无「标杆烟气流量」模式名");
+const bodyText = await page.evaluate(() => document.body.innerText);
+ok(!bodyText.includes("标杆"), "页面无「标杆」字样");
+ok(!bodyText.includes("湿基"), "页面无「湿基」字样");
+ok(!bodyText.includes("3260"), "页面无 3260 字样");
 
 /* ---------- 3. 默认综合版：无预填 + 空态标注 ---------- */
 const activeName = await page.$eval(".mode.active .mode-n", (el) => el.textContent.trim());
@@ -71,7 +76,7 @@ const clickBtn = (text) =>
   }, text);
 
 await clickBtn("示例");
-await sleep(1200);
+await sleep(1500);
 
 const readResults = () =>
   page.$$eval(".res", (els) =>
@@ -82,6 +87,8 @@ const readResults = () =>
       miss: e.querySelector(".r-miss")?.textContent.trim() || "",
     }))
   );
+
+const readInputs = () => page.$$eval(".inp", (els) => els.map((e) => e.value));
 
 let resMap = await readResults();
 const get = (lbl) => resMap.find((r) => r.label === lbl);
@@ -95,39 +102,29 @@ const gRes = get("颗粒物排放速率 G");
 ok(gRes && gRes.value !== "—", `排放速率 G = ${gRes?.value} ${gRes?.unit}`);
 const vsRes = get("烟气流速 Vs");
 ok(vsRes && vsRes.value !== "—", `烟气流速 Vs = ${vsRes?.value} ${vsRes?.unit}`);
-const qnRes = get("标杆烟气流量 Qn");
-ok(qnRes && qnRes.value !== "—", `标杆烟气流量 Qn = ${qnRes?.value} ${qnRes?.unit}`);
+const qnRes = get("标干烟气流量 Qn");
+ok(qnRes && qnRes.value !== "—", `标干烟气流量 Qn = ${qnRes?.value} ${qnRes?.unit}`);
 
-/* ---------- 5. 干湿基切换（综合版） ---------- */
-const cWet = parseFloat(cRes.value);
-const qnWet = parseFloat(qnRes.value.replace(/,/g, ""));
-const gWet = parseFloat(gRes.value);
+/* ---------- 5. 标态干基恒等式 ---------- */
+const cV = parseFloat(cRes.value);
+const qnV = parseFloat(qnRes.value.replace(/,/g, ""));
+const gV = parseFloat(gRes.value);
+ok(Math.abs(cV * qnV * 1e-6 - gV) / gV < 2e-3, `标干口径 C × Qn × 10⁻⁶ ≡ G（${cV} × ${qnV} × 1e-6 = ${(cV * qnV * 1e-6).toFixed(6)} vs ${gV}）`);
 
+/* ---------- 6. 公式面板随模式同步 ---------- */
 await page.evaluate(() => {
-  const b = [...document.querySelectorAll(".bbtn")].find((x) => x.textContent.trim() === "干基");
+  const b = [...document.querySelectorAll(".doc-h")][0];
   if (b) b.click();
 });
-await sleep(900);
-resMap = await readResults();
-const cDry = parseFloat(get("颗粒物浓度 C").value);
-const qnDry = parseFloat(get("标杆烟气流量 Qn").value.replace(/,/g, ""));
-const gDry = parseFloat(get("颗粒物排放速率 G").value);
+await sleep(600);
+const fxTitles = await page.$$eval(".fx-t", (els) => els.map((e) => e.textContent.trim()));
+ok(fxTitles.length > 0, `公式面板展开且有内容：${fxTitles.join(" / ")}`);
+const fxLines = await page.$$eval(".fx-l", (els) => els.map((e) => e.textContent.trim()));
+ok(fxLines.some((t) => t.includes("标干烟气流量")), "综合版公式含「标干烟气流量」");
+ok(fxLines.some((t) => t.includes("Q = C") || t.includes("G = C")), "综合版公式含排放速率 G = C × Qn × 10⁻⁶");
+ok(!fxLines.some((t) => t.includes("湿基") || t.includes("标杆")), "公式行无「湿基」「标杆」字样");
 
-const xsw = 7.89;
-const df = 1 - xsw / 100;
-ok(Math.abs(cDry - cWet / df) / (cWet / df) < 2e-3, `干基浓度 = 湿基 ÷ (1−Xsw/100)（${cWet} → ${cDry}）`);
-ok(Math.abs(qnDry - qnWet * df) / (qnWet * df) < 2e-3, `干基标杆流量 = 湿基 × (1−Xsw/100)（${qnWet} → ${qnDry}）`);
-ok(Math.abs(gDry - gWet) / gWet < 2e-3, `排放速率口径切换后不变（${gWet} → ${gDry}）`);
-ok(Math.abs(cDry * qnDry * 1e-6 - gDry) / gDry < 2e-3, "干基下 C × Qn × 10⁻⁶ ≡ G");
-
-// 切回湿基
-await page.evaluate(() => {
-  const b = [...document.querySelectorAll(".bbtn")].find((x) => x.textContent.trim() === "湿基");
-  if (b) b.click();
-});
-await sleep(700);
-
-/* ---------- 6. 切换到「烟气静压计算」：全压 → 静压 ---------- */
+/* ---------- 7. 切换到「烟气静压计算」：全压 → 静压（输入框即显示） ---------- */
 const switchMode = (name) =>
   page.evaluate((n) => {
     const b = [...document.querySelectorAll(".mode")].find((x) => x.querySelector(".mode-n")?.textContent.trim() === n);
@@ -140,42 +137,47 @@ await sleep(700);
 const spTitle = await page.$eval(".bar-t b", (el) => el.textContent.trim());
 ok(spTitle.includes("烟气静压"), "已切换到「烟气静压计算」：" + spTitle);
 
+const fxTitlesSp = await page.$$eval(".fx-t", (els) => els.map((e) => e.textContent.trim()));
+ok(fxTitlesSp.some((t) => t.includes("压力换算")), "公式面板随模式切换为「压力换算」：" + fxTitlesSp.join(","));
+
 await clickBtn("示例");
-await sleep(900);
+await sleep(1200);
+let inputs = await readInputs();
+// 字段顺序：全压、静压、动压、皮托管系数
+const expectPs = 0.06 - (25 / 1000) * 0.84 * 0.84;
+ok(Math.abs(parseFloat(inputs[1]) - expectPs) < 1e-3, `填全压 → 静压回填输入框（期望 ${expectPs.toFixed(4)}，实际 ${inputs[1]}）`);
+const calcTags = await page.$$eval(".calc-tag", (els) => els.map((e) => e.textContent.trim()));
+ok(calcTags.length > 0, `派生输入框标「计算值」（${calcTags.length} 处）`);
+
 resMap = await readResults();
 const psRes = get("烟气静压 Ps");
-const ptRes = get("烟气全压 Pt");
-ok(psRes && psRes.value !== "—", `静压 Ps = ${psRes?.value} ${psRes?.unit}`);
-ok(ptRes && ptRes.value !== "—", `全压 Pt = ${ptRes?.value} ${ptRes?.unit}`);
-// 示例：Pt=0.06, Δp=25, Kp=0.84 → Ps = 0.06 - 0.01764 = 0.04236
-const expectPs = 0.06 - (25 / 1000) * 0.84 * 0.84;
-ok(psRes && Math.abs(parseFloat(psRes.value) - expectPs) < 1e-4, `全压反算静压 = ${expectPs.toFixed(4)}（实际 ${psRes?.value}）`);
+ok(!psRes, "已回填的静压不在右侧重复列出");
+const dpRes = get("动压折算压增量");
+ok(dpRes && dpRes.value !== "—", `动压折算压增量 = ${dpRes?.value} ${dpRes?.unit}`);
 
-/* ---------- 7. 静压 → 全压 互算（手动改输入） ---------- */
+/* ---------- 8. 静压 → 全压 互算（手动改输入） ---------- */
 await page.evaluate(() => {
   const inputs = [...document.querySelectorAll(".inp")];
   const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
-  // 字段顺序：全压、静压、动压、皮托管系数
   setter.call(inputs[0], "");
   inputs[0].dispatchEvent(new Event("input", { bubbles: true }));
   setter.call(inputs[1], "0.01");
   inputs[1].dispatchEvent(new Event("input", { bubbles: true }));
 });
-await sleep(900);
-resMap = await readResults();
-const ptCalc = get("烟气全压 Pt");
+await sleep(1000);
+inputs = await readInputs();
 const expectPt = 0.01 + (25 / 1000) * 0.84 * 0.84;
-ok(ptCalc && Math.abs(parseFloat(ptCalc.value) - expectPt) < 1e-4, `静压推算全压 = ${expectPt.toFixed(4)}（实际 ${ptCalc?.value}）`);
+ok(Math.abs(parseFloat(inputs[0]) - expectPt) < 1e-3, `填静压 → 全压回填输入框（期望 ${expectPt.toFixed(4)}，实际 ${inputs[0]}）`);
 
-/* ---------- 8. 表单独立性：切走再切回，数据仍在 ---------- */
+/* ---------- 9. 表单独立性：切走再切回，数据仍在 ---------- */
 await switchMode("烟气流速计算");
 await sleep(500);
 await switchMode("烟气静压计算");
-await sleep(600);
-const keptPs = await page.$$eval(".inp", (els) => els[1]?.value);
+await sleep(700);
+const keptPs = (await readInputs())[1];
 ok(keptPs === "0.01", `模式切换后各自表单数据保留（静压 ${keptPs}）`);
 
-/* ---------- 9. 各分项模式都能算出主结果 ---------- */
+/* ---------- 10. 各分项模式都能算出主结果 ---------- */
 const modeChecks = [
   ["采样嘴直径选取", "采样嘴直径 D"],
   ["烟气流速计算", "烟气流速 Vs"],
@@ -183,28 +185,28 @@ const modeChecks = [
   ["工况体积计算", "工况体积（烟温静压法）"],
   ["标况采样体积计算", "标况采样体积 Vnd"],
   ["实际烟气流量计算", "实际烟气流量 Qs"],
-  ["标杆烟气流量计算", "标杆烟气流量 Qn"],
+  ["标干烟气流量计算", "标干烟气流量 Qn"],
   ["综合版（全链路）", "颗粒物浓度 C"],
 ];
 for (const [modeName, resLabel] of modeChecks) {
   await switchMode(modeName);
   await sleep(500);
   await clickBtn("示例");
-  await sleep(900);
+  await sleep(1000);
   const map = await readResults();
   const r = map.find((x) => x.label === resLabel);
   ok(r && r.value && r.value !== "—", `${modeName} → ${resLabel} = ${r?.value} ${r?.unit}`);
 }
 
-/* ---------- 10. 清空 ---------- */
+/* ---------- 11. 清空 ---------- */
 await switchMode("综合版（全链路）");
 await sleep(500);
 await clickBtn("清空");
-await sleep(800);
+await sleep(900);
 const afterClear = await page.$$eval(".inp", (els) => els.filter((e) => e.value.trim() !== "").length);
 ok(afterClear === 0, `清空后无残留值（残留 ${afterClear}）`);
 
-/* ---------- 11. 负数输入支持 ---------- */
+/* ---------- 12. 负数输入支持 ---------- */
 await page.evaluate(() => {
   const inputs = [...document.querySelectorAll(".inp")];
   const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
@@ -212,13 +214,13 @@ await page.evaluate(() => {
   setter.call(inputs[1], "-0.04");
   inputs[1].dispatchEvent(new Event("input", { bubbles: true }));
 });
-await sleep(700);
-const psVal = await page.$$eval(".inp", (els) => els[1].value);
+await sleep(800);
+const psVal = (await readInputs())[1];
 ok(psVal === "-0.04", `负压输入保留负号（${psVal}）`);
 
-/* ---------- 12. 移动端 H5 视口 ---------- */
+/* ---------- 13. 移动端 H5 视口 ---------- */
 await page.setViewport({ width: 390, height: 844, isMobile: true, hasTouch: true });
-await sleep(1000);
+await sleep(1200);
 const overflow = await page.evaluate(() => ({
   docW: document.documentElement.scrollWidth,
   winW: window.innerWidth,
@@ -233,9 +235,9 @@ ok(!!modeGridCols, `移动端模式网格正常：${modeGridCols}`);
 
 await page.screenshot({ path: "D:/tmp/dust-mobile.png", fullPage: false });
 await page.setViewport({ width: 1440, height: 1000 });
-await sleep(600);
+await sleep(700);
 await clickBtn("示例");
-await sleep(1000);
+await sleep(1200);
 await page.screenshot({ path: "D:/tmp/dust-desktop.png", fullPage: false });
 
 await browser.close();

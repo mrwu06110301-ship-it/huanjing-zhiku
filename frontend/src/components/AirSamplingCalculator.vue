@@ -206,6 +206,7 @@ const settingRule = computed(() => {
                 </el-option>
               </el-select>
             </div>
+            <div class="io-note" v-if="flowResult !== null && flowForm.from === flowForm.to">同类型流量，系数为 1，与输入流量相同</div>
           </div>
         </div>
 
@@ -261,13 +262,15 @@ const settingRule = computed(() => {
           </div>
         </div>
 
-        <!-- 右：换算体积结果（上下排布） -->
+        <!-- 右：换算体积结果（上下排布）
+             规则：与「累计体积」恒等的那一项不再重复列出（输入即显示） -->
         <div class="vol-outputs">
           <div class="vr-card main">
             <span class="vr-label">标况体积（0℃ / 101.325 kPa）</span>
             <div class="vr-val"><b>{{ volResult ? volResult.normalVolume.toFixed(2) : "—" }}</b> L</div>
+            <span class="vr-note" v-if="volForm.flowSetting === 'normal'">= 累计体积（标况设置）</span>
           </div>
-          <div class="vr-card">
+          <div class="vr-card" v-if="volForm.flowSetting !== 'inlet'">
             <span class="vr-label">入口体积（中间量）</span>
             <div class="vr-val"><b>{{ volResult ? volResult.inletVolume.toFixed(3) : "—" }}</b> L</div>
           </div>
@@ -299,6 +302,7 @@ const settingRule = computed(() => {
         <div class="cmp-item calc">
           <label>本工具计算标况体积（L）</label>
           <div class="cmp-val">{{ volResult ? volResult.normalVolume.toFixed(2) : "—" }}</div>
+          <span class="cmp-src">取自上方「采样体积换算·标况体积」</span>
         </div>
       </div>
 
@@ -436,10 +440,12 @@ const settingRule = computed(() => {
 }
 .vr-label { font-size: 12.5px; color: var(--text-light); }
 .vr-val { white-space: nowrap; font-size: 13px; color: var(--text-light); }
+.vr-note { font-size: 11.5px; color: var(--text-light); opacity: 0.78; }
 .vr-card b { font-size: 24px; font-weight: 800; color: var(--text); line-height: 1.2; margin-right: 2px; }
 .vr-card.main { background: rgba(37, 99, 235, 0.07); border-color: rgba(37, 99, 235, 0.25); }
 .vr-card.main .vr-val, .vr-card.main b { color: var(--primary); }
 .vr-card.main b { font-size: 28px; }
+.io-note { font-size: 11.5px; color: var(--text-light); opacity: 0.78; margin-top: 4px; }
 
 .steps {
   margin-top: 14px; background: var(--bg-soft, #f6f8fa);
@@ -459,6 +465,7 @@ const settingRule = computed(() => {
   border-radius: 12px; padding: 5px 14px; line-height: 1.4; white-space: nowrap;
 }
 .cmp-vs { font-size: 13px; font-weight: 800; color: var(--text-light); padding-bottom: 12px; flex: none; }
+.cmp-src { display: block; font-size: 11.5px; color: var(--text-light); opacity: 0.78; margin-top: 4px; }
 .cmp-hint { margin-top: 12px; font-size: 12.5px; color: var(--text-light); }
 
 .diff-bar {

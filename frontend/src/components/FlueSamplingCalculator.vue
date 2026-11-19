@@ -158,16 +158,14 @@ function showResults() {
   el.style.display = '';
   let html = '<h4>计算结果</h4><div class="flue-result-grid">';
   const r = result.value;
+  // 说明：纯输入回显项（烟道直径 / 边长 A / 边长 B / 圆形采样孔数）不在此重复列出，
+  // 输入框本身即显示，避免同一数值出现两遍。
   if (r.type === 'c') {
-    html += flueRCard('烟道直径', r.D!.toFixed(3), 'm');
     html += flueRCard('截面面积', r.area!.toFixed(4), 'm²');
     html += flueRCard('分环数', r.rings!, '', 'blue');
-    html += flueRCard('采样孔数', r.holes!, '', 'blue');
     html += flueRCard('每孔测点', r.ptsPerHole!, '个');
     html += flueRCard('总测点数', r.totalPts!, '个', 'accent');
   } else {
-    html += flueRCard('边长 A', r.A!.toFixed(3), 'm');
-    html += flueRCard('边长 B', r.B!.toFixed(3), 'm');
     html += flueRCard('截面面积', r.area!.toFixed(4), 'm²');
     html += flueRCard('当量直径', r.equivalentD!.toFixed(3), 'm');
     html += flueRCard('网格', r.nA! + ' × ' + r.nB!, '', 'blue');

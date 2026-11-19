@@ -70,7 +70,6 @@ const base = {
   pitotCoefficient: 0.84, crossSection: 7.28, nozzleDiameter: 12,
   samplingMinutes: 120, filterInitialMass: null, filterFinalMass: null,
   meterTemp: null, meterPressure: null, O2: null, O2Base: null, loadFactor: null,
-  basis: "wet",
 };
 const r1 = mod.computeDustSampling(base);
 console.log("--- 区块1/2/3/8a（Ba=101.9 工况）---");
@@ -108,36 +107,33 @@ console.log("--- 全压 ↔ 静压 双向换算 ---");
   assert("缺动压时不反算静压", s4.values.staticPressure.value === null);
 }
 
-/* ================= 三、干湿基口径联动 ================= */
-console.log("--- 干湿基口径联动 ---");
+/* ================= 三、标态干基口径校验 ================= */
+console.log("--- 标态干基口径 ---");
 {
-  const wet = mod.computeDustSampling({ ...mod.DUST_DEMO, basis: "wet" });
-  const dry = mod.computeDustSampling({ ...mod.DUST_DEMO, basis: "dry" });
+  const r = mod.computeDustSampling(mod.DUST_DEMO);
   const Xsw = mod.DUST_DEMO.moisture;
   const df = 1 - Xsw / 100;
+  const t = mod.DUST_DEMO.stackTemp;
+  const Ba = mod.DUST_DEMO.atmosphere;
+  const Ps = mod.DUST_DEMO.staticPressure;
 
-  // 干基标况体积 = 湿基 × (1 − Xsw/100)
-  check("干基 Vnd = 湿基 × (1−Xsw/100)", dry.values.volumeStandard.value,
-    wet.values.volumeStandard.value * df, 1e-9);
-  // 干基浓度 = 湿基 ÷ (1 − Xsw/100)
-  check("干基 C = 湿基 ÷ (1−Xsw/100)", dry.values.concentration.value,
-    wet.values.concentration.value / df, 1e-9);
-  // 干基标杆流量 = 湿基 × (1 − Xsw/100)
-  check("干基 Qn = 湿基 × (1−Xsw/100)", dry.values.dryStandardFlow.value,
-    wet.values.dryStandardFlow.value * df, 1e-9);
-  // 排放速率：同口径下应一致（C×Qn 抵消）
-  check("干湿基下 G 一致", dry.values.emissionRate.value,
-    wet.values.emissionRate.value, 1e-9);
-  // 自洽：两种口径下 C × Qn × 1e-6 ≡ G
-  check("湿基 G = C×Qn×1e-6", wet.values.emissionRate.value,
-    wet.values.concentration.value * wet.values.dryStandardFlow.value * 1e-6, 1e-9);
-  check("干基 G = C×Qn×1e-6", dry.values.emissionRate.value,
-    dry.values.concentration.value * dry.values.dryStandardFlow.value * 1e-6, 1e-9);
+  // Vnd 必须含干基修正
+  const factor = (mod.DUST_T0 / (mod.DUST_T0 + t)) * ((Ba + Ps) / mod.DUST_P0);
+  const V = r.values.volumeWet.value;
+  check("Vnd = V × 因子 × (1−Xsw/100)", r.values.volumeStandard.value,
+    V * factor * df, 1e-9);
 
-  // 工况体积不受口径影响
-  check("口径不影响工况体积", dry.values.volumeWet.value, wet.values.volumeWet.value, 1e-12);
-  // 流速不受口径影响
-  check("口径不影响烟气流速", dry.values.velocity.value, wet.values.velocity.value, 1e-12);
+  // Qn 必须含干基修正
+  const Qs = r.values.flueGasFlow.value;
+  check("Qn = Qs × 因子 × (1−Xsw/100)", r.values.dryStandardFlow.value,
+    Qs * factor * df, 1e-9);
+
+  // C × Qn × 1e-6 ≡ G
+  check("G = C×Qn×1e-6", r.values.emissionRate.value,
+    r.values.concentration.value * r.values.dryStandardFlow.value * 1e-6, 1e-9);
+
+  // 无 basis 参数（已移除干湿基开关）
+  assert("引擎无 basis 字段", !("basis" in mod.DUST_DEMO));
 }
 
 /* ================= 四、区块8b 计温计压法 ================= */
@@ -204,27 +200,44 @@ console.log("--- 分项模式（flue-dust-modes.ts）---");
 
   // 1) 烟气静压计算：全压 → 静压
   const m1 = get("static-pressure");
-  const r1v = m1.compute({ pt: 0.06, ps: null, dp: 25, kp: 0.84 }, "wet");
+  const r1v = m1.compute({ pt: 0.06, ps: null, dp: 25, kp: 0.84 }, { measured: "pt" });
   check("静压模式 全压→静压", r1v.values.ps, 0.06 - (25 / 1000) * 0.84 * 0.84, 1e-9);
   check("静压模式 全压回显", r1v.values.pt, 0.06, 1e-12);
   // 静压 → 全压
-  const r1b = m1.compute({ pt: null, ps: 0.01, dp: 25, kp: 0.84 }, "wet");
+  const r1b = m1.compute({ pt: null, ps: 0.01, dp: 25, kp: 0.84 }, { measured: "ps" });
   check("静压模式 静压→全压", r1b.values.pt, 0.01 + (25 / 1000) * 0.84 * 0.84, 1e-9);
+
+  // 1b) 双向互转：measured 决定谁是实测、谁是派生
+  const delta = (25 / 1000) * 0.84 * 0.84;
+  const both = m1.compute({ pt: 0.06, ps: 0.01, dp: 25, kp: 0.84 }, { measured: "ps" });
+  check("实测=静压时 全压派生", both.values.pt, 0.01 + delta, 1e-9);
+  check("实测=静压时 静压保留", both.values.ps, 0.01, 1e-12);
+  const both2 = m1.compute({ pt: 0.06, ps: 0.01, dp: 25, kp: 0.84 }, { measured: "pt" });
+  check("实测=全压时 静压派生", both2.values.ps, 0.06 - delta, 1e-9);
+  check("实测=全压时 全压保留", both2.values.pt, 0.06, 1e-12);
+
+  // 1c) 派生值不得成为基准（否则清空后会自己填回）
+  const derivedCase = m1.compute({ pt: 0.06, ps: null, dp: 25, kp: 0.84 }, { measured: "pt", derived: ["ps"] });
+  check("派生静压不作为基准", derivedCase.values.ps, 0.06 - delta, 1e-9);
+  // 用户清空静压（实测静压），派生全压仍在 → 不应把全压当实测反推静压
+  const cleared = m1.compute({ pt: 0.0276, ps: null, dp: 25, kp: 0.84 }, { measured: "ps", derived: ["pt"] });
+  assert("清空实测项后不自我回填", cleared.values.ps === null || Math.abs(cleared.values.ps) > 1e-9,
+    `ps=${cleared.values.ps}`);
 
   // 2) 采样嘴直径选取
   const m2 = get("nozzle-select");
-  const r2 = m2.compute({ qrs: 36.40832064, vs: 5.405331876333254, xsw: 0.38 }, "wet");
+  const r2 = m2.compute({ qrs: 36.40832064, vs: 5.405331876333254, xsw: 0.38 });
   check("采样嘴模式 反算 D", r2.values.nozzle, 12, TOL_E2E);
   check("采样嘴模式 回代 Qrs", r2.values.check, 36.40832064, 1e-9);
 
   // 3) 烟气流速
   const m3 = get("velocity");
-  const r3 = m3.compute({ dp: 25, kp: 0.84, temp: 31.8, ba: 101.9, ps: 0.01, pt: null }, "wet");
+  const r3 = m3.compute({ dp: 25, kp: 0.84, temp: 31.8, ba: 101.9, ps: 0.01, pt: null });
   check("流速模式 Vs", r3.values.vs, 5.405331876333254, TOL_E2E);
 
   // 4) 采样流量
   const m4 = get("sampling-flow");
-  const r4 = m4.compute({ nozzle: 12, vs: 5.405331876333254, xsw: 0.38 }, "wet");
+  const r4 = m4.compute({ nozzle: 12, vs: 5.405331876333254, xsw: 0.38 });
   check("采样流量模式 Qrs", r4.values.qrs, 36.40832064, TOL_E2E);
 
   // 5) 工况体积（两种模式）
@@ -232,7 +245,7 @@ console.log("--- 分项模式（flue-dust-modes.ts）---");
   const r5 = m5.compute({
     qrs: 36.40832064, minutes: 120, temp: 158.7, ba: 97.6, ps: -0.19, pt: null,
     kp: 0.84, dp: 25, meterTemp: 39.2, meterP: -3.38,
-  }, "wet");
+  });
   check("工况体积 烟温静压法", r5.values.volumeFlowTemp, 36.40832064 * 120, 1e-9);
   const expMeter = 36.40832064 * (97.6 - 0.19) * (273.15 + 39.2) / (97.6 - 3.38) / (273.15 + 158.7) * 120;
   check("工况体积 计温计压法", r5.values.volumeMeter, expMeter, 1e-9);
@@ -240,48 +253,108 @@ console.log("--- 分项模式（flue-dust-modes.ts）---");
 
   // 6) 标况采样体积（湿基/干基）
   const m6 = get("standard-volume");
-  const r6w = m6.compute({ volume: 2068.2, temp: 158.7, ba: 97.6, ps: -0.19, pt: null, kp: 0.84, dp: 25, xsw: 1.31 }, "wet");
-  const r6d = m6.compute({ volume: 2068.2, temp: 158.7, ba: 97.6, ps: -0.19, pt: null, kp: 0.84, dp: 25, xsw: 1.31 }, "dry");
-  const expVnd = 2068.2 * (273.15 / (273.15 + 158.7)) * ((97.6 - 0.19) / 101.325);
-  check("标况体积 湿基", r6w.values.vnd, expVnd, 1e-9);
-  check("标况体积 干基", r6d.values.vnd, expVnd * (1 - 1.31 / 100), 1e-9);
+  const r6 = m6.compute({ volume: 2068.2, temp: 158.7, ba: 97.6, ps: -0.19, pt: null, kp: 0.84, dp: 25, xsw: 1.31 });
+  const expVnd = 2068.2 * (273.15 / (273.15 + 158.7)) * ((97.6 - 0.19) / 101.325) * (1 - 1.31 / 100);
+  check("标况体积 标态干基", r6.values.vnd, expVnd, 1e-9);
 
   // 7) 实际烟气流量
   const m7 = get("actual-flow");
-  const r7 = m7.compute({ vs: 17.3, area: 7.28 }, "wet");
+  const r7 = m7.compute({ vs: 17.3, area: 7.28 });
   check("实际流量 Qs", r7.values.qs, 17.3 * 7.28 * 3600, 1e-9);
 
   // 8) 标杆烟气流量（湿基/干基）
   const m8 = get("standard-flow");
-  const r8w = m8.compute({ qactual: 2579, temp: 32, ba: 101.9, ps: 0.01, pt: null, kp: 0.84, dp: 25, xsw: 1.31 }, "wet");
-  const r8d = m8.compute({ qactual: 2579, temp: 32, ba: 101.9, ps: 0.01, pt: null, kp: 0.84, dp: 25, xsw: 1.31 }, "dry");
-  const expQn = 2579 * (273.15 / (273.15 + 32)) * ((101.9 + 0.01) / 101.325);
-  check("标杆流量 湿基", r8w.values.qn, expQn, 1e-9);
-  check("标杆流量 干基", r8d.values.qn, expQn * (1 - 1.31 / 100), 1e-9);
+  const r8 = m8.compute({ qactual: 2579, temp: 32, ba: 101.9, ps: 0.01, pt: null, kp: 0.84, dp: 25, xsw: 1.31 });
+  const expQn = 2579 * (273.15 / (273.15 + 32)) * ((101.9 + 0.01) / 101.325) * (1 - 1.31 / 100);
+  check("标干流量 标态干基", r8.values.qn, expQn, 1e-9);
 
   // 9) 综合版 与主引擎结果一致
   const m9 = get("full");
   const demo = modes.DUST_MODE_DEMO.full;
-  const r9 = m9.compute(demo, "wet");
-  const r9d = m9.compute(demo, "dry");
-  const engine = mod.computeDustSampling({ ...mod.DUST_DEMO, basis: "wet" });
+  const r9 = m9.compute(demo);
+  const engine = mod.computeDustSampling(mod.DUST_DEMO);
   check("综合版 Vs 与主引擎一致", r9.values.vs, engine.values.velocity.value, 1e-12);
   check("综合版 C 与主引擎一致", r9.values.c, engine.values.concentration.value, 1e-12);
   check("综合版 G 与主引擎一致", r9.values.g, engine.values.emissionRate.value, 1e-12);
-  check("综合版干基 G 与主引擎一致", r9d.values.g,
-    mod.computeDustSampling({ ...mod.DUST_DEMO, basis: "dry" }).values.emissionRate.value, 1e-12);
   check("综合版 C×Qn×1e-6=G", r9.values.g, r9.values.c * r9.values.qn * 1e-6, 1e-9);
-  check("综合版干基 C×Qn×1e-6=G", r9d.values.g, r9d.values.c * r9d.values.qn * 1e-6, 1e-9);
 
   // 示例数据每个模式都能算出主结果
   for (const m of modes.DUST_MODES) {
     const demo = modes.DUST_MODE_DEMO[m.id];
-    const out = m.compute(demo, "wet");
+    const out = m.compute(demo);
     const primary = m.results.filter((d) => d.primary);
     const allOk = primary.length > 0 && primary.every((d) => out.values[d.key] !== null && out.values[d.key] !== undefined);
     assert(`模式示例可算出主结果 [${m.id}]`, allOk,
       primary.map((d) => `${d.key}=${out.values[d.key]}`).join(" "));
   }
+
+  // fills 只回填「派生值」，且目标必须是本模式真实存在的输入框
+  for (const m of modes.DUST_MODES) {
+    const out = m.compute(modes.DUST_MODE_DEMO[m.id]);
+    const fills = out.fills || {};
+    const fieldKeys = new Set(m.fields.map((f) => f.key));
+    const badTarget = Object.values(fills).filter((k) => !fieldKeys.has(k));
+    assert(`fills 目标均为本模式输入框 [${m.id}]`, badTarget.length === 0, badTarget.join(","));
+    // fills 的源结果必须是该模式声明的结果
+    const resKeys = new Set(m.results.map((r) => r.key));
+    const badSource = Object.keys(fills).filter((k) => !resKeys.has(k));
+    assert(`fills 源均为本模式结果 [${m.id}]`, badSource.length === 0, badSource.join(","));
+  }
+
+  // 关键：fills 只在「该模式确实有对应输入框」时才生效
+  // 采样嘴模式没有 nozzle 输入框 → fills 应为空（结果留在右侧显示）
+  const noz = get("nozzle-select");
+  const nozOut = noz.compute(modes.DUST_MODE_DEMO["nozzle-select"], { measured: null });
+  assert("采样嘴模式无 nozzle 输入框 → 无 fills", !nozOut.fills || !("nozzle" in nozOut.fills),
+    JSON.stringify(nozOut.fills));
+  assert("采样嘴模式 nozzle 有值", nozOut.values.nozzle !== null && nozOut.values.nozzle !== undefined,
+    `nozzle=${nozOut.values.nozzle}`);
+
+  const sf = get("sampling-flow");
+  const sfOut = sf.compute(modes.DUST_MODE_DEMO["sampling-flow"], { measured: null });
+  assert("采样流量模式无 qrs 输入框 → 无 fills", !sfOut.fills || !("qrs" in sfOut.fills),
+    JSON.stringify(sfOut.fills));
+  assert("采样流量模式 qrs 有值", sfOut.values.qrs !== null && sfOut.values.qrs !== undefined,
+    `qrs=${sfOut.values.qrs}`);
+
+  // 有对应输入框的模式 → fills 生效
+  const sp = get("static-pressure");
+  const spOut = sp.compute({ pt: 0.06, ps: null, dp: 25, kp: 0.84 }, { measured: "pt" });
+  assert("静压模式 fills 含 ps（本模式有 ps 输入框）", "ps" in (spOut.fills || {}), JSON.stringify(spOut.fills));
+  // 流速模式的输入是动压（无 vs 输入框），因此 vs 结果留在右侧显示
+  const vel = get("velocity");
+  const velOut = vel.compute(modes.DUST_MODE_DEMO.velocity, { measured: "ps" });
+  assert("流速模式无 vs 输入框 → vs 不回填", !velOut.fills || !("vs" in velOut.fills),
+    JSON.stringify(velOut.fills));
+  assert("流速模式 vs 有值", velOut.values.vs !== null && velOut.values.vs !== undefined,
+    `vs=${velOut.values.vs}`);
+
+  const stf = get("standard-flow");
+  const stfOut = stf.compute(modes.DUST_MODE_DEMO["standard-flow"], { measured: null });
+  assert("标干流量模式 qn 有值", stfOut.values.qn !== null && stfOut.values.qn !== undefined,
+    `qn=${stfOut.values.qn}`);
+  assert("标干流量模式名不含标杆", stf.name === "标干烟气流量计算", stf.name);
+
+  // 标况体积：Vnd 是标态干基，volume 输入是工况体积，口径不同，不得互相回填
+  const sv = get("standard-volume");
+  const svOut = sv.compute(modes.DUST_MODE_DEMO["standard-volume"], { measured: "ps" });
+  assert("标况体积模式 vnd 不回填到 volume", !svOut.fills || !("vnd" in svOut.fills),
+    JSON.stringify(svOut.fills));
+
+  // 综合版：静压实测 → 全压派生回填到全压输入框
+  const fullOut = get("full").compute(modes.DUST_MODE_DEMO.full, { measured: "ps" });
+  assert("综合版 fills 含 pt（派生全压回填）", "pt" in (fullOut.fills || {}), JSON.stringify(fullOut.fills));
+  assert("综合版 ps 不回填（实测值）", !fullOut.fills || !("ps" in fullOut.fills),
+    JSON.stringify(fullOut.fills));
+  // 流速模式同样支持全压派生回填
+  const velOut2 = get("velocity").compute(modes.DUST_MODE_DEMO.velocity, { measured: "ps" });
+  assert("流速模式 fills 含 pt", "pt" in (velOut2.fills || {}), JSON.stringify(velOut2.fills));
+  assert("全表无「标杆」字样",
+    !JSON.stringify(modes.DUST_MODES.map((m) => m.name + m.desc)).includes("标杆"));
+  assert("全表无「湿基」字样",
+    !JSON.stringify(modes.DUST_MODES.map((m) => m.name + m.desc)).includes("湿基"));
+  assert("全表无「3260」字样",
+    !JSON.stringify(modes.DUST_MODES).includes("3260"));
 }
 
 console.log(`\n结果：PASS ${pass} / FAIL ${fail}`);

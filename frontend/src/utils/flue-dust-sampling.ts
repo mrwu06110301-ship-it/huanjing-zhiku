@@ -12,7 +12,7 @@
  *  区块4 D14 =A14-(B14/1000*C14*C14)                      → 烟气静压 Pe（由全压+动压反算）
  *  区块5 E17 =A17*273/(273+D17)*(B17+C17)/101.325         → 标况采样体积 Vnd
  *  区块6 F20 =A20*273/(273+D20)*(B20+C20)/101.325*(1-E20/100)
- *                                                           → 标杆（标态干基）烟气流量 Qn
+ *                                                           → 标干烟气流量 Qn
  *  区块7 C23 =A23*B23*3600                                → 实际烟气流量 Qs
  *  区块8a C26=A26*B26                                      → 工况采样体积 V（烟温静压法）
  *  区块8b H28=A28*(C28+E28)*(273.15+F28)/(C28+G28)/(273.15+D28)*B28
@@ -27,21 +27,16 @@
  *  3) 原表区块3（静压直填）与区块4（由全压+动压反算静压）是两套独立工况数据，
  *     本引擎改为「双向换算」：静压与全压可互相推算（Pt = Ps + Δp·Kp²/1000），
  *     任一已知即可计算，另一个作为副产物同时给出。
- *  4) 干湿基口径统一：原表区块5 标况体积为湿基、区块6 标杆流量为干基，两者不一致，
- *     会使「C × Qn = G」出现系统性偏差。本引擎引入 basis 口径开关，
- *     让 Vnd / C / Qn / G 四者严格同口径：
- *       wet  —— 湿基（仪表读数口径）：Vnd 湿基、C 湿基、Qn 湿基
- *       dry  —— 干基（GB/T 16157 口径）：Vnd 干基、C 干基、Qn 干基
- *     切换口径时 C、Qn、G 同步变化，保证 C×Qn×10⁻⁶ ≡ G 恒成立。
+ *  4) 口径统一为标态干基：原表区块5 标况体积未做含湿量修正、区块6 标干流量做了，
+ *     两者不一致，会使「C × Qn = G」出现系统性偏差。本引擎统一按 GB/T 16157
+ *     的标态干基口径计算：Vnd / C / Qn / G 四者严格同口径，
+ *     保证 C×Qn×10⁻⁶ ≡ G 恒成立，且与排放标准限值直接可比。
  */
 
 export const DUST_T0 = 273.15;      // 标态温度 K（0℃）
 export const DUST_P0 = 101.325;      // 标态压力 kPa
-export const DUST_RHO0 = 1.34;       // 标态烟气密度 kg/m³（湿基经验值）
+export const DUST_RHO0 = 1.34;       // 标态烟气密度 kg/m³
 export const DUST_K = 1.414;         // √2
-
-/** 干湿基口径 */
-export type DustBasis = "wet" | "dry";
 
 export interface DustSamplingInput {
   // —— 工况实测 ——
@@ -65,8 +60,6 @@ export interface DustSamplingInput {
   O2: number | null;                // 实测 O2 浓度（%）
   O2Base: number | null;            // 基准含氧量（%）
   loadFactor: number | null;        // 负荷（出力）系数
-  // —— 口径 ——
-  basis: DustBasis;                 // 干湿基口径（wet=湿基/仪表口径，dry=干基/GB 口径）
 }
 
 /** 单个计算结果：可算则给值，不可算则给缺失依赖清单 */
@@ -142,18 +135,17 @@ export function toStandardFactor(t: number, pAbs: number): number {
 export function toStandardVolume(v: number, t: number, pAbs: number): number {
   return v * toStandardFactor(t, pAbs);
 }
-/** 干基折算因子 */
+/** 干基折算因子 (1 − Xsw/100) */
 export function dryFactor(xsw: number): number {
   return 1 - xsw / 100;
 }
-/** 实际烟气流量 m³/h（湿基工况） */
+/** 实际烟气流量 m³/h（工况） */
 export function flueGasFlow(vs: number, area: number): number {
   return vs * area * 3600;
 }
-/** 标杆烟气流量 m³/h（标况） */
-export function standardFlow(qs: number, t: number, pAbs: number, xsw: number, basis: DustBasis): number {
-  const f = toStandardFactor(t, pAbs);
-  return basis === "dry" ? qs * f * dryFactor(xsw) : qs * f;
+/** 标干烟气流量 m³/h（标态干基） */
+export function standardFlow(qs: number, t: number, pAbs: number, xsw: number): number {
+  return qs * toStandardFactor(t, pAbs) * dryFactor(xsw);
 }
 /** 颗粒物浓度 mg/m³ */
 export function dustConcentration(netMass: number, vnd: number): number {
@@ -184,7 +176,6 @@ export function computeDustSampling(input: DustSamplingInput): DustSamplingResul
     filterInitialMass: g1, filterFinalMass: g2,
     meterTemp: tp, meterPressure: Pp,
     O2, O2Base, loadFactor,
-    basis = "wet",
   } = input;
 
   const steps: string[] = [];
@@ -360,29 +351,24 @@ export function computeDustSampling(input: DustSamplingInput): DustSamplingResul
     "计温计压法：按采样流量计的计温计压条件修正的体积"
   );
 
-  /* ===== 9. 标况采样体积 Vnd（随 basis 联动） ===== */
+  /* ===== 9. 标况采样体积 Vnd（标态干基） ===== */
   const vndItem = make(
     "volumeStandard", "标况采样体积 Vnd", "L",
-    basis === "dry"
-      ? "Vnd = V × 273.15/(273.15+t) × (Ba+Ps)/101.325 × (1 − Xsw/100)（干基）"
-      : "Vnd = V × 273.15/(273.15+t) × (Ba+Ps)/101.325（湿基）",
+    "Vnd = V × 273.15/(273.15+t) × (Ba+Ps)/101.325 × (1 − Xsw/100)（标态干基）",
     2,
     [
       { v: vItem.value, label: "工况采样体积 V（需等速采样流量 + 采样时长）" },
       { v: t, label: "烟气温度 t" },
       { v: pAbs, label: "大气压 Ba + 烟气静压 Ps" },
-      ...(basis === "dry" ? [{ v: Xsw, label: "含湿量 Xsw" }] : []),
+      { v: Xsw, label: "含湿量 Xsw" },
     ],
-    (a) =>
-      basis === "dry"
-        ? toStandardVolume(a[0], a[1], a[2]) * dryFactor(a[3])
-        : toStandardVolume(a[0], a[1], a[2]),
-    basis === "dry" ? "干基口径" : "湿基口径"
+    (a) => toStandardVolume(a[0], a[1], a[2]) * dryFactor(a[3]),
+    "标态干基口径"
   );
   values.volumeStandard = vndItem;
   if (vndItem.value !== null) {
     steps.push(
-      `Vnd = V × 273.15/(273.15+t) × (Ba+Ps)/101.325${basis === "dry" ? " × (1 − Xsw/100)" : ""} = ${vndItem.value.toFixed(2)} L`
+      `Vnd = V × 273.15/(273.15+t) × (Ba+Ps)/101.325 × (1 − Xsw/100) = ${vndItem.value.toFixed(2)} L`
     );
   }
 
@@ -398,7 +384,7 @@ export function computeDustSampling(input: DustSamplingInput): DustSamplingResul
     steps.push(`Δg = g2 − g1 = ${massItem.value.toFixed(4)} g`);
   }
 
-  /* ===== 11. 颗粒物浓度 C（随 basis 联动） ===== */
+  /* ===== 11. 颗粒物浓度 C（标态干基） ===== */
   const cItem = make(
     "concentration", "颗粒物浓度 C", "mg/m³",
     "C = (g2 − g1) / Vnd × 10⁶", 2,
@@ -410,7 +396,7 @@ export function computeDustSampling(input: DustSamplingInput): DustSamplingResul
   );
   values.concentration = cItem;
   if (cItem.value !== null) {
-    steps.push(`C = Δg/Vnd × 10⁶ = ${cItem.value.toFixed(2)} mg/m³（${basis === "dry" ? "干基" : "湿基"}）`);
+    steps.push(`C = Δg/Vnd × 10⁶ = ${cItem.value.toFixed(2)} mg/m³（标态干基）`);
   }
 
   /* ===== 12-13. 过剩空气系数 α 与折算系数 αs ===== */
@@ -446,33 +432,28 @@ export function computeDustSampling(input: DustSamplingInput): DustSamplingResul
     steps.push(`Cα = C × α/αs × 出力系数 = ${cadjItem.value.toFixed(2)} mg/m³`);
   }
 
-  /* ===== 15. 实际烟气流量 Qs（湿基工况） ===== */
+  /* ===== 15. 实际烟气流量 Qs（工况） ===== */
   const qsItem = make(
-    "flueGasFlow", "实际烟气流量 Qs（湿基工况）", "m³/h",
+    "flueGasFlow", "实际烟气流量 Qs（工况）", "m³/h",
     "Qs = Vs × F × 3600", 0,
     [{ v: vsItem.value, label: "烟气流速 Vs" }, { v: F, label: "烟道截面积 F" }],
     (a) => flueGasFlow(a[0], a[1])
   );
   values.flueGasFlow = qsItem;
 
-  /* ===== 16. 标杆烟气流量 Qn（随 basis 联动） ===== */
+  /* ===== 16. 标干烟气流量 Qn（标态干基） ===== */
   const qnItem = make(
-    "dryStandardFlow", "标杆烟气流量 Qn", "m³/h",
-    basis === "dry"
-      ? "Qn = Qs × 273.15/(273.15+t) × (Ba+Ps)/101.325 × (1 − Xsw/100)（标态干基）"
-      : "Qn = Qs × 273.15/(273.15+t) × (Ba+Ps)/101.325（标态湿基）",
+    "dryStandardFlow", "标干烟气流量 Qn", "m³/h",
+    "Qn = Qs × 273.15/(273.15+t) × (Ba+Ps)/101.325 × (1 − Xsw/100)（标态干基）",
     0,
     [
       { v: qsItem.value, label: "实际烟气流量 Qs（需流速 + 烟道截面积）" },
       { v: t, label: "烟气温度 t" },
       { v: pAbs, label: "大气压 Ba + 烟气静压 Ps" },
-      ...(basis === "dry" ? [{ v: Xsw, label: "含湿量 Xsw" }] : []),
+      { v: Xsw, label: "含湿量 Xsw" },
     ],
-    (a) =>
-      basis === "dry"
-        ? standardFlow(a[0], a[1], a[2], a[3], "dry")
-        : standardFlow(a[0], a[1], a[2], 0, "wet"),
-    basis === "dry" ? "标态干基" : "标态湿基"
+    (a) => standardFlow(a[0], a[1], a[2], a[3]),
+    "标态干基"
   );
   values.dryStandardFlow = qnItem;
 
@@ -482,7 +463,7 @@ export function computeDustSampling(input: DustSamplingInput): DustSamplingResul
     "G = C × Qn × 10⁻⁶", 4,
     [
       { v: cItem.value, label: "颗粒物浓度 C" },
-      { v: qnItem.value, label: "标杆烟气流量 Qn" },
+      { v: qnItem.value, label: "标干烟气流量 Qn" },
     ],
     (a) => emissionRate(a[0], a[1])
   );
@@ -516,7 +497,6 @@ export const DUST_DEMO: DustSamplingInput = {
   O2: 14.2,
   O2Base: 9,
   loadFactor: 1,
-  basis: "wet",
 };
 
 /** Excel《烟尘相关计算公式(1)》校对算例（区块1/2/3/8a/8b 同一组数据） */
@@ -538,5 +518,4 @@ export const DUST_EXCEL_CASE: DustSamplingInput = {
   O2: null,
   O2Base: null,
   loadFactor: null,
-  basis: "wet",
 };

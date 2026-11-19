@@ -53,7 +53,7 @@ const header = `/**
  *    源文件：frontend/src/utils/flue-dust-sampling.ts + flue-dust-modes.ts
  *    重新生成：cd frontend && node scripts/build-dust-engine.mjs
  *
- * 内容：全压↔静压双向换算、干湿基口径联动、9 个分项计算模式 + 综合版
+ * 内容：全压↔静压双向换算、标态干基口径、9 个分项计算模式 + 综合版
  */
 `;
 
@@ -87,20 +87,23 @@ if (missing.length) {
 console.log(`导出自检通过：${need.join(", ")}`);
 console.log(`模式数：${mod.DUST_MODES.length}`);
 
-// 口径自检：干湿基下 C×Qn×1e-6 ≡ G
-const demo = mod.DUST_DEMO;
-for (const basis of ["wet", "dry"]) {
-  const r = mod.computeDustSampling({ ...demo, basis });
+// 口径自检：标态干基下 C×Qn×1e-6 ≡ G
+{
+  const r = mod.computeDustSampling(mod.DUST_DEMO);
   const C = r.values.concentration.value;
   const Qn = r.values.dryStandardFlow.value;
   const G = r.values.emissionRate.value;
   const err = Math.abs(C * Qn * 1e-6 - G) / G;
   console.log(
-    `  ${basis}: C=${C.toFixed(4)} Qn=${Qn.toFixed(1)} G=${G.toFixed(6)}  恒等误差=${(err * 100).toExponential(2)}%`
+    `  标态干基: C=${C.toFixed(4)} Qn=${Qn.toFixed(1)} G=${G.toFixed(6)}  恒等误差=${(err * 100).toExponential(2)}%`
   );
   if (err > 1e-9) {
-    console.error("[ERROR] 干湿基口径不自洽");
+    console.error("[ERROR] 标态干基口径不自洽");
+    process.exit(1);
+  }
+  if ("basis" in mod.DUST_DEMO) {
+    console.error("[ERROR] DUST_DEMO 仍含 basis 字段（口径开关应已移除）");
     process.exit(1);
   }
 }
-console.log("口径自检通过");
+console.log("口径自检通过（统一标态干基，无口径开关）");

@@ -581,9 +581,8 @@ function radiationLabel(lv: number): string {
           <tr><th>平均温度</th><td>{{ fmt(result.avgTemperature, 1) }} ℃</td><th>平均湿度</th><td>{{ fmt(result.avgHumidity, 1) }} %RH</td></tr>
           <tr><th>平均气压</th><td>{{ fmt(result.avgPressure, 1) }} kPa</td><th>平均风速</th><td>{{ fmt(result.avgWindSpeed, 1) }} m/s</td></tr>
           <tr><th>平均风向（矢量平均）</th><td>{{ fmt(result.avgWindDir, 1) }}°（{{ dirTo16(result.avgWindDir) }}）</td><th>风向标准差 σθ（Yamartino）<button class="tbl-link" @click="showTable('t5')" title="查看表5">表5 ⓘ</button></th><td>{{ fmt(result.windDirStdDev, 1) }}°</td></tr>
-          <tr><th>测量高度</th><td>{{ form.measureHeight }} m</td><th>10m 地面风速</th><td>{{ fmt(result.windSpeed10m, 1) }} m/s</td></tr>
-          <tr><th>日期序号 dn</th><td>{{ result.dayInYear }}（0 起点计数）</td><th>地球公转角 Q0</th><td>{{ fmt(result.earthRotationAngle, 4) }} rad</td></tr>
-          <tr><th>太阳倾角 δ</th><td>{{ fmt(result.sunDipAngle) }}°</td><th>太阳高度角 h₀</th><td>{{ fmt(result.sunElevation) }}°（{{ result.isNight ? "夜间" : "白天" }}）</td></tr>
+          <tr><th>10m 地面风速</th><td>{{ fmt(result.windSpeed10m, 1) }} m/s</td><th>日期序号 dn</th><td>{{ result.dayInYear }}（0 起点计数）</td></tr>
+          <tr><th>地球公转角 Q0</th><td>{{ fmt(result.earthRotationAngle, 4) }} rad</td><th>太阳高度角 h₀</th><td>{{ fmt(result.sunElevation) }}°（{{ result.isNight ? "夜间" : "白天" }}）</td></tr>
           <tr><th>太阳辐射等级<button class="tbl-link" @click="showTable('t3')" title="查看表3">表3 ⓘ</button></th><td>{{ radiationLabel(result.radiationLevel) }}</td><th>风廓线幂指数 n<button class="tbl-link" @click="showTable('n')" title="查看风廓线幂指数表">附录D ⓘ</button></th><td>{{ result.windProfileExponent }}</td></tr>
           <tr><th>稳定度预测等级（平均风速）<button class="tbl-link" @click="showTable('t4')" title="查看表4">表4 ⓘ</button></th><td>{{ result.stabilityPredicted }}</td><th>大气稳定度等级（10m 风速）<button class="tbl-link" @click="showTable('t4')" title="查看表4">表4 ⓘ</button></th><td class="level-strong">{{ result.stabilityLevel }}</td></tr>
         </tbody>

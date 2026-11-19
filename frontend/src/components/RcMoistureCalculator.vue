@@ -137,10 +137,6 @@ const showExplain = ref(false);
             <label>计前压力 Pg（表压 kPa，负压填负数）<span class="req">*</span></label>
             <el-input-number v-model="form.gauge" :min="-95" :max="50" :precision="2" :controls="false" placeholder="0" style="width:100%" />
           </div>
-          <div class="p-current">
-            P当前 = {{ form.atmospheric ?? "—" }} + {{ form.gauge ?? "—" }} =
-            <b>{{ pCurrent !== null ? pCurrent.toFixed(2) : "—" }}</b> kPa
-          </div>
         </div>
 
         <!-- 右：结果 -->
@@ -152,6 +148,7 @@ const showExplain = ref(false);
           <div class="vr-card">
             <span class="vr-label">P当前（绝对压力）</span>
             <div class="vr-val"><b>{{ current ? current.pressure.toFixed(2) : "—" }}</b> kPa</div>
+            <span class="vr-note">= Ba + Pg</span>
           </div>
           <div class="vr-card">
             <span class="vr-label">水蒸气分压</span>
@@ -181,8 +178,7 @@ const showExplain = ref(false);
       </div>
       <div class="interp-bar" v-if="interpInfo">
         <Icon name="info" :size="14" />
-        查表线性插值：{{ form.temperature }}℃ = P({{ interpInfo.tLow }}) + {{ interpInfo.frac }} × (P({{ interpInfo.tHigh }}) − P({{ interpInfo.tLow }})) =
-        <b>{{ interpInfo.p.toFixed(4) }}</b> kPa
+        查表线性插值：{{ form.temperature }}℃ 取 P({{ interpInfo.tLow }}) 与 P({{ interpInfo.tHigh }}) 之间，插值系数 {{ interpInfo.frac }}
       </div>
       <div class="vapor-table">
         <div v-for="row in tableTemps" :key="row.t" :class="['vt-cell', { hot: interpInfo !== null && (row.t === interpInfo.tLow || row.t === interpInfo.tHigh), warm: interpInfo === null && form.temperature !== null && row.t === Math.round(form.temperature) }]">
@@ -251,11 +247,6 @@ const showExplain = ref(false);
 .field label { display: block; font-size: 13px; color: var(--text-light); margin-bottom: 6px; font-weight: 500; }
 .req { color: #ef4444; margin-left: 2px; }
 .field-err { font-size: 11.5px; color: #ef4444; margin-top: 4px; }
-.p-current {
-  font-size: 13px; color: var(--text-light); background: var(--bg-soft, #f6f8fa);
-  border-radius: 10px; padding: 9px 13px; border: 1px dashed var(--border-light);
-}
-.p-current b { color: var(--text); font-size: 14px; }
 
 .rm-outputs { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; align-content: start; }
 .vr-card {
@@ -266,6 +257,7 @@ const showExplain = ref(false);
 .vr-label { font-size: 12px; color: var(--text-light); }
 .vr-val { white-space: nowrap; font-size: 13px; color: var(--text-light); overflow: hidden; text-overflow: ellipsis; }
 .vr-card b { font-size: 22px; font-weight: 800; color: var(--text); line-height: 1.25; margin-right: 2px; }
+.vr-note { font-size: 11px; color: var(--text-light); opacity: 0.75; }
 .vr-card.main { background: rgba(37, 99, 235, 0.07); border-color: rgba(37, 99, 235, 0.25); }
 .vr-card.main .vr-val, .vr-card.main b { color: var(--primary); }
 .vr-card.main b { font-size: 26px; }
