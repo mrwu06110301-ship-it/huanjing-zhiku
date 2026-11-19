@@ -42,16 +42,18 @@ ok(subText === null, "工具详情页无「标题下标准提示」副标题（�
 
 /* ---------- 2. 模式选择器 ---------- */
 const modeNames = await page.$$eval(".mode .mode-n", (els) => els.map((e) => e.textContent.trim()));
-ok(modeNames.length === 9, `模式按钮 9 个（实际 ${modeNames.length}）：${modeNames.join(" / ")}`);
+ok(modeNames.length === 8, `模式按钮 8 个（实际 ${modeNames.length}）：${modeNames.join(" / ")}`);
 const expectModes = [
   "烟气静压计算", "采样嘴直径选取", "烟气流速计算", "采样流量计算",
-  "工况体积计算", "标况采样体积计算", "实际烟气流量计算", "标干烟气流量计算", "综合版（全链路）",
+  "体积计算", "实际烟气流量计算", "标干烟气流量计算", "综合版（全链路）",
 ];
 ok(
   expectModes.every((n) => modeNames.includes(n)),
-  "9 个模式名称齐备：" + expectModes.filter((n) => !modeNames.includes(n)).join(",")
+  "8 个模式名称齐备：" + expectModes.filter((n) => !modeNames.includes(n)).join(",")
 );
 ok(!modeNames.some((n) => n.includes("标杆")), "无「标杆烟气流量」模式名");
+ok(!modeNames.some((n) => n.includes("工况体积计算") || n.includes("标况采样体积计算")),
+  "工况体积/标况体积已合并为「体积计算」");
 const bodyText = await page.evaluate(() => document.body.innerText);
 ok(!bodyText.includes("标杆"), "页面无「标杆」字样");
 ok(!bodyText.includes("湿基"), "页面无「湿基」字样");
@@ -182,8 +184,7 @@ const modeChecks = [
   ["采样嘴直径选取", "采样嘴直径 D"],
   ["烟气流速计算", "烟气流速 Vs"],
   ["采样流量计算", "等速采样流量 Qrs"],
-  ["工况体积计算", "工况体积（烟温静压法）"],
-  ["标况采样体积计算", "标况采样体积 Vnd"],
+  ["体积计算", "标况体积 Vnd"],
   ["实际烟气流量计算", "实际烟气流量 Qs"],
   ["标干烟气流量计算", "标干烟气流量 Qn"],
   ["综合版（全链路）", "颗粒物浓度 C"],
@@ -197,6 +198,39 @@ for (const [modeName, resLabel] of modeChecks) {
   const r = map.find((x) => x.label === resLabel);
   ok(r && r.value && r.value !== "—", `${modeName} → ${resLabel} = ${r?.value} ${r?.unit}`);
 }
+
+/* ---------- 10b. 体积计算：方法下拉 + 公式随方法切换 ---------- */
+await switchMode("体积计算");
+await sleep(600);
+const selCount = await page.$$eval(".in .wrap select.sel", (els) => els.length);
+ok(selCount >= 1, `体积计算有方法下拉（${selCount} 个）`);
+const methodLabels = await page.$$eval(".in .wrap select.sel option", (els) => els.map((e) => e.textContent.trim()));
+ok(methodLabels.some((t) => t.includes("烟温静压法")) && methodLabels.some((t) => t.includes("计温计压法")),
+  "方法下拉含两法：" + methodLabels.join(" / "));
+
+await clickBtn("示例");
+await sleep(900);
+const fxFlow = await page.evaluate(() => {
+  const t = [...document.querySelectorAll(".doc-b .fx-l")].map((e) => e.textContent.trim()).join(" | ");
+  return t;
+});
+ok(fxFlow.includes("Qrs × n"), "烟温静压法公式含 V = Qrs × n：" + fxFlow.slice(0, 160));
+
+// 切换到计温计压法
+await page.evaluate(() => {
+  const sel = document.querySelector(".in .wrap select.sel");
+  if (!sel) return;
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, "value").set;
+  setter.call(sel, "2");
+  sel.dispatchEvent(new Event("change", { bubbles: true }));
+});
+await sleep(900);
+const fxMeter = await page.evaluate(() => {
+  const t = [...document.querySelectorAll(".doc-b .fx-l")].map((e) => e.textContent.trim()).join(" | ");
+  return t;
+});
+ok(fxMeter.includes("t′"), "计温计压法公式含 t′：" + fxMeter.slice(0, 160));
+ok(fxFlow !== fxMeter, "两法公式确实不同");
 
 /* ---------- 11. 清空 ---------- */
 await switchMode("综合版（全链路）");

@@ -127,6 +127,50 @@ export function volumeByMeterCondition(
 ): number {
   return (qrs * ((pAbs * (DUST_T0 + meterTemp)) / (meterP * (DUST_T0 + stackTemp))) * minutes);
 }
+
+/* ------------------------------------------------------------------
+ *  体积计算的两法折算路径（Excel 区块 5 / 区块 8a / 区块 8b）
+ *
+ *  两条路径的差别在「折算到标态」这一步：
+ *
+ *  【烟温静压法】
+ *    工况体积 V  = Qrs × n
+ *    标况体积 Vnd = V × 273.15/(273.15+t) × (Ba+Ps)/101.325
+ *    即：直接由烟气工况条件（烟温 t、静压 Ps）折到标态。
+ *
+ *  【计温计压法】
+ *    实际体积 V' = Qrs × (Ba+Ps)(273.15+t′) / [(Ba+P′)(273.15+t)] × n
+ *    标况体积 Vnd = V' × 273.15/(273.15+t′) × (Ba+P′)/101.325
+ *    即：先把流量计读数条件（计温 t′、计压 P′）折到烟气工况得 V′，
+ *        再由流量计条件折到标态得 Vnd。
+ *
+ *  两式中 t′、Ba+P′ 恰好相消，因此理论上两法的标况体积必然相等，
+ *  可互为校核（GB/T 16157 中这两条路径互为验证）。
+ * ------------------------------------------------------------------ */
+
+/** 体积折算方法 */
+export type VolumeMethod = "flowTemp" | "meter";
+
+export const VOLUME_METHOD_LABEL: Record<VolumeMethod, string> = {
+  flowTemp: "烟温静压法",
+  meter: "计温计压法",
+};
+
+/**
+ * 计温计压法的「流量计条件 → 标态」折算因子
+ *   = 273.15/(273.15+t′) × (Ba+P′)/101.325
+ */
+export function meterToStandardFactor(meterTemp: number, meterPAbs: number): number {
+  return (DUST_T0 / (DUST_T0 + meterTemp)) * (meterPAbs / DUST_P0);
+}
+
+/**
+ * 计温计压法的标况体积 Vnd（由实际体积 V′ 折算）
+ *   Vnd = V' × 273.15/(273.15+t′) × (Ba+P′)/101.325
+ */
+export function volumeByMeterToStandard(vMeter: number, meterTemp: number, meterPAbs: number): number {
+  return vMeter * meterToStandardFactor(meterTemp, meterPAbs);
+}
 /** 温度压力修正因子（→标态，0℃/101.325kPa） */
 export function toStandardFactor(t: number, pAbs: number): number {
   return (DUST_T0 / (DUST_T0 + t)) * (pAbs / DUST_P0);
@@ -351,24 +395,26 @@ export function computeDustSampling(input: DustSamplingInput): DustSamplingResul
     "计温计压法：按采样流量计的计温计压条件修正的体积"
   );
 
-  /* ===== 9. 标况采样体积 Vnd（标态干基） ===== */
+  /* ===== 9. 标况采样体积 Vnd（标态） =====
+   * 含湿量已在上游等速采样流量 Qrs 中扣除，此处不再重复乘 (1−Xsw/100)
+   * （Excel 区块 5 亦无含湿量项，重复扣水会使浓度偏高）
+   */
   const vndItem = make(
     "volumeStandard", "标况采样体积 Vnd", "L",
-    "Vnd = V × 273.15/(273.15+t) × (Ba+Ps)/101.325 × (1 − Xsw/100)（标态干基）",
+    "Vnd = V × 273.15/(273.15+t) × (Ba+Ps)/101.325",
     2,
     [
       { v: vItem.value, label: "工况采样体积 V（需等速采样流量 + 采样时长）" },
       { v: t, label: "烟气温度 t" },
       { v: pAbs, label: "大气压 Ba + 烟气静压 Ps" },
-      { v: Xsw, label: "含湿量 Xsw" },
     ],
-    (a) => toStandardVolume(a[0], a[1], a[2]) * dryFactor(a[3]),
-    "标态干基口径"
+    (a) => toStandardVolume(a[0], a[1], a[2]),
+    "标态口径（含湿量已在采样流量中扣除）"
   );
   values.volumeStandard = vndItem;
   if (vndItem.value !== null) {
     steps.push(
-      `Vnd = V × 273.15/(273.15+t) × (Ba+Ps)/101.325 × (1 − Xsw/100) = ${vndItem.value.toFixed(2)} L`
+      `Vnd = V × 273.15/(273.15+t) × (Ba+Ps)/101.325 = ${vndItem.value.toFixed(2)} L`
     );
   }
 

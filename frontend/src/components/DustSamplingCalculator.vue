@@ -55,6 +55,14 @@ function onO2BaseSelect(mId: string, e: Event) {
   forms[mId].o2base = v === "" ? null : Number(v);
 }
 
+/* ============ 通用 select 字段（体积计算的折算方法） ============ */
+function onSelect(mId: string, key: string, e: Event) {
+  const el = e.target as HTMLSelectElement;
+  const v = el.value;
+  forms[mId][key] = v === "" ? null : Number(v);
+  computeAndFill();
+}
+
 /* ============ 输入处理：允许负号，非法字符过滤 ============ */
 function onInput(mId: string, key: string, e: Event) {
   const el = e.target as HTMLInputElement;
@@ -116,6 +124,7 @@ function fmt(def: { digits: number }, v: number | null): string {
 const FILL_DIGITS: Record<string, number> = {
   ps: 4, pt: 4, dpPressure: 4,
   nozzle: 2, vs: 3, qrs: 2, vnd: 2, qn: 0, qs: 0,
+  volumeCondition: 2, volumeMeter: 2,
 };
 
 const MAX_FILL_ROUNDS = 3;
@@ -229,8 +238,20 @@ const visibleResults = computed(() =>
 /* ============ 缺失依赖说明 ============
  * 统一走 flue-dust-modes.ts 的中央依赖表，平台与小程序口径一致 */
 function missingOf(m: DustMode, key: string): string {
-  return missingOfResult(key, forms[m.id] ?? {}, curResult.value?.values ?? {});
+  return missingOfResult(key, forms[m.id] ?? {}, curResult.value?.values ?? {}, m.depRules);
 }
+
+/* ============ 公式说明（随模式 + 所选方法同步） ============ */
+const curFormulas = computed(() => {
+  const m = mode.value;
+  const byMethod = m.formulasByMethod;
+  if (!byMethod) return m.formulas;
+  const sel = curForm.value?.method;
+  const hit = sel === null || sel === undefined
+    ? null
+    : byMethod[String(sel)];
+  return hit ?? m.formulas;
+});
 
 /* ============ 操作 ============ */
 function loadDemo() {
@@ -333,6 +354,18 @@ watch(modeId, () => { showAllSteps.value = false; });
                 </select>
                 <span class="unit">%</span>
               </div>
+              <div v-else-if="f.type === 'select'" class="wrap">
+                <select
+                  class="sel"
+                  :value="curForm[f.key] === null ? '' : String(curForm[f.key])"
+                  @change="onSelect(modeId, f.key, $event)"
+                >
+                  <option value="">请选择…</option>
+                  <option v-for="o in f.options" :key="String(o.value)" :value="String(o.value)">
+                    {{ o.label }}
+                  </option>
+                </select>
+              </div>
               <div v-else class="wrap">
                 <input
                   class="inp"
@@ -402,7 +435,7 @@ watch(modeId, () => { showAllSteps.value = false; });
           <div class="fx-t">{{ mode.name }}</div>
           <div class="fx-l fx-desc">{{ mode.desc }}</div>
         </div>
-        <div class="fx" v-for="(f, i) in mode.formulas" :key="i">
+        <div class="fx" v-for="(f, i) in curFormulas" :key="i">
           <div class="fx-t">{{ f.title }}</div>
           <div class="fx-l" v-for="(line, j) in f.lines" :key="j"><code>{{ line }}</code></div>
         </div>

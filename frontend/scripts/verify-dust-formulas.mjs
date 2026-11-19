@@ -117,11 +117,11 @@ console.log("--- 标态干基口径 ---");
   const Ba = mod.DUST_DEMO.atmosphere;
   const Ps = mod.DUST_DEMO.staticPressure;
 
-  // Vnd 必须含干基修正
+  // Vnd 不再含干基修正（含湿量已在采样流量中扣除，避免重复扣水）
   const factor = (mod.DUST_T0 / (mod.DUST_T0 + t)) * ((Ba + Ps) / mod.DUST_P0);
   const V = r.values.volumeWet.value;
-  check("Vnd = V × 因子 × (1−Xsw/100)", r.values.volumeStandard.value,
-    V * factor * df, 1e-9);
+  check("Vnd = V × 因子（不含重复干基）", r.values.volumeStandard.value,
+    V * factor, 1e-9);
 
   // Qn 必须含干基修正
   const Qs = r.values.flueGasFlow.value;
@@ -188,11 +188,11 @@ console.log("--- 标态干基口径 ---");
 /* ================= 七、9 个分项模式校验 ================= */
 console.log("--- 分项模式（flue-dust-modes.ts）---");
 {
-  assert("模式数量 = 9", modes.DUST_MODES.length === 9, `实际 ${modes.DUST_MODES.length}`);
+  assert("模式数量 = 8", modes.DUST_MODES.length === 8, `实际 ${modes.DUST_MODES.length}`);
   const ids = modes.DUST_MODES.map((m) => m.id).sort();
   const expectIds = [
-    "actual-flow", "condition-volume", "full", "nozzle-select",
-    "sampling-flow", "standard-flow", "standard-volume", "static-pressure", "velocity",
+    "actual-flow", "full", "nozzle-select",
+    "sampling-flow", "standard-flow", "static-pressure", "velocity", "volume",
   ].sort();
   assert("模式 id 齐备", JSON.stringify(ids) === JSON.stringify(expectIds), ids.join(","));
 
@@ -240,29 +240,35 @@ console.log("--- 分项模式（flue-dust-modes.ts）---");
   const r4 = m4.compute({ nozzle: 12, vs: 5.405331876333254, xsw: 0.38 });
   check("采样流量模式 Qrs", r4.values.qrs, 36.40832064, TOL_E2E);
 
-  // 5) 工况体积（两种模式）
-  const m5 = get("condition-volume");
-  const r5 = m5.compute({
-    qrs: 36.40832064, minutes: 120, temp: 158.7, ba: 97.6, ps: -0.19, pt: null,
+  // 5) 体积计算（烟温静压法 / 计温计压法 合并模式）
+  const m5 = get("volume");
+  const volBase = {
+    method: 1, qrs: 36.40832064, minutes: 120, volume: null,
+    temp: 158.7, ba: 97.6, ps: -0.19, pt: null,
     kp: 0.84, dp: 25, meterTemp: 39.2, meterP: -3.38,
-  });
-  check("工况体积 烟温静压法", r5.values.volumeFlowTemp, 36.40832064 * 120, 1e-9);
+  };
+  const r5 = m5.compute(volBase);
+  check("体积模式 烟温静压法工况体积", r5.values.volumeCondition, 36.40832064 * 120, 1e-9);
   const expMeter = 36.40832064 * (97.6 - 0.19) * (273.15 + 39.2) / (97.6 - 3.38) / (273.15 + 158.7) * 120;
-  check("工况体积 计温计压法", r5.values.volumeMeter, expMeter, 1e-9);
-  check("工况体积 两法差值", r5.values.diff, r5.values.volumeFlowTemp - r5.values.volumeMeter, 1e-9);
-
-  // 6) 标况采样体积（湿基/干基）
-  const m6 = get("standard-volume");
-  const r6 = m6.compute({ volume: 2068.2, temp: 158.7, ba: 97.6, ps: -0.19, pt: null, kp: 0.84, dp: 25, xsw: 1.31 });
-  const expVnd = 2068.2 * (273.15 / (273.15 + 158.7)) * ((97.6 - 0.19) / 101.325) * (1 - 1.31 / 100);
-  check("标况体积 标态干基", r6.values.vnd, expVnd, 1e-9);
+  check("体积模式 计温计压法工况体积", r5.values.volumeMeter, expMeter, 1e-9);
+  check("体积模式 两法差值=0", r5.values.diff, 0, 1e-9);
+  // 烟温静压法标况体积：V × 273.15/(273.15+t) × (Ba+Ps)/101.325（不再乘含湿量）
+  const expVndFlow = 36.40832064 * 120 * (273.15 / (273.15 + 158.7)) * ((97.6 - 0.19) / 101.325);
+  check("体积模式 烟温静压法标况体积", r5.values.vnd, expVndFlow, 1e-9);
+  // 计温计压法标况体积：V' × 273.15/(273.15+t′) × (Ba+P′)/101.325
+  const expVndMeter = expMeter * (273.15 / (273.15 + 39.2)) * ((97.6 - 3.38) / 101.325);
+  check("体积模式 计温计压法标况体积", expVndMeter, expVndFlow, 1e-6);
+  // 切换方法后主结果走计温计压法路径
+  const r5m = m5.compute({ ...volBase, method: 2 });
+  check("体积模式 切计温计压法后 Vnd", r5m.values.vnd, expVndMeter, 1e-9);
+  check("体积模式 切计温计压法后工况体积", r5m.values.volumeCondition, expMeter, 1e-9);
 
   // 7) 实际烟气流量
   const m7 = get("actual-flow");
   const r7 = m7.compute({ vs: 17.3, area: 7.28 });
   check("实际流量 Qs", r7.values.qs, 17.3 * 7.28 * 3600, 1e-9);
 
-  // 8) 标杆烟气流量（湿基/干基）
+  // 8) 标干烟气流量
   const m8 = get("standard-flow");
   const r8 = m8.compute({ qactual: 2579, temp: 32, ba: 101.9, ps: 0.01, pt: null, kp: 0.84, dp: 25, xsw: 1.31 });
   const expQn = 2579 * (273.15 / (273.15 + 32)) * ((101.9 + 0.01) / 101.325) * (1 - 1.31 / 100);
@@ -335,11 +341,20 @@ console.log("--- 分项模式（flue-dust-modes.ts）---");
     `qn=${stfOut.values.qn}`);
   assert("标干流量模式名不含标杆", stf.name === "标干烟气流量计算", stf.name);
 
-  // 标况体积：Vnd 是标态干基，volume 输入是工况体积，口径不同，不得互相回填
-  const sv = get("standard-volume");
-  const svOut = sv.compute(modes.DUST_MODE_DEMO["standard-volume"], { measured: "ps" });
-  assert("标况体积模式 vnd 不回填到 volume", !svOut.fills || !("vnd" in svOut.fills),
+  // 体积计算：Vnd 是标态体积，与工况体积口径不同，不得互相回填
+  const sv = get("volume");
+  const svOut = sv.compute(modes.DUST_MODE_DEMO.volume, { measured: "ps" });
+  assert("体积模式 vnd 不回填到 volume", !svOut.fills || !("vnd" in svOut.fills),
     JSON.stringify(svOut.fills));
+  // 体积模式：公式说明按方法切换
+  assert("体积模式有 formulasByMethod", !!sv.formulasByMethod, "缺失");
+  assert("体积模式 烟温静压法公式含 V=Qrs×n",
+    (sv.formulasByMethod?.["1"] || []).some((f) => f.lines.some((l) => l.includes("Qrs × n"))),
+    "缺失");
+  assert("体积模式 计温计压法公式含 t′",
+    (sv.formulasByMethod?.["2"] || []).some((f) => f.lines.some((l) => l.includes("t′"))),
+    "缺失");
+  assert("体积模式名为 体积计算", sv.name === "体积计算", sv.name);
 
   // 综合版：静压实测 → 全压派生回填到全压输入框
   const fullOut = get("full").compute(modes.DUST_MODE_DEMO.full, { measured: "ps" });

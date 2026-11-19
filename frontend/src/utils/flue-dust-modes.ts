@@ -15,8 +15,10 @@ import {
   dpToPressure, totalToStatic, staticToTotal,
   flueGasDensity, flueGasVelocity, isokineticFlow, nozzleFromFlow,
   volumeByFlowTime, volumeByMeterCondition,
+  volumeByMeterToStandard, meterToStandardFactor,
   toStandardFactor, toStandardVolume, dryFactor,
   flueGasFlow, standardFlow, dustConcentration, alphaOf, adjustedConcentration, emissionRate,
+  type VolumeMethod,
 } from "./flue-dust-sampling";
 
 /* ================= 字段定义 ================= */
@@ -61,6 +63,16 @@ export interface DustMode {
   results: DustResultDef[];
   /** 本模式用到的公式（公式说明面板随模式同步） */
   formulas: { title: string; lines: string[] }[];
+  /**
+   * 按所选方法区分的公式（键为 select 字段的选项值）。
+   * 用于「同一模式内不同方法公式不同」的场景（如体积计算的两法）。
+   */
+  formulasByMethod?: Record<string, { title: string; lines: string[] }[]>;
+  /**
+   * 模式级依赖规则覆盖：结果 key → 依赖表达式。
+   * 用于「同一模式内按所选方法依赖不同」的场景（如体积计算的两法）。
+   */
+  depRules?: Record<string, string[]>;
   /**
    * 计算函数：输入值映射 → 结果值映射 + 步骤说明
    * fills  ：结果 → 回填到哪个输入框（输入框即显示）
@@ -114,6 +126,15 @@ const F = {
   }),
   volume: (): DustField => ({
     key: "volume", label: "实际采样体积", sym: "V", unit: "L", type: "number", ph: "如 2068.2",
+  }),
+  /** 体积计算方法：烟温静压法 / 计温计压法 */
+  volumeMethod: (): DustField => ({
+    key: "method", label: "折算方法", sym: "", unit: "", type: "select",
+    tip: "两法的工况体积口径不同（采样嘴处 / 流量计处），但标况体积结果一致",
+    options: [
+      { value: 1, label: "烟温静压法（工况体积取采样嘴处）" },
+      { value: 2, label: "计温计压法（工况体积取流量计处）" },
+    ],
   }),
   vs: (): DustField => ({
     key: "vs", label: "烟气流速", sym: "Vs", unit: "m/s", type: "number", ph: "如 17.3",
@@ -387,107 +408,140 @@ export const DUST_MODES: DustMode[] = [
     },
   },
 
-  /* ---------- 5. 工况体积计算（两种模式） ---------- */
+  /* ---------- 5. 体积计算（烟温静压法 / 计温计压法 两种折算路径） ---------- */
   {
     formulas: [
       { title: "压力换算", lines: [
         "Ps = Pt − Δp·Kp²/1000",
         "P = Ba + Ps（烟气绝对压力）",
       ] },
-      { title: "工况体积（两种方法）", lines: [
-        "V = Qrs × n（烟温静压法）",
-        "V' = Qrs × (Ba+Ps)(273.15+t′) / [(Ba+P′)(273.15+t)] × n（计温计压法）",
+      { title: "两法关系", lines: [
+        "两法的工况体积口径不同（采样嘴处 / 流量计处），标况体积必然一致",
+        "含湿量已在上游等速采样流量中扣除，体积折算不再重复修正",
       ] },
     ],
-    id: "condition-volume",
-    name: "工况体积计算",
-    short: "工况体积",
-    desc: "采样体积换算：烟温静压法（Qrs×n）或计温计压法",
+    formulasByMethod: {
+      "1": [
+        { title: "压力换算", lines: [
+          "Ps = Pt − Δp·Kp²/1000",
+          "P = Ba + Ps（烟气绝对压力）",
+        ] },
+        { title: "① 烟温静压法（工况体积取采样嘴处）", lines: [
+          "V = Qrs × n",
+          "Vnd = V × 273.15/(273.15+t) × (Ba+Ps)/101.325",
+        ] },
+        { title: "两法关系", lines: [
+          "两法的工况体积口径不同（采样嘴处 / 流量计处），标况体积必然一致",
+          "含湿量已在上游等速采样流量中扣除，体积折算不再重复修正",
+        ] },
+      ],
+      "2": [
+        { title: "压力换算", lines: [
+          "Ps = Pt − Δp·Kp²/1000",
+          "P = Ba + Ps（烟气绝对压力）",
+        ] },
+        { title: "② 计温计压法（工况体积取流量计处）", lines: [
+          "V' = Qrs × (Ba+Ps)(273.15+t′) / [(Ba+P′)(273.15+t)] × n",
+          "Vnd = V' × 273.15/(273.15+t′) × (Ba+P′)/101.325",
+        ] },
+        { title: "两法关系", lines: [
+          "两法的工况体积口径不同（采样嘴处 / 流量计处），标况体积必然一致",
+          "含湿量已在上游等速采样流量中扣除，体积折算不再重复修正",
+        ] },
+      ],
+    },
+    id: "volume",
+    name: "体积计算",
+    short: "体积",
+    desc: "采样体积换算：烟温静压法或计温计压法，两法折算到标况的公式不同",
     icon: "flask",
-    ref: "Excel 区块 8",
+    ref: "Excel 区块 5 / 8",
+    // 两法依赖不同：烟温静压法只需烟温/静压，计温计压法还需计温/计压
+    depRules: {
+      vnd: ["qrs+minutes", "temp", "ba", "ps|pt+dp+kp"],
+      factor: ["temp", "ba", "ps|pt+dp+kp"],
+    },
     fields: [
-      F.qrs(), F.minutes(), F.temp(), F.ba(), F.ps(), F.pt(), F.kp(), F.dp(),
+      F.volumeMethod(), F.qrs(), F.minutes(), F.volume(),
+      F.temp(), F.ba(), F.ps(), F.pt(), F.kp(), F.dp(),
       F.meterTemp(), F.meterP(),
     ],
     results: [
-      { key: "volumeFlowTemp", label: "工况体积（烟温静压法）", unit: "L", formula: "V = Qrs × n", digits: 2, primary: true },
-      { key: "volumeMeter", label: "工况体积（计温计压法）", unit: "L", formula: "V' = Qrs × (Ba+Ps)(273.15+t′) / [(Ba+P′)(273.15+t)] × n", digits: 2, primary: true },
-      { key: "diff", label: "两法差值", unit: "L", formula: "V − V′", digits: 2 },
+      { key: "ps", label: "烟气静压 Ps", unit: "kPa", formula: "Ps = Pt − Δp·Kp²/1000", digits: 4 },
+      { key: "volumeCondition", label: "工况体积 V", unit: "L", formula: "V = Qrs × n（烟温静压法）", digits: 2 },
+      { key: "volumeMeter", label: "工况体积 V′", unit: "L", formula: "V' = Qrs × (Ba+Ps)(273.15+t′) / [(Ba+P′)(273.15+t)] × n", digits: 2 },
+      { key: "vnd", label: "标况体积 Vnd", unit: "L", formula: "按所选方法折算到标态", digits: 2, primary: true },
+      { key: "factor", label: "温度压力修正因子", unit: "", formula: "273.15/(273.15+t) × (Ba+Ps)/101.325", digits: 5 },
+      { key: "diff", label: "两法差值", unit: "L", formula: "两法标况体积之差（应≈0）", digits: 3 },
     ],
     compute(v, opts) {
       const measured = opts?.measured ?? null;
       const derived = opts?.derived ?? [];
+      const method: VolumeMethod = v.method === 2 ? "meter" : "flowTemp";
       const { ps, from } = resolvePressures(v.ps, v.pt, v.dp, v.kp, measured, derived);
       const pAbs = isN(v.ba) && isN(ps) ? v.ba + ps : null;
       const meterPAbs = isN(v.ba) && isN(v.meterP) ? v.ba + v.meterP : null;
-      const vFlowTemp = isN(v.qrs) && isN(v.minutes) ? volumeByFlowTime(v.qrs, v.minutes) : null;
-      const vMeter = isN(v.qrs) && isN(v.minutes) && isN(pAbs) && isN(v.meterTemp) && isN(meterPAbs) && isN(v.temp)
+
+      // —— 烟温静压法：工况体积取采样嘴处（烟道内）——
+      // 可由 Qrs×n 得出，也允许直接填入报表上的实际采样体积 V
+      const vFlowTemp = isN(v.qrs) && isN(v.minutes)
+        ? volumeByFlowTime(v.qrs, v.minutes)
+        : (isN(v.volume) ? v.volume : null);
+      const factorFlow = isN(v.temp) && isN(pAbs) ? toStandardFactor(v.temp, pAbs) : null;
+      const vndFlow = vFlowTemp !== null && factorFlow !== null
+        ? toStandardVolume(vFlowTemp, v.temp!, pAbs!)
+        : null;
+
+      // —— 计温计压法：工况体积取流量计处（计前）——
+      const vMeter = isN(v.qrs) && isN(v.minutes) && isN(pAbs) && isN(v.meterTemp)
+        && isN(meterPAbs) && isN(v.temp)
         ? volumeByMeterCondition(v.qrs, v.minutes, pAbs, v.meterTemp, meterPAbs, v.temp)
         : null;
-      const diff = vFlowTemp !== null && vMeter !== null ? vFlowTemp - vMeter : null;
+      const factorMeter = isN(v.meterTemp) && isN(meterPAbs)
+        ? meterToStandardFactor(v.meterTemp, meterPAbs)
+        : null;
+      const vndMeter = vMeter !== null && factorMeter !== null
+        ? volumeByMeterToStandard(vMeter, v.meterTemp!, meterPAbs!)
+        : null;
+
+      // 按所选方法给主结果
+      const vnd = method === "meter" ? vndMeter : vndFlow;
+      const factor = method === "meter" ? factorMeter : factorFlow;
+      const volumeCondition = method === "meter" ? vMeter : vFlowTemp;
+      const diff = vndFlow !== null && vndMeter !== null ? vndFlow - vndMeter : null;
+
       const steps: string[] = [];
-      if (vFlowTemp !== null) steps.push(`V = Qrs × n = ${v.qrs} × ${v.minutes} = ${vFlowTemp.toFixed(2)} L`);
+      if (factorFlow !== null) {
+        steps.push(`烟温静压法 修正因子 = ${(DUST_T0 / (DUST_T0 + v.temp!)).toFixed(5)} × ${(pAbs! / DUST_P0).toFixed(5)} = ${factorFlow.toFixed(5)}`);
+      }
+      if (vndFlow !== null) {
+        steps.push(`烟温静压法 Vnd = ${vFlowTemp!.toFixed(2)} × ${factorFlow!.toFixed(5)} = ${vndFlow.toFixed(2)} L`);
+      }
       if (vMeter !== null) {
         steps.push(
-          `V' = ${v.qrs} × ${pAbs!.toFixed(3)}×${(DUST_T0 + v.meterTemp!).toFixed(2)} / ${meterPAbs!.toFixed(3)}×${(DUST_T0 + v.temp!).toFixed(2)} × ${v.minutes} = ${vMeter.toFixed(2)} L`
+          `计温计压法 V' = ${v.qrs} × ${pAbs!.toFixed(3)}×${(DUST_T0 + v.meterTemp!).toFixed(2)} / ${meterPAbs!.toFixed(3)}×${(DUST_T0 + v.temp!).toFixed(2)} × ${v.minutes} = ${vMeter.toFixed(2)} L`
         );
       }
-      return {
-        values: { volumeFlowTemp: vFlowTemp, volumeMeter: vMeter, diff },
-        notes: { ps: from },
-        steps,
-        fills: pressureFills(v, measured, true, true, derived),
-      };
-    },
-  },
+      if (vndMeter !== null) {
+        steps.push(`计温计压法 Vnd = ${vMeter!.toFixed(2)} × ${factorMeter!.toFixed(5)} = ${vndMeter.toFixed(2)} L`);
+      }
+      if (diff !== null) {
+        steps.push(`两法标况体积差 = ${diff.toFixed(3)} L（应≈0）`);
+      }
 
-  /* ---------- 6. 标况采样体积计算 ---------- */
-  {
-    formulas: [
-      { title: "压力换算", lines: [
-        "Ps = Pt − Δp·Kp²/1000",
-        "P = Ba + Ps（烟气绝对压力）",
-      ] },
-      { title: "标况采样体积（标态干基）", lines: [
-        "Vnd = V × 273.15/(273.15+t) × (Ba+Ps)/101.325 × (1 − Xsw/100)",
-        "修正因子 = 273.15/(273.15+t) × (Ba+Ps)/101.325",
-        "标况采样体积：0℃、101.325 kPa 标态干基口径",
-      ] },
-    ],
-    id: "standard-volume",
-    name: "标况采样体积计算",
-    short: "标况体积",
-    desc: "工况体积折算到标态（0℃、101.325 kPa）干基",
-    icon: "flask",
-    ref: "Excel 区块 5",
-    fields: [F.volume(), F.temp(), F.ba(), F.ps(), F.pt(), F.kp(), F.dp(), F.xsw()],
-    results: [
-      { key: "ps", label: "烟气静压 Ps", unit: "kPa", formula: "Ps = Pt − Δp·Kp²/1000", digits: 4 },
-      { key: "vnd", label: "标况采样体积 Vnd", unit: "L", formula: "Vnd = V × 273.15/(273.15+t) × (Ba+Ps)/101.325 × (1 − Xsw/100)", digits: 2, primary: true },
-      { key: "factor", label: "温度压力修正因子", unit: "", formula: "273.15/(273.15+t) × (Ba+Ps)/101.325", digits: 5 },
-    ],
-    compute(v, opts) {
-      const measured = opts?.measured ?? null;
-      const derived = opts?.derived ?? [];
-      const { ps, from } = resolvePressures(v.ps, v.pt, v.dp, v.kp, measured, derived);
-      const pAbs = isN(v.ba) && isN(ps) ? v.ba + ps : null;
-      const factor = isN(v.temp) && isN(pAbs) ? toStandardFactor(v.temp, pAbs) : null;
-      const vnd = isN(v.volume) && isN(factor)
-        ? toStandardVolume(v.volume, v.temp!, pAbs!) * dryFactor(v.xsw ?? 0)
-        : null;
-      const steps: string[] = [];
-      if (factor !== null) steps.push(`修正因子 = ${(DUST_T0 / (DUST_T0 + v.temp!)).toFixed(5)} × ${(pAbs! / DUST_P0).toFixed(5)} = ${factor.toFixed(5)}`);
-      if (vnd !== null) {
-        steps.push(
-          `Vnd = ${v.volume} × ${factor!.toFixed(5)} × ${(1 - (v.xsw ?? 0) / 100).toFixed(4)} = ${vnd.toFixed(2)} L（标态干基）`
-        );
-      }
       return {
-        values: { ps, vnd, factor },
-        notes: { ps: from, vnd: "标态干基" },
+        values: {
+          ps, volumeCondition, volumeMeter: vMeter, vnd, factor, diff,
+        },
+        notes: {
+          ps: from,
+          volumeCondition: method === "meter" ? "计温计压法：流量计处体积" : "烟温静压法：采样嘴处体积",
+          volumeMeter: "计温计压法：流量计处体积",
+          vnd: method === "meter" ? "计温计压法折算标态" : "烟温静压法折算标态",
+          factor: "温度压力修正因子",
+          diff: "两法标况体积之差",
+        },
         steps,
-        // Vnd 回填到「实际采样体积 V」输入框不合适（口径不同），
-        // 只回填派生的静压值
         fills: pressureFills(v, measured, true, true, derived),
       };
     },
@@ -586,7 +640,7 @@ export const DUST_MODES: DustMode[] = [
         "V = Qrs × n（工况采样体积）",
       ] },
       { title: "标况体积与浓度（标态干基）", lines: [
-        "Vnd = V × 273.15/(273.15+t) × (Ba+Ps)/101.325 × (1 − Xsw/100)",
+        "Vnd = V × 273.15/(273.15+t) × (Ba+Ps)/101.325（含湿量已在采样流量中扣除）",
         "C = (g2 − g1) / Vnd × 10⁶",
         "α = 21/(21 − O₂实测)；αs = 21/(21 − O₂基准)",
         "Cα = C × α/αs × 出力系数",
@@ -616,7 +670,7 @@ export const DUST_MODES: DustMode[] = [
       { key: "vs", label: "烟气流速 Vs", unit: "m/s", formula: "Vs = 1.414 × Kp × √(Δp/ρ)", digits: 3 },
       { key: "qrs", label: "等速采样流量 Qrs", unit: "L/min", formula: "Qrs = 0.047 × d² × Vs × (1 − Xsw/100)", digits: 2 },
       { key: "volumeWet", label: "工况采样体积 V", unit: "L", formula: "V = Qrs × n", digits: 2 },
-      { key: "vnd", label: "标况采样体积 Vnd", unit: "L", formula: "Vnd = V × 273.15/(273.15+t) × (Ba+Ps)/101.325 × (1 − Xsw/100)", digits: 2 },
+      { key: "vnd", label: "标况采样体积 Vnd", unit: "L", formula: "Vnd = V × 273.15/(273.15+t) × (Ba+Ps)/101.325", digits: 2 },
       { key: "mass", label: "颗粒物净重 Δg", unit: "g", formula: "Δg = g2 − g1", digits: 4 },
       { key: "c", label: "颗粒物浓度 C", unit: "mg/m³", formula: "C = Δg / Vnd × 10⁶", digits: 2, primary: true },
       { key: "alpha", label: "过剩空气系数 α", unit: "", formula: "α = 21 / (21 − O₂实测)", digits: 4 },
@@ -635,8 +689,11 @@ export const DUST_MODES: DustMode[] = [
       const vs = isN(v.dp) && isN(v.kp) && isN(rho) ? flueGasVelocity(v.dp, v.kp, rho) : null;
       const qrs = isN(v.nozzle) && isN(vs) && isN(v.xsw) ? isokineticFlow(v.nozzle, vs, v.xsw) : null;
       const volumeWet = isN(qrs) && isN(v.minutes) ? volumeByFlowTime(qrs, v.minutes) : null;
+      // 标况采样体积不再乘含湿量因子：
+      // 含湿量已在上游等速采样流量 Qrs = 0.047·d²·Vs·(1−Xsw/100) 中扣除，
+      // 此处再乘一次会重复扣水（Excel 区块 5 亦无含湿量项）。
       const vnd = isN(volumeWet) && isN(v.temp) && isN(pAbs)
-        ? toStandardVolume(volumeWet, v.temp, pAbs) * dryFactor(v.xsw ?? 0)
+        ? toStandardVolume(volumeWet, v.temp, pAbs)
         : null;
       const mass = isN(v.g1) && isN(v.g2) ? v.g2 - v.g1 : null;
       const c = isN(mass) && isN(vnd) ? dustConcentration(mass, vnd) : null;
@@ -713,13 +770,10 @@ export const DUST_MODE_DEMO: Record<string, Record<string, number | null>> = {
   "nozzle-select": { qrs: 36.41, vs: 5.4, xsw: 0.38 },
   "velocity": { dp: 25, kp: 0.84, temp: 31.8, ba: 101.9, ps: 0.01, pt: 0.06 },
   "sampling-flow": { nozzle: 12, vs: 5.4, xsw: 0.38 },
-  "condition-volume": {
-    qrs: 36.41, minutes: 120, temp: 158.7, ba: 97.6, ps: -0.19, pt: null,
+  volume: {
+    method: 1, qrs: 36.41, minutes: 120, volume: null,
+    temp: 158.7, ba: 97.6, ps: -0.19, pt: null,
     kp: 0.84, dp: 25, meterTemp: 39.2, meterP: -3.38,
-  },
-  "standard-volume": {
-    volume: 2068.2, temp: 158.7, ba: 97.6, ps: -0.19, pt: null,
-    kp: 0.84, dp: 25, xsw: 1.31,
   },
   "actual-flow": { vs: 17.3, area: 7.28 },
   "standard-flow": {
@@ -759,9 +813,9 @@ export const DUST_DEP_RULES: Record<string, string[]> = {
   nozzle: ["qrs", "vs", "xsw"],
   check: ["nozzle"],
   qh: ["qrs"],
-  volumeFlowTemp: ["qrs", "minutes"],
+  volumeCondition: ["qrs+minutes", "volume"],
   volumeMeter: ["qrs", "minutes", "ba", "ps|pt+dp+kp", "temp", "meterTemp", "meterP"],
-  diff: ["@volumeFlowTemp", "@volumeMeter"],
+  diff: ["@vnd"],
   volumeWet: ["qrs", "minutes"],
   vnd: ["volume", "temp", "ba", "ps|pt+dp+kp", "xsw"],
   factor: ["temp", "ba", "ps|pt+dp+kp"],
@@ -790,7 +844,7 @@ const FIELD_LABEL: Record<string, string> = {
 
 /** 结果 key → 显示名 */
 const RESULT_LABEL: Record<string, string> = {
-  volumeFlowTemp: "工况体积（烟温静压法）", volumeMeter: "工况体积（计温计压法）",
+  volumeCondition: "工况体积 V", volumeMeter: "工况体积 V′",
   ps: "烟气静压 Ps", pt: "烟气全压 Pt", rho: "湿烟气密度 ρ", vs: "烟气流速 Vs",
   qrs: "等速采样流量 Qrs", nozzle: "采样嘴直径 D", check: "校核等速采样流量",
   qh: "等速采样流量", volumeWet: "工况采样体积 V", vnd: "标况采样体积 Vnd",
@@ -809,9 +863,11 @@ const RESULT_LABEL: Record<string, string> = {
 export function missingOfResult(
   resultKey: string,
   v: Record<string, number | null>,
-  computed: Record<string, number | null>
+  computed: Record<string, number | null>,
+  modeRules?: Record<string, string[]>
 ): string {
-  const rules = DUST_DEP_RULES[resultKey];
+  // 模式级规则优先（如体积计算两法依赖不同）
+  const rules = modeRules?.[resultKey] ?? DUST_DEP_RULES[resultKey];
   if (!rules) return "";
 
   const hasField = (k: string) => {
