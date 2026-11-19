@@ -377,7 +377,7 @@ function gotoStep(id: string) {
               </div>
             </div>
 
-            <!-- 右：本步结果报表 -->
+            <!-- 右：本步结果报表 + 公式 -->
             <div class="out-p">
               <div class="rep">
                 <div
@@ -390,6 +390,13 @@ function gotoStep(id: string) {
                   <span class="rp-v">{{ fmt(row.value, row.digits) }}</span>
                   <span class="rp-u">{{ row.unit }}</span>
                   <span v-if="row.note" class="rp-n">{{ row.note }}</span>
+                </div>
+              </div>
+              <!-- 本步计算公式（紧跟结果） -->
+              <div class="fx">
+                <div class="fx-sub" v-for="(f, i) in vm.step.formulas" :key="i">
+                  <div class="fx-st">{{ f.title }}</div>
+                  <div class="fx-l" v-for="(line, j) in f.lines" :key="j"><code>{{ line }}</code></div>
                 </div>
               </div>
             </div>
@@ -409,26 +416,16 @@ function gotoStep(id: string) {
       </div>
     </section>
 
-    <!-- ===== 公式与说明 ===== -->
+    <!-- ===== 口径说明 ===== -->
     <section class="panel doc">
       <div class="doc-h" @click="showExplain = !showExplain">
         <div class="doc-t">
           <Icon name="flask" :size="15" />
-          <b>公式与口径说明</b>
+          <b>口径与计算说明</b>
         </div>
         <span class="toggle">{{ showExplain ? "收起 ▲" : "展开 ▼" }}</span>
       </div>
       <div v-show="showExplain" class="doc-b">
-        <div v-for="vm in stepVMs" :key="vm.step.id" class="fx">
-          <div class="fx-t">{{ vm.step.no }}. {{ vm.step.title }}</div>
-          <div v-for="(f, i) in vm.step.formulas" :key="i" class="fx-sub">
-            <div class="fx-st">{{ f.title }}</div>
-            <div class="fx-l" v-for="(line, j) in f.lines" :key="j"><code>{{ line }}</code></div>
-          </div>
-          <ul v-if="vm.step.notes && vm.step.notes.length" class="fx-notes">
-            <li v-for="(n, i) in vm.step.notes" :key="i">{{ n }}</li>
-          </ul>
-        </div>
         <ul class="notes">
           <li><b>统一标态干基口径</b>：标况采样体积、颗粒物浓度、标干烟气流量、排放速率四项均按标态干基计算，始终保持 C × Qn × 10⁻⁶ ≡ G，与排放标准限值直接可比。</li>
           <li><b>含湿量口径</b>：Xsw 统一按百分数数值填入（如 7.89 表示 7.89%），干基折算因子统一为 (1 − Xsw/100)。含湿量已在等速采样流量中扣除，体积折算不重复修正。</li>
@@ -707,6 +704,24 @@ function gotoStep(id: string) {
   font-size: 10.5px; color: var(--d-dim); line-height: 1.45;
 }
 
+/* ---- 步骤内公式（紧跟结果报表下方） ---- */
+.fx { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+.fx-sub { margin-bottom: 0; }
+.fx-st {
+  font-size: 11px; color: var(--d-accent2); margin-bottom: 4px;
+}
+.fx-l {
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 12px; color: var(--d-muted);
+  background: var(--d-panel);
+  border-left: 2px solid var(--d-accent);
+  border-radius: 6px;
+  padding: 6px 10px;
+  margin-bottom: 4px;
+  overflow-x: auto;
+}
+.fx-l code { color: var(--d-txt); font-size: 12px; }
+
 /* ---- 计算过程 ---- */
 .steps-t {
   display: flex; justify-content: space-between; align-items: center;
@@ -736,26 +751,6 @@ function gotoStep(id: string) {
 }
 .doc-t { display: flex; align-items: center; gap: 8px; font-size: 14px; }
 .doc-b { padding: 0 20px 18px; }
-.fx { margin-bottom: 14px; }
-.fx-t {
-  font-size: 12px; color: var(--d-accent);
-  letter-spacing: 0.4px; margin-bottom: 7px; font-weight: 600;
-}
-.fx-sub { margin-bottom: 6px; }
-.fx-st { font-size: 11px; color: var(--d-accent2); margin-bottom: 5px; }
-.fx-l {
-  font-family: Consolas, "Courier New", monospace;
-  font-size: 12.5px; color: var(--d-muted);
-  background: var(--d-panel2);
-  border-left: 2px solid var(--d-accent);
-  border-radius: 6px;
-  padding: 7px 11px;
-  margin-bottom: 5px;
-  overflow-x: auto;
-}
-.fx-l code { color: var(--d-txt); }
-.fx-notes { margin: 6px 0 0; padding-left: 18px; }
-.fx-notes li { font-size: 12px; color: var(--d-dim); line-height: 1.8; }
 .notes { margin: 8px 0 0; padding-left: 18px; }
 .notes li {
   font-size: 12.5px; color: var(--d-muted);

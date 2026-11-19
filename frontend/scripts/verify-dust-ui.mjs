@@ -169,19 +169,27 @@ ok(reuseTags.length === reusedCount, `复用字段均标「复用」（${reuseTa
 const upRows = await page.$$eval(".up-row", (els) => els.length);
 ok(upRows > 0, `显示上游产物带入（${upRows} 行）`);
 
-/* ---------- 10. 公式面板按 5 步组织 ---------- */
-await page.evaluate(() => {
-  const b = [...document.querySelectorAll(".doc-h")][0];
-  if (b) b.click();
-});
-await sleep(700);
-const fxTitles = await page.$$eval(".fx-t", (els) => els.map((e) => e.textContent.trim()));
-ok(fxTitles.length === 5, `公式面板 5 段（实际 ${fxTitles.length}）：${fxTitles.join(" / ")}`);
-const fxLines = await page.$$eval(".fx-l", (els) => els.map((e) => e.textContent.trim()));
+/* ---------- 10. 公式在各步结果报表下方 ---------- */
+const rowFx = await page.$$eval(".srow", (els) =>
+  els.map((e) => ({
+    title: e.querySelector(".sg-t b")?.textContent.trim(),
+    fxCount: e.querySelectorAll(".out-p .fx .fx-l").length,
+    repCount: e.querySelectorAll(".out-p .rep .rp").length,
+  }))
+);
+ok(rowFx.length === 5 && rowFx.every((x) => x.fxCount > 0), "每步结果下方都有公式块：" + rowFx.map((x) => `${x.title}(${x.fxCount})`).join(" "));
+ok(rowFx.every((x) => x.repCount > 0), "每步公式上方都有结果报表行");
+
+const fxLines = await page.$$eval(".srow .out-p .fx .fx-l", (els) => els.map((e) => e.textContent.trim()));
+ok(fxLines.length >= 10, `公式行数量充足（${fxLines.length} 行）`);
 ok(fxLines.some((t) => t.includes("标干烟气流量")), "公式含「标干烟气流量」");
 ok(fxLines.some((t) => t.includes("G = C")), "公式含排放速率 G = C × Qn × 10⁻⁶");
 ok(fxLines.some((t) => t.includes("Qrs × n")), "④步公式含 V = Qrs × n");
 ok(!fxLines.some((t) => t.includes("湿基") || t.includes("标杆")), "公式行无「湿基」「标杆」字样");
+
+// 底部说明面板不再重复公式，只留口径说明
+const docFxTitles = await page.$$eval(".doc .fx-t", (els) => els.length);
+ok(docFxTitles === 0, `底部说明面板无公式分段（实际 ${docFxTitles} 段）`);
 
 /* ---------- 11. 全压 ↔ 静压 双向互算 ---------- */
 // 找到①步的全压输入框与静压输入框
